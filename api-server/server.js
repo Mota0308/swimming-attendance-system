@@ -15,7 +15,7 @@ const STUDENTS_COLLECTION = 'students';
 const ACCOUNTS_COLLECTION = 'Student_account';
 
 // 服務器配置 - 支持環境變量
-const SERVER_IP = process.env.SERVER_IP || '203.145.95.240';
+const SERVER_IP = process.env.SERVER_IP || '0.0.0.0';
 const SERVER_URL = process.env.SERVER_URL || `http://${SERVER_IP}:${PORT}`;
 
 // API 密鑰驗證中間件
@@ -810,11 +810,11 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('');
     console.log('📱 手機 APP 配置:');
     console.log(`   基礎 URL: ${SERVER_URL}`);
-    console.log(`   公開密鑰: ttdrcccy`);
-    console.log(`   私有密鑰: 2b207365-cbf0-4e42-a3bf-f932c84557c4`);
+    console.log(`   公開密鑰: ${process.env.API_PUBLIC_KEY || 'ttdrcccy'}`);
+    console.log(`   私有密鑰: ${process.env.API_PRIVATE_KEY || '2b207365-cbf0-4e42-a3bf-f932c84557c4'}`);
     console.log('');
     console.log('🧪 測試命令:');
-    console.log(`   curl -H "X-API-Public-Key: ttdrcccy" -H "X-API-Private-Key: 2b207365-cbf0-4e42-a3bf-f932c84557c4" ${SERVER_URL}/health`);
+    console.log(`   curl -H "X-API-Public-Key: ${process.env.API_PUBLIC_KEY || 'ttdrcccy'}" -H "X-API-Private-Key: ${process.env.API_PRIVATE_KEY || '2b207365-cbf0-4e42-a3bf-f932c84557c4'}" ${SERVER_URL}/health`);
 });
 
 module.exports = app; 

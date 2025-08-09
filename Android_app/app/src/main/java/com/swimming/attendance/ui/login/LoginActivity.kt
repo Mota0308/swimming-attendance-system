@@ -84,17 +84,17 @@ class LoginActivity : AppCompatActivity() {
                         putString("current_user_type", userType)
                     }.apply()
 
-                    showLoading(false)
-                    Toast.makeText(this@LoginActivity, "登入成功", Toast.LENGTH_SHORT).show()
-                    navigateToMainActivity(userType)
+                                showLoading(false)
+                                Toast.makeText(this@LoginActivity, "登入成功", Toast.LENGTH_SHORT).show()
+                                navigateToMainActivity(userType)
                 } else {
-                    showLoading(false)
+                        showLoading(false)
                     showError(loginResult.message ?: "登入失敗")
                 }
             } catch (e: Exception) {
-                showLoading(false)
-                showError("登入失敗：${e.message}")
-            }
+                    showLoading(false)
+                    showError("登入失敗：${e.message}")
+                }
         }
     }
 
@@ -122,14 +122,14 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun navigateToMainActivity(userType: String) {
-        val intent = when (userType) {
+            val intent = when (userType) {
             "parent" -> Intent(this, ParentMainActivity::class.java)
             "coach" -> Intent(this, CoachMainActivity::class.java)
             "admin" -> Intent(this, AdminMainActivity::class.java)
             else -> Intent(this, ParentMainActivity::class.java)
-        }
-        intent.putExtra("userType", userType)
-        startActivity(intent)
-        finish()
+            }
+            intent.putExtra("userType", userType)
+            startActivity(intent)
+            finish()
     }
 } 
