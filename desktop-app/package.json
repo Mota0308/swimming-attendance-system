@@ -1,0 +1,87 @@
+{
+  "name": "swimming-attendance-desktop",
+  "version": "1.0.0",
+  "description": "游泳課程出席管理系統 - 桌面版",
+  "author": "Swimming Attendance System",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dev": "electron . --dev"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.15.0",
+    "@mui/material": "^5.15.0",
+    "axios": "^1.6.0",
+    "exceljs": "^4.4.0",
+    "mongodb": "^6.17.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.8.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.9.0"
+  },
+  "build": {
+    "appId": "com.swimming.attendance",
+    "productName": "游泳課程出席管理系統",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.bin",
+      "!node_modules/electron*",
+      "!node_modules/electron-builder*",
+      "!dist/**/*",
+      "!build/**/*",
+      "!.git/**/*",
+      "!*.md",
+      "!test_*.js",
+      "!test_*.bat"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "游泳課程出席管理系統",
+      "deleteAppDataOnUninstall": false,
+      "include": "installer.nsh"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

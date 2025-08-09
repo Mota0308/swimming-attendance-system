@@ -1,0 +1,36 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景圆形 -->
+  <circle cx="128" cy="128" r="120" fill="url(#grad1)" stroke="#4a5568" stroke-width="4"/>
+  
+  <!-- 游泳图标 -->
+  <g transform="translate(64, 64)">
+    <!-- 波浪 -->
+    <path d="M0 80 Q32 60 64 80 T128 80 T192 80" stroke="white" stroke-width="3" fill="none" opacity="0.8"/>
+    <path d="M0 90 Q32 70 64 90 T128 90 T192 90" stroke="white" stroke-width="2" fill="none" opacity="0.6"/>
+    <path d="M0 100 Q32 80 64 100 T128 100 T192 100" stroke="white" stroke-width="2" fill="none" opacity="0.4"/>
+    
+    <!-- 人物 -->
+    <circle cx="96" cy="40" r="12" fill="white"/>
+    <ellipse cx="96" cy="55" rx="8" ry="12" fill="white"/>
+    
+    <!-- 手臂 -->
+    <ellipse cx="88" cy="50" rx="4" ry="8" fill="white" transform="rotate(-30 88 50)"/>
+    <ellipse cx="104" cy="50" rx="4" ry="8" fill="white" transform="rotate(30 104 50)"/>
+    
+    <!-- 腿部 -->
+    <ellipse cx="92" cy="65" rx="3" ry="8" fill="white" transform="rotate(-15 92 65)"/>
+    <ellipse cx="100" cy="65" rx="3" ry="8" fill="white" transform="rotate(15 100 65)"/>
+  </g>
+  
+  <!-- 文字 -->
+  <text x="128" y="200" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="16" font-weight="bold">
+    游泳課程
+  </text>
+</svg> 

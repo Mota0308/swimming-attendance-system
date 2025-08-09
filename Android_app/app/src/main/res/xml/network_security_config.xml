@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- MongoDB Atlas 配置 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">cluster0.0dhi0qc.mongodb.net</domain>
+    </domain-config>
+    
+    <!-- API 服務器配置 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">203.145.95.240</domain>
+    </domain-config>
+    
+    <!-- 本地開發配置 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+    
+    <!-- 本地Wi-Fi網絡配置 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.1.24</domain>
+    </domain-config>
+    
+    <!-- 通用配置 -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config> 
