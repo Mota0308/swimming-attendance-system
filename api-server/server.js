@@ -16,7 +16,9 @@ const ACCOUNTS_COLLECTION = 'Student_account';
 
 // 服務器配置 - 支持環境變量
 const SERVER_IP = process.env.SERVER_IP || '0.0.0.0';
-const SERVER_URL = process.env.SERVER_URL || `http://${SERVER_IP}:${PORT}`;
+const SERVER_URL = process.env.RAILWAY_PUBLIC_DOMAIN 
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` 
+    : process.env.SERVER_URL || `http://${SERVER_IP}:${PORT}`;
 
 // API 密鑰驗證中間件
 const validateApiKeys = (req, res, next) => {
