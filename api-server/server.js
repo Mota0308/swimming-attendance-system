@@ -3,6 +3,7 @@ const { MongoClient } = require('mongodb');
 const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3001;
+console.log(`🔧 服務器端口配置: ${PORT} (環境變量: ${process.env.PORT || '未設置'})`);
 
 // 中間件
 app.use(cors());
@@ -865,4 +866,5 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 API 服務器已啟動');
     console.log(`📍 本地地址: http://localhost:${PORT}`);
     console.log(`🌐 服務器地址: ${SERVER_URL}`);
-    console.log(`
+    console.log(`🔧 服務器配置完成`);
+});
