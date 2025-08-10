@@ -614,11 +614,11 @@ app.put('/students/update', validateApiKeys, async (req, res) => {
             });
         }
         
-        // 如果日期為空，嘗試使用其他可能的日期字段
-        let searchDate = date;
+        // 優先使用"上課日期"字段，這是資料庫中的實際字段名
+        let searchDate = req.body['上課日期'] || date;
         if (!searchDate) {
-            // 嘗試從其他字段獲取日期
-            searchDate = req.body['上課日期'] || req.body['courseDate'] || req.body['classDate'] || '';
+            // 如果都沒有，嘗試其他可能的日期字段
+            searchDate = req.body['courseDate'] || req.body['classDate'] || '';
         }
         
         const client = new MongoClient(MONGO_URI);
@@ -630,11 +630,50 @@ app.put('/students/update', validateApiKeys, async (req, res) => {
         // 先查詢現有記錄，確認字段名稱
         let query = { name: name };
         if (searchDate) {
-            query.date = searchDate;
+            // 優先使用"上課日期"字段，這是資料庫中的實際字段名
+            query = {
+                name: name,
+                $or: [
+                    { "上課日期": searchDate },
+                    { date: searchDate },
+                    { courseDate: searchDate },
+                    { classDate: searchDate }
+                ]
+            };
         }
         
         console.log(`🔍 查詢條件:`, query);
-        const existingRecord = await collection.findOne(query);
+        
+        // 如果沒有找到記錄，嘗試更寬鬆的查詢
+        let existingRecord = await collection.findOne(query);
+        
+        if (!existingRecord) {
+            console.log(`🔍 使用寬鬆查詢條件重試...`);
+            // 嘗試只按姓名查詢，忽略日期
+            const nameOnlyQuery = { name: name };
+            existingRecord = await collection.findOne(nameOnlyQuery);
+            
+            if (existingRecord) {
+                console.log(`🔍 找到學生記錄（僅按姓名）:`, {
+                    name: existingRecord.name,
+                    date: existingRecord.date,
+                    '上課日期': existingRecord['上課日期'],
+                    courseDate: existingRecord.courseDate,
+                    classDate: existingRecord.classDate,
+                    location: existingRecord.location
+                });
+                
+                // 如果找到記錄但日期不匹配，返回詳細信息
+                if (searchDate) {
+                    await client.close();
+                    return res.status(404).json({
+                        success: false,
+                        message: `學生姓名存在但日期不匹配 - 姓名: ${name}, 請求日期: ${searchDate}, 資料庫日期: ${existingRecord.date || existingRecord['上課日期'] || existingRecord.courseDate || existingRecord.classDate || '未知'}`
+                    });
+                }
+            }
+        }
+        
         console.log(`🔍 現有記錄:`, existingRecord);
         
         if (!existingRecord) {
@@ -645,30 +684,45 @@ app.put('/students/update', validateApiKeys, async (req, res) => {
             });
         }
         
-        // 構建更新數據，使用實際存在的字段名稱
+        // 構建更新數據，優先使用標準字段名，如果不存在則創建
         const updateData = {}
+        
+        // 處理option1 (出席狀況)
         if (option1 != null) {
-            // 檢查數據庫中是否有option1字段，如果沒有則使用其他可能的字段名
+            // 檢查資料庫中是否有相關字段
             if (existingRecord.hasOwnProperty('option1')) {
                 updateData.option1 = option1
+                console.log(`✅ 更新option1字段: ${option1}`)
             } else if (existingRecord.hasOwnProperty('attendance')) {
                 updateData.attendance = option1
+                console.log(`✅ 更新attendance字段: ${option1}`)
             } else {
-                updateData.option1 = option1 // 如果都沒有，創建新字段
+                // 如果都沒有，創建標準的option1字段
+                updateData.option1 = option1
+                console.log(`🆕 創建option1字段: ${option1}`)
             }
         }
         
+        // 處理option2 (補/調堂)
         if (option2 != null) {
             if (existingRecord.hasOwnProperty('option2')) {
                 updateData.option2 = option2
+                console.log(`✅ 更新option2字段: ${option2}`)
             } else if (existingRecord.hasOwnProperty('makeup')) {
                 updateData.makeup = option2
+                console.log(`✅ 更新makeup字段: ${option2}`)
             } else {
-                updateData.option2 = option2 // 如果都沒有，創建新字段
+                // 如果都沒有，創建標準的option2字段
+                updateData.option2 = option2
+                console.log(`🆕 創建option2字段: ${option2}`)
             }
         }
         
-        if (option3 != null) updateData.option3 = option3
+        // 處理其他字段
+        if (option3 != null) {
+            updateData.option3 = option3
+            console.log(`✅ 更新option3字段: ${option3}`)
+        }
         if (age != null) updateData.age = age
         if (type != null) updateData.type = type
         if (time != null) updateData.time = time
@@ -676,6 +730,7 @@ app.put('/students/update', validateApiKeys, async (req, res) => {
         
         console.log(`📝 準備更新的數據:`, updateData);
         
+        // 執行更新操作
         const result = await collection.updateOne(
             query,
             { $set: updateData }
@@ -686,10 +741,13 @@ app.put('/students/update', validateApiKeys, async (req, res) => {
         if (result.matchedCount > 0) {
             console.log(`✅ 學生資料更新成功 - 姓名: ${name}, 日期: ${date}`);
             console.log(`✅ 更新了 ${result.modifiedCount} 個字段`);
+            console.log(`✅ 更新的字段:`, Object.keys(updateData));
+            
             res.json({
                 success: true,
                 message: '學生資料更新成功',
-                modifiedCount: result.modifiedCount
+                modifiedCount: result.modifiedCount,
+                updatedFields: Object.keys(updateData)
             });
         } else {
             console.log(`❌ 學生資料不存在 - 姓名: ${name}, 日期: ${date}`);
@@ -807,20 +865,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 API 服務器已啟動');
     console.log(`📍 本地地址: http://localhost:${PORT}`);
     console.log(`🌐 服務器地址: ${SERVER_URL}`);
-    console.log(`🔗 MongoDB 連接: ${MONGO_URI}`);
-    console.log(`📊 數據庫: ${DB_NAME}`);
-    console.log(`📋 學生集合: ${STUDENTS_COLLECTION}`);
-    console.log(`👤 賬號集合: ${ACCOUNTS_COLLECTION}`);
-    console.log(`🔑 API 密鑰已配置`);
-    console.log(`⏰ 啟動時間: ${new Date().toLocaleString()}`);
-    console.log('');
-    console.log('📱 手機 APP 配置:');
-    console.log(`   基礎 URL: ${SERVER_URL}`);
-    console.log(`   公開密鑰: ${process.env.API_PUBLIC_KEY || 'ttdrcccy'}`);
-    console.log(`   私有密鑰: ${process.env.API_PRIVATE_KEY || '2b207365-cbf0-4e42-a3bf-f932c84557c4'}`);
-    console.log('');
-    console.log('🧪 測試命令:');
-    console.log(`   curl -H "X-API-Public-Key: ${process.env.API_PUBLIC_KEY || 'ttdrcccy'}" -H "X-API-Private-Key: ${process.env.API_PRIVATE_KEY || '2b207365-cbf0-4e42-a3bf-f932c84557c4'}" ${SERVER_URL}/health`);
-});
-
-module.exports = app; 
+    console.log(`
