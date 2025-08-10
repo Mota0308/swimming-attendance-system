@@ -28,6 +28,7 @@ async function testCoachInfoAPI() {
                 
                 // 測試2: 獲取單個教練信息
                 console.log('\n📋 測試2: 獲取單個教練信息');
+                console.log('查詢電話:', firstCoach.phone);
                 const singleCoachResponse = await axios.get(`${API_BASE_URL}/coaches?phone=${firstCoach.phone}`, {
                     headers: {
                         'X-API-Public-Key': PUBLIC_KEY,

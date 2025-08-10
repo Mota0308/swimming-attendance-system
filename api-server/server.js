@@ -368,6 +368,9 @@ app.get('/coaches', validateApiKeys, async (req, res) => {
         const db = client.db(DB_NAME);
         const collection = db.collection('Coach_account');
 
+        console.log(`🔍 請求查詢參數:`, req.query);
+        console.log(`🔍 phone參數值: ${phone}`);
+        
         if (phone) {
             // 查詢單個教練
             console.log(`🔍 查詢教練電話: ${phone}`);
