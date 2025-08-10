@@ -359,20 +359,39 @@ app.post('/auth/register-coach', validateApiKeys, async (req, res) => {
     }
 });
 
-// 新增：獲取教練列表
+// 新增：獲取教練列表或單個教練信息
 app.get('/coaches', validateApiKeys, async (req, res) => {
     try {
+        const phone = req.query.phone;
         const client = new MongoClient(MONGO_URI);
         await client.connect();
         const db = client.db(DB_NAME);
         const collection = db.collection('Coach_account');
 
-        const coaches = await collection.find({}, { projection: { phone: 1, studentName: 1, _id: 0 } }).toArray();
-        await client.close();
-        res.json({ success: true, coaches });
+        if (phone) {
+            // 查詢單個教練
+            console.log(`🔍 查詢教練電話: ${phone}`);
+            const coach = await collection.findOne(
+                { phone: phone }, 
+                { projection: { phone: 1, studentName: 1, _id: 0 } }
+            );
+            console.log(`📋 查詢結果:`, coach);
+            await client.close();
+            
+            if (coach) {
+                res.json({ success: true, coach });
+            } else {
+                res.status(404).json({ success: false, message: '教練不存在' });
+            }
+        } else {
+            // 獲取所有教練列表
+            const coaches = await collection.find({}, { projection: { phone: 1, studentName: 1, _id: 0 } }).toArray();
+            await client.close();
+            res.json({ success: true, coaches });
+        }
     } catch (error) {
-        console.error('❌ 獲取教練列表錯誤:', error);
-        res.status(500).json({ success: false, message: '獲取教練列表失敗', error: error.message });
+        console.error('❌ 獲取教練信息錯誤:', error);
+        res.status(500).json({ success: false, message: '獲取教練信息失敗', error: error.message });
     }
 });
 
