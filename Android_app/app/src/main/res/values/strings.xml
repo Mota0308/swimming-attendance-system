@@ -6,7 +6,6 @@
     <string name="phone_number">電話號碼</string>
     <string name="password">密碼</string>
     <string name="login">登入</string>
-    <string name="create_account">創建賬號</string>
     <string name="parent_version">家長版本</string>
     <string name="coach_version">教練版本</string>
     <string name="select_version">請選擇版本</string>
@@ -15,7 +14,6 @@
     <string name="error_invalid_phone">請輸入有效的電話號碼</string>
     <string name="error_invalid_password">密碼長度至少6位</string>
     <string name="error_login_failed">登入失敗，請檢查電話號碼和密碼</string>
-    <string name="error_account_exists">該電話號碼已存在</string>
     <string name="error_network">網絡連接失敗</string>
     
     <!-- 主界面 -->

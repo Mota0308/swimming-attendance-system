@@ -31,12 +31,6 @@
         </activity>
         
         <activity
-            android:name=".ui.login.CreateAccountActivity"
-            android:exported="false"
-            android:theme="@style/Theme.SwimmingAttendanceApp"
-            android:label="創建賬號" />
-        
-        <activity
             android:name=".ui.main.MainActivity"
             android:exported="false"
             android:theme="@style/Theme.SwimmingAttendanceApp" />

@@ -127,21 +127,7 @@
                     android:text="@string/login"
                     android:textSize="16sp"
                     android:textStyle="bold"
-                    app:cornerRadius="8dp"
-                    android:layout_marginBottom="12dp" />
-
-                <!-- 創建賬號按鈕 -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/createAccountButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="@string/create_account"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="8dp"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    app:strokeColor="@color/primary"
-                    android:textColor="@color/primary" />
+                    app:cornerRadius="8dp" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

@@ -22,7 +22,7 @@ class APIConfig private constructor(context: Context) {
         private const val DEFAULT_PRIVATE_API_KEY = "2b207365-cbf0-4e42-a3bf-f932c84557c4"
         
         // 智能API地址配置 - 根據環境自動選擇
-        private const val DEFAULT_BASE_URL = "https://swiming-production.up.railway.app" // Railway生產環境服務器（默認）
+        private const val DEFAULT_BASE_URL = "https://swimming-attendance-system-production.up.railway.app" // Railway生產環境服務器（默認）
         private const val LOCAL_EMULATOR_URL = "http://10.0.2.2:3001" // Android模擬器
         private const val LOCAL_WIFI_URL = "http://192.168.1.24:3001" // 本地Wi-Fi網絡
         private const val ALTERNATIVE_WIFI_URL = "http://192.168.137.1:3001" // 其他Wi-Fi網絡

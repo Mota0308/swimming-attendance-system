@@ -485,7 +485,7 @@ class CloudAPIService(
                 val jsonObject = jsonArray.getJSONObject(i)
                 val student = Student(
                     name = jsonObject.optString("name", ""),
-                    phone = jsonObject.optString("phone", ""),
+                    phone = jsonObject.optString("Phone_number", ""),
                     age = jsonObject.optString("age", ""),
                     location = jsonObject.optString("location", ""),
                     courseType = jsonObject.optString("courseType", ""),

@@ -110,7 +110,7 @@ app.get('/students/user/:phone', validateApiKeys, async (req, res) => {
         const collection = db.collection(STUDENTS_COLLECTION);
         
         // 查找與用戶電話號碼匹配的學生資料
-        const students = await collection.find({ phone: userPhone }).toArray();
+        const students = await collection.find({ Phone_number: userPhone }).toArray();
         
         await client.close();
         
@@ -239,17 +239,21 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
         
         // 根據用戶類型選擇不同的集合
         let collection;
+        let phoneField;
         if (userType === 'coach') {
             collection = db.collection('Coach_account');
+            phoneField = 'phone';
         } else if (userType === 'admin') {
             collection = db.collection('Administrator');
+            phoneField = 'phone';
         } else {
             collection = db.collection(ACCOUNTS_COLLECTION);
+            phoneField = 'studentPhone'; // Student_account 集合使用 studentPhone 字段
         }
         
         // 查找用戶（使用電話號碼作為賬號）
         const user = await collection.findOne({
-            phone: phone,
+            [phoneField]: phone,
             password: password
         });
         

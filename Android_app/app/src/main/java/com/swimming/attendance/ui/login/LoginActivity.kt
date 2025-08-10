@@ -51,9 +51,6 @@ class LoginActivity : AppCompatActivity() {
         binding.loginButton.setOnClickListener {
             handleLogin()
         }
-        binding.createAccountButton.setOnClickListener {
-            handleCreateAccount()
-        }
     }
 
     private fun handleLogin() {
@@ -96,19 +93,6 @@ class LoginActivity : AppCompatActivity() {
                     showError("登入失敗：${e.message}")
                 }
         }
-    }
-
-    private fun handleCreateAccount() {
-        val roleDisplay = binding.loginRoleSpinner.selectedItem?.toString() ?: "學生"
-        val userType = when (roleDisplay) {
-            "學生" -> "parent"
-            "教練" -> "coach"
-            "管理員" -> "admin"
-            else -> "parent"
-        }
-        val intent = Intent(this, CreateAccountActivity::class.java)
-        intent.putExtra("userType", userType)
-        startActivity(intent)
     }
 
     private fun showLoading(loading: Boolean) {

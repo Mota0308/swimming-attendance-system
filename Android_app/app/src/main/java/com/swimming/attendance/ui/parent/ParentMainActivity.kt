@@ -56,6 +56,7 @@ class ParentMainActivity : AppCompatActivity() {
     private lateinit var studentsRecyclerView: RecyclerView
     private lateinit var studentsAdapter: StudentsAdapter
     private lateinit var attendanceTableAdapter: AttendanceTableAdapter
+    private lateinit var userInfoTextView: TextView // 新增用戶信息TextView的引用
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,15 +122,18 @@ class ParentMainActivity : AppCompatActivity() {
 
         // 用戶信息顯示
         val userInfoText = TextView(this).apply {
+            id = View.generateViewId() // 為TextView分配ID，以便後續更新
             val currentPhone = getCurrentUserPhone()
-            val currentStudentName = getCurrentUserStudentName()
-            text = "👤 當前用戶: $currentPhone | 學生: $currentStudentName"
+            text = "👤 當前用戶: $currentPhone | 學生: 載入中..."
             textSize = 14f
             setPadding(8, 8, 8, 8)
             setBackgroundColor(0xFFE3F2FD.toInt())
             setTextColor(0xFF1976D2.toInt())
         }
         mainLayout.addView(userInfoText)
+        
+        // 保存用戶信息TextView的引用，以便後續更新
+        this.userInfoTextView = userInfoText
 
         // 狀態顯示
         statusText = TextView(this).apply {
@@ -154,7 +158,8 @@ class ParentMainActivity : AppCompatActivity() {
         }
         buttonLayout.addView(refreshButton)
 
-        // 測試界面按鈕
+        // 測試界面按鈕 - 已隱藏
+        /*
         val testButton = Button(this).apply {
             text = "🧪 測試界面"
             setOnClickListener {
@@ -168,8 +173,10 @@ class ParentMainActivity : AppCompatActivity() {
             }
         }
         buttonLayout.addView(testButton)
+        */
 
-        // API 配置按鈕
+        // API 配置按鈕 - 已隱藏
+        /*
         val configButton = Button(this).apply {
             text = "⚙️ API 配置"
             setOnClickListener { showAPIConfig() }
@@ -178,6 +185,7 @@ class ParentMainActivity : AppCompatActivity() {
             }
         }
         buttonLayout.addView(configButton)
+        */
 
         mainLayout.addView(buttonLayout)
 
@@ -736,11 +744,25 @@ class ParentMainActivity : AppCompatActivity() {
     }
 
     /**
-     * 獲取用戶的學生資料（根據學生姓名和電話號碼匹配）
+     * 更新用戶信息顯示
+     */
+    private fun updateUserInfoDisplay(students: List<Student>) {
+        val currentPhone = getCurrentUserPhone()
+        val studentNames = students.map { it.name }.distinct()
+        val studentNamesText = if (studentNames.isNotEmpty()) {
+            studentNames.joinToString(", ")
+        } else {
+            "無學生資料"
+        }
+        
+        userInfoTextView.text = "👤 當前用戶: $currentPhone | 學生: $studentNamesText"
+    }
+
+    /**
+     * 獲取用戶的學生資料（根據電話號碼匹配）
      */
     private fun fetchUserStudentData() {
         val currentPhone = getCurrentUserPhone()
-        val currentStudentName = getCurrentUserStudentName()
         
         statusText.text = "正在獲取您的學生資料..."
         refreshButton.isEnabled = false
@@ -754,32 +776,28 @@ class ParentMainActivity : AppCompatActivity() {
                 if (connectionResult.success) {
                     statusText.text = "API連接成功，正在獲取您的學生資料..."
 
-                    // 從API服務器獲取所有學生資料
-                    val allStudents = cloudApiService.fetchStudentsFromCloud()
+                    // 直接根據電話號碼從API服務器獲取學生資料
+                    val userStudents = cloudApiService.fetchUserStudentsFromCloud(currentPhone)
 
-                    if (allStudents.isNotEmpty()) {
-                        // 過濾出與當前用戶匹配的學生資料
-                        val userStudents = allStudents.filter { student ->
-                            student.phone == currentPhone && student.name == currentStudentName
-                        }
-
-                        if (userStudents.isNotEmpty()) {
-                            statusText.text = "✅ 成功獲取您的 ${userStudents.size} 筆學生資料"
-                            
-                            // 更新學生列表
-                            attendanceTableAdapter.updateStudents(userStudents)
-                            
-                            Toast.makeText(this@ParentMainActivity,
-                                "成功獲取您的學生資料！", Toast.LENGTH_SHORT).show()
-                        } else {
-                            statusText.text = "⚠️ 未找到與您匹配的學生資料"
-                            Toast.makeText(this@ParentMainActivity,
-                                "未找到與您匹配的學生資料", Toast.LENGTH_LONG).show()
-                        }
-                    } else {
-                        statusText.text = "⚠️ 數據庫中沒有學生資料"
+                    if (userStudents.isNotEmpty()) {
+                        statusText.text = "✅ 成功獲取您的 ${userStudents.size} 筆學生資料"
+                        
+                        // 更新學生列表
+                        attendanceTableAdapter.updateStudents(userStudents)
+                        
+                        // 更新用戶信息顯示
+                        updateUserInfoDisplay(userStudents)
+                        
                         Toast.makeText(this@ParentMainActivity,
-                            "數據庫中沒有學生資料", Toast.LENGTH_LONG).show()
+                            "成功獲取您的學生資料！", Toast.LENGTH_SHORT).show()
+                    } else {
+                        statusText.text = "⚠️ 未找到與您電話號碼匹配的學生資料"
+                        
+                        // 更新用戶信息顯示（無學生資料）
+                        updateUserInfoDisplay(emptyList())
+                        
+                        Toast.makeText(this@ParentMainActivity,
+                            "未找到與您電話號碼匹配的學生資料", Toast.LENGTH_LONG).show()
                     }
                 } else {
                     statusText.text = "❌ API連接失敗: ${connectionResult.message}"
