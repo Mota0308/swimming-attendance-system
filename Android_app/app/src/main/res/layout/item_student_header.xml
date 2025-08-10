@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:background="@drawable/bg_button_primary"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:id="@+id/studentNameText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="📚 學生姓名"
+        android:textSize="16sp"
+        android:textColor="@color/text_primary"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/pendingCountText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="⏳ 待約數量: 0"
+        android:textSize="14sp"
+        android:textColor="@color/text_primary"
+        android:layout_marginEnd="8dp" />
+
+    <TextView
+        android:id="@+id/expandIcon"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="▶"
+        android:textSize="18sp"
+        android:textColor="@color/text_primary"
+        android:textStyle="bold" />
+
+</LinearLayout> 

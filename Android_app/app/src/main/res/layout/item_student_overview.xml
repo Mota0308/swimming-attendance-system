@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:background="@drawable/bg_button_back">
+
+    <TextView
+        android:id="@+id/studentNameText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="學生姓名"
+        android:textSize="12sp"
+        android:textColor="@color/text_primary"
+        android:padding="4dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/studentAgeText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="年齡"
+        android:textSize="12sp"
+        android:textColor="@color/text_primary"
+        android:padding="4dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/purchasedClassesText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="已購買"
+        android:textSize="12sp"
+        android:textColor="@color/text_primary"
+        android:padding="4dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/pendingClassesText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="待約"
+        android:textSize="12sp"
+        android:textColor="@color/text_primary"
+        android:padding="4dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/scheduledClassesText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="已約"
+        android:textSize="12sp"
+        android:textColor="@color/text_primary"
+        android:padding="4dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/attendedClassesText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="已出席"
+        android:textSize="12sp"
+        android:textColor="@color/text_primary"
+        android:padding="4dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/remainingClassesText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="剩餘"
+        android:textSize="12sp"
+        android:textColor="@color/text_primary"
+        android:padding="4dp"
+        android:gravity="center" />
+
+</LinearLayout> 

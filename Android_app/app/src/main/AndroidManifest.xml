@@ -76,6 +76,12 @@
             android:label="出席記錄表格" />
 
         <activity
+            android:name=".ui.parent.StudentOverviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SwimmingAttendanceApp"
+            android:label="學生總覽" />
+
+        <activity
             android:name=".ui.NetworkConfigActivity"
             android:exported="false"
             android:theme="@style/Theme.SwimmingAttendanceApp"

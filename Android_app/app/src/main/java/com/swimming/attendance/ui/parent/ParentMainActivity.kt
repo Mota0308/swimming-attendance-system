@@ -56,6 +56,7 @@ class ParentMainActivity : AppCompatActivity() {
     private lateinit var studentsRecyclerView: RecyclerView
     private lateinit var studentsAdapter: StudentsAdapter
     private lateinit var attendanceTableAdapter: AttendanceTableAdapter
+    private lateinit var expandableStudentAdapter: ExpandableStudentAdapter
     private lateinit var userInfoTextView: TextView // 新增用戶信息TextView的引用
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -158,6 +159,16 @@ class ParentMainActivity : AppCompatActivity() {
         }
         buttonLayout.addView(refreshButton)
 
+        // 總覽按鈕
+        val overviewButton = Button(this).apply {
+            text = "📊 總覽"
+            setOnClickListener { showStudentOverview() }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = 8
+            }
+        }
+        buttonLayout.addView(overviewButton)
+
         // 測試界面按鈕 - 已隱藏
         /*
         val testButton = Button(this).apply {
@@ -213,7 +224,8 @@ class ParentMainActivity : AppCompatActivity() {
         // 初始化學生適配器
         studentsAdapter = StudentsAdapter(emptyList())
         attendanceTableAdapter = AttendanceTableAdapter(emptyList())
-        studentsRecyclerView.adapter = attendanceTableAdapter
+        expandableStudentAdapter = ExpandableStudentAdapter(emptyList())
+        studentsRecyclerView.adapter = expandableStudentAdapter
 
         // 返回按鈕
         val backButton = Button(this).apply {
@@ -782,8 +794,8 @@ class ParentMainActivity : AppCompatActivity() {
                     if (userStudents.isNotEmpty()) {
                         statusText.text = "✅ 成功獲取您的 ${userStudents.size} 筆學生資料"
                         
-                        // 更新學生列表
-                        attendanceTableAdapter.updateStudents(userStudents)
+                        // 更新學生列表 - 顯示學生姓名+上課日期+待約數量
+                        displayStudentListWithDetails(userStudents)
                         
                         // 更新用戶信息顯示
                         updateUserInfoDisplay(userStudents)
@@ -795,6 +807,9 @@ class ParentMainActivity : AppCompatActivity() {
                         
                         // 更新用戶信息顯示（無學生資料）
                         updateUserInfoDisplay(emptyList())
+                        
+                        // 清空學生列表
+                        expandableStudentAdapter.updateStudents(emptyList())
                         
                         Toast.makeText(this@ParentMainActivity,
                             "未找到與您電話號碼匹配的學生資料", Toast.LENGTH_LONG).show()
@@ -815,6 +830,23 @@ class ParentMainActivity : AppCompatActivity() {
                 refreshButton.text = "🔄 獲取我的學生資料"
             }
         }
+    }
+
+    /**
+     * 在學生列表中顯示學生姓名+上課日期+待約數量
+     */
+    private fun displayStudentListWithDetails(students: List<Student>) {
+        // 直接使用原始學生數據，讓適配器處理分組和展開邏輯
+        expandableStudentAdapter.updateStudents(students)
+    }
+
+    /**
+     * 顯示學生總覽
+     */
+    private fun showStudentOverview() {
+        val intent = Intent(this, StudentOverviewActivity::class.java)
+        intent.putExtra("userType", "parent")
+        startActivity(intent)
     }
 
 }
