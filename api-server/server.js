@@ -461,9 +461,15 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         const phone = req.query.phone;
         const year = parseInt(req.query.year, 10);
         const month = parseInt(req.query.month, 10);
+        const location = req.query.location;
+        const club = req.query.club;
+        
         if (!phone || !year || !month) {
             return res.status(400).json({ success: false, message: '缺少必要參數 phone/year/month' });
         }
+        
+        console.log(`📊 獲取教練工時 - 電話: ${phone}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}`);
+        
         const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
         const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
 
@@ -472,11 +478,28 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         const db = client.db(DB_NAME);
         const collection = db.collection('Coach_work_hours');
 
-        const list = await collection.find({
+        // 構建查詢條件
+        const query = {
             phone,
             date: { $gte: startDate, $lte: endDate }
-        }).sort({ date: 1 }).toArray();
+        };
+        
+        // 添加地點過濾
+        if (location && location !== '全部地點') {
+            query.location = location;
+        }
+        
+        // 添加泳會過濾
+        if (club && club !== '全部泳會') {
+            query.club = club;
+        }
+        
+        console.log(`📊 查詢條件:`, query);
+
+        const list = await collection.find(query).sort({ date: 1 }).toArray();
         await client.close();
+        
+        console.log(`📊 找到 ${list.length} 條工時記錄`);
         res.json({ success: true, records: list });
     } catch (error) {
         console.error('❌ 獲取教練工時錯誤:', error);
