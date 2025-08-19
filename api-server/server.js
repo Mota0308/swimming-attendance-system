@@ -942,6 +942,36 @@ app.get('/locations', validateApiKeys, async (req, res) => {
     }
 });
 
+// 新增：根據地點獲取對應的泳會清單
+app.get('/clubs', validateApiKeys, async (req, res) => {
+    try {
+        const { location } = req.query;
+        console.log(`🏊‍♂️ 獲取泳會清單 - 地點: ${location}`);
+        
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const col = db.collection('Location_club');
+        
+        let clubs;
+        if (location && location !== '全部地點') {
+            // 根據地點獲取對應的泳會
+            clubs = await col.distinct('club', { location: location });
+        } else {
+            // 如果沒有指定地點或選擇全部地點，獲取所有泳會
+            clubs = await col.distinct('club');
+        }
+        
+        await client.close();
+        
+        console.log(`✅ 成功獲取 ${clubs.length} 個泳會`);
+        res.json({ success: true, clubs: clubs });
+    } catch (error) {
+        console.error('❌ 獲取泳會清單錯誤:', error);
+        res.status(500).json({ success: false, message: '獲取泳會失敗', error: error.message });
+    }
+});
+
 // 錯誤處理中間件
 app.use((error, req, res, next) => {
     console.error('❌ 服務器錯誤:', error);
