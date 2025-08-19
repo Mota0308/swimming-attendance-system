@@ -292,8 +292,8 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
 // 教練註冊
 app.post('/auth/register-coach', validateApiKeys, async (req, res) => {
     try {
-        const { phone, password, userType, studentName, createdAt } = req.body;
-        console.log(`📝 教練註冊請求 - 電話: ${phone}, 教練名: ${studentName}`);
+        const { phone, password, userType, studentName, location, club, createdAt } = req.body;
+        console.log(`📝 教練註冊請求 - 電話: ${phone}, 教練名: ${studentName}, 地點: ${location}, 泳會: ${club}`);
         
         if (!phone || !password || !studentName) {
             return res.status(400).json({
@@ -334,6 +334,8 @@ app.post('/auth/register-coach', validateApiKeys, async (req, res) => {
             password: password,
             userType: userType || 'coach',
             studentName: studentName, // 這裡實際是教練名
+            location: location || '',
+            club: club || '',
             createdAt: createdAt || Date.now(),
             createdDate: new Date().toISOString()
         };
@@ -342,7 +344,7 @@ app.post('/auth/register-coach', validateApiKeys, async (req, res) => {
         
         await client.close();
         
-        console.log(`✅ 教練註冊成功 - ${phone}, 教練名: ${studentName}`);
+        console.log(`✅ 教練註冊成功 - ${phone}, 教練名: ${studentName}, 地點: ${location}, 泳會: ${club}`);
         res.status(201).json({
             success: true,
             message: '教練註冊成功',
@@ -363,20 +365,21 @@ app.post('/auth/register-coach', validateApiKeys, async (req, res) => {
 app.get('/coaches', validateApiKeys, async (req, res) => {
     try {
         const phone = req.query.phone;
+        const club = req.query.club;
         const client = new MongoClient(MONGO_URI);
         await client.connect();
         const db = client.db(DB_NAME);
         const collection = db.collection('Coach_account');
 
         console.log(`🔍 請求查詢參數:`, req.query);
-        console.log(`🔍 phone參數值: ${phone}`);
+        console.log(`🔍 phone參數值: ${phone}, club參數值: ${club}`);
         
         if (phone) {
             // 查詢單個教練
             console.log(`🔍 查詢教練電話: ${phone}`);
             const coach = await collection.findOne(
                 { phone: phone }, 
-                { projection: { phone: 1, studentName: 1, _id: 0 } }
+                { projection: { phone: 1, studentName: 1, location: 1, club: 1, _id: 0 } }
             );
             console.log(`📋 查詢結果:`, coach);
             await client.close();
@@ -387,8 +390,16 @@ app.get('/coaches', validateApiKeys, async (req, res) => {
                 res.status(404).json({ success: false, message: '教練不存在' });
             }
         } else {
-            // 獲取所有教練列表
-            const coaches = await collection.find({}, { projection: { phone: 1, studentName: 1, _id: 0 } }).toArray();
+            // 構建查詢條件
+            const query = {};
+            if (club) {
+                query.club = club;
+            }
+            
+            // 獲取教練列表
+            const coaches = await collection.find(query, { 
+                projection: { phone: 1, studentName: 1, location: 1, club: 1, _id: 0 } 
+            }).toArray();
             await client.close();
             res.json({ success: true, coaches });
         }
@@ -401,7 +412,7 @@ app.get('/coaches', validateApiKeys, async (req, res) => {
 // 新增：批量上傳教練工時
 app.post('/coach-work-hours/batch', validateApiKeys, async (req, res) => {
     try {
-        const { date, entries } = req.body;
+        const { date, entries, location, club } = req.body;
         if (!date || !Array.isArray(entries)) {
             return res.status(400).json({ success: false, message: '參數錯誤，需提供 date 與 entries 數組' });
         }
@@ -411,13 +422,29 @@ app.post('/coach-work-hours/batch', validateApiKeys, async (req, res) => {
         const db = client.db(DB_NAME);
         const collection = db.collection('Coach_work_hours');
 
-        const ops = entries.map(e => ({
-            updateOne: {
-                filter: { phone: e.phone, date },
-                update: { $set: { phone: e.phone, date, hours: Number(e.hours) || 0, updatedAt: new Date() } },
-                upsert: true
-            }
-        }));
+        const ops = entries.map(e => {
+            const entryLocation = e.location || location || '';
+            const entryClub = e.club || club || '';
+            const timeSlots = Array.isArray(e.timeSlots) ? e.timeSlots : [];
+            return ({
+                updateOne: {
+                    filter: { phone: e.phone, date, location: entryLocation, club: entryClub },
+                    update: {
+                        $set: {
+                            phone: e.phone,
+                            studentName: e.name || e.studentName || '',
+                            date,
+                            hours: Number(e.hours) || 0,
+                            location: entryLocation,
+                            club: entryClub,
+                            timeSlots: timeSlots,
+                            updatedAt: new Date()
+                        }
+                    },
+                    upsert: true
+                }
+            });
+        });
 
         if (ops.length > 0) await collection.bulkWrite(ops);
         await client.close();
@@ -455,6 +482,32 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         console.error('❌ 獲取教練工時錯誤:', error);
         res.status(500).json({ success: false, message: '獲取工時失敗', error: error.message });
     }
+});
+
+// 取得教練某月份的更表資料（Coach_roster）
+app.get('/coach-roster', validateApiKeys, async (req, res) => {
+  try {
+    const phone = (req.query.phone || '').toString();
+    const name = (req.query.name || '').toString();
+    const year = parseInt(req.query.year, 10);
+    const month = parseInt(req.query.month, 10);
+    if (!phone || !name || !year || !month) {
+      return res.status(400).json({ success: false, message: '缺少必要參數 phone, name, year, month' });
+    }
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const col = db.collection('Coach_roster');
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+    const docs = await col.find({ phone, name, date: { $gte: startDate, $lte: endDate } }).sort({ date: 1 }).toArray();
+    await client.close();
+    const records = (docs || []).map(d => ({ date: d.date, time: d.time || '', location: d.location || '' }));
+    return res.json({ success: true, records });
+  } catch (e) {
+    console.error('❌ 讀取更表錯誤:', e);
+    return res.status(500).json({ success: false, message: '讀取更表失敗', error: e.message });
+  }
 });
 
 // 用戶註冊
@@ -870,6 +923,22 @@ app.delete('/students/:id', validateApiKeys, async (req, res) => {
             message: '刪除學生資料失敗',
             error: error.message
         });
+    }
+});
+
+// 新增：獲取所有 Location_club 的地點清單
+app.get('/locations', validateApiKeys, async (req, res) => {
+    try {
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const col = db.collection('Location_club');
+        const list = await col.distinct('location');
+        await client.close();
+        res.json({ success: true, locations: list });
+    } catch (error) {
+        console.error('❌ 獲取地點清單錯誤:', error);
+        res.status(500).json({ success: false, message: '獲取地點失敗', error: error.message });
     }
 });
 
