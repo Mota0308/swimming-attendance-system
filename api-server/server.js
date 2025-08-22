@@ -7,7 +7,17 @@ console.log(`🔧 服務器端口配置: ${PORT} (環境變量: ${process.env.PO
 
 // 中間件
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
+
+// 禁用 ETag，並設置全域不快取，避免 304 導致舊資料
+app.set('etag', false);
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+  next();
+});
 
 // MongoDB 連接配置 - 支持環境變量
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://chenyaolin0308:9GUhZvnuEpAA1r6c@cluster0.0dhi0qc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
@@ -60,13 +70,318 @@ app.get('/health', validateApiKeys, async (req, res) => {
             version: '1.0.1', // 更新版本號
             clientIP: req.ip,
             deployment: 'Railway Production',
-            features: ['admin-login', 'coach-management', 'work-hours']
+            features: ['admin-login', 'coach-management', 'work-hours', 'web-application']
         });
     } catch (error) {
         console.error('❌ 健康檢查錯誤:', error);
         res.status(500).json({
             success: false,
             message: '服務器錯誤',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用专用API端点
+app.get('/api/health', async (req, res) => {
+    try {
+        console.log('🌐 网页应用健康检查请求');
+        res.json({
+            success: true,
+            message: '网页应用API服务正常',
+            timestamp: new Date().toISOString(),
+            service: 'Web Application API',
+            version: '1.0.0',
+            features: [
+                'locations',
+                'clubs', 
+                'students',
+                'attendance',
+                'work-hours',
+                'roster'
+            ]
+        });
+    } catch (error) {
+        console.error('❌ 网页应用健康检查错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '服务器错误',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用地点数据端点
+app.get('/api/locations', async (req, res) => {
+    try {
+        console.log('🌐 网页应用请求地点数据');
+        
+        // 这里可以连接到MongoDB获取实际数据
+        // 暂时返回模拟数据
+        const locations = [
+            '維多利亞公園游泳池',
+            '荔枝角公園游泳池', 
+            '觀塘游泳池',
+            '深水埗公園游泳池',
+            '黃大仙游泳池'
+        ];
+        
+        res.json({
+            success: true,
+            locations: locations,
+            count: locations.length,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ 获取地点数据错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取地点数据失败',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用泳会数据端点
+app.get('/api/clubs', async (req, res) => {
+    try {
+        console.log('🌐 网页应用请求泳会数据');
+        
+        // 这里可以连接到MongoDB获取实际数据
+        // 暂时返回模拟数据
+        const clubs = [
+            '維多利亞泳會',
+            '荔枝角泳會',
+            '觀塘泳會',
+            '深水埗泳會',
+            '黃大仙泳會'
+        ];
+        
+        res.json({
+            success: true,
+            clubs: clubs,
+            count: clubs.length,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ 获取泳会数据错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取泳会数据失败',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用学生数据端点
+app.get('/api/students', async (req, res) => {
+    try {
+        console.log('🌐 网页应用请求学生数据');
+        
+        const { location, club } = req.query;
+        console.log(`查询参数: 地点=${location}, 泳会=${club}`);
+        
+        // 这里可以连接到MongoDB获取实际数据
+        // 暂时返回模拟数据
+        const students = [
+            { id: 1, name: '張小明', location: '維多利亞公園游泳池', club: '維多利亞泳會' },
+            { id: 2, name: '李小華', location: '荔枝角公園游泳池', club: '荔枝角泳會' },
+            { id: 3, name: '王小美', location: '觀塘游泳池', club: '觀塘泳會' }
+        ];
+        
+        // 根据查询参数过滤数据
+        let filteredStudents = students;
+        if (location) {
+            filteredStudents = filteredStudents.filter(s => s.location === location);
+        }
+        if (club) {
+            filteredStudents = filteredStudents.filter(s => s.club === club);
+        }
+        
+        res.json({
+            success: true,
+            students: filteredStudents,
+            count: filteredStudents.length,
+            filters: { location, club },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ 获取学生数据错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取学生数据失败',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用出席记录端点
+app.get('/api/attendance', async (req, res) => {
+    try {
+        console.log('🌐 网页应用请求出席记录');
+        
+        const { month, location, club } = req.query;
+        console.log(`查询参数: 月份=${month}, 地点=${location}, 泳会=${club}`);
+        
+        // 这里可以连接到MongoDB获取实际数据
+        // 暂时返回模拟数据
+        const attendance = [
+            { 
+                id: 1, 
+                studentName: '張小明', 
+                status: '出席', 
+                date: '2025-08-21',
+                location: '維多利亞公園游泳池',
+                club: '維多利亞泳會'
+            },
+            { 
+                id: 2, 
+                studentName: '李小華', 
+                status: '缺席', 
+                date: '2025-08-21',
+                location: '荔枝角公園游泳池',
+                club: '荔枝角泳會'
+            },
+            { 
+                id: 3, 
+                studentName: '王小美', 
+                status: '出席', 
+                date: '2025-08-21',
+                location: '觀塘游泳池',
+                club: '觀塘泳會'
+            }
+        ];
+        
+        // 根据查询参数过滤数据
+        let filteredAttendance = attendance;
+        if (location) {
+            filteredAttendance = filteredAttendance.filter(a => a.location === location);
+        }
+        if (club) {
+            filteredAttendance = filteredAttendance.filter(a => a.club === club);
+        }
+        
+        res.json({
+            success: true,
+            attendance: filteredAttendance,
+            count: filteredAttendance.length,
+            filters: { month, location, club },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ 获取出席记录错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取出席记录失败',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用工时数据端点
+app.get('/api/work-hours', async (req, res) => {
+    try {
+        console.log('🌐 网页应用请求工时数据');
+        
+        const { month } = req.query;
+        console.log(`查询参数: 月份=${month}`);
+        
+        // 这里可以连接到MongoDB获取实际数据
+        // 暂时返回模拟数据
+        const workHours = {
+            totalDays: 22,
+            totalHours: 176,
+            averageHours: 8,
+            dailyRecords: [
+                { date: '2025-08-01', hours: 8, location: '維多利亞公園游泳池' },
+                { date: '2025-08-02', hours: 8, location: '荔枝角公園游泳池' },
+                { date: '2025-08-03', hours: 6, location: '觀塘游泳池' }
+            ]
+        };
+        
+        res.json({
+            success: true,
+            workHours: workHours,
+            month: month,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ 获取工时数据错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取工时数据失败',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用更表数据端点
+app.get('/api/roster', async (req, res) => {
+    try {
+        console.log('🌐 网页应用请求更表数据');
+        
+        const { month } = req.query;
+        console.log(`查询参数: 月份=${month}`);
+        
+        // 这里可以连接到MongoDB获取实际数据
+        // 暂时返回模拟数据
+        const roster = {
+            month: month,
+            totalShifts: 22,
+            shifts: [
+                { date: '2025-08-01', time: '09:00-17:00', location: '維多利亞公園游泳池' },
+                { date: '2025-08-02', time: '09:00-17:00', location: '荔枝角公園游泳池' },
+                { date: '2025-08-03', time: '09:00-15:00', location: '觀塘游泳池' }
+            ]
+        };
+        
+        res.json({
+            success: true,
+            roster: roster,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('❌ 获取更表数据错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取更表数据失败',
+            error: error.message
+        });
+    }
+});
+
+// 网页应用登录端点
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        console.log('🌐 网页应用登录请求');
+        
+        const { phone, password, userType } = req.body;
+        console.log(`登录参数: 电话=${phone}, 用户类型=${userType}`);
+        
+        // 这里可以连接到MongoDB验证用户
+        // 暂时返回模拟登录结果
+        if (phone && password) {
+            res.json({
+                success: true,
+                message: '登录成功',
+                user: {
+                    phone: phone,
+                    userType: userType,
+                    loginTime: new Date().toISOString()
+                },
+                timestamp: new Date().toISOString()
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: '电话和密码不能为空'
+            });
+        }
+    } catch (error) {
+        console.error('❌ 网页应用登录错误:', error);
+        res.status(500).json({
+            success: false,
+            message: '登录失败',
             error: error.message
         });
     }
@@ -514,8 +829,8 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
     const name = (req.query.name || '').toString();
     const year = parseInt(req.query.year, 10);
     const month = parseInt(req.query.month, 10);
-    if (!phone || !name || !year || !month) {
-      return res.status(400).json({ success: false, message: '缺少必要參數 phone, name, year, month' });
+    if (!phone || !year || !month) {
+      return res.status(400).json({ success: false, message: '缺少必要參數 phone, year, month（name 選填）' });
     }
     const client = new MongoClient(MONGO_URI);
     await client.connect();
@@ -523,13 +838,42 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
     const col = db.collection('Coach_roster');
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
-    const docs = await col.find({ phone, name, date: { $gte: startDate, $lte: endDate } }).sort({ date: 1 }).toArray();
+    const filter = { phone, date: { $gte: startDate, $lte: endDate } };
+    if (name) filter.name = name;
+    const docs = await col.find(filter).sort({ date: 1 }).toArray();
     await client.close();
     const records = (docs || []).map(d => ({ date: d.date, time: d.time || '', location: d.location || '' }));
     return res.json({ success: true, records });
   } catch (e) {
     console.error('❌ 讀取更表錯誤:', e);
     return res.status(500).json({ success: false, message: '讀取更表失敗', error: e.message });
+  }
+});
+
+// 批量保存教練更表（Coach_roster）
+app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
+  try {
+    const { phone, name, entries } = req.body;
+    if (!phone || !name || !Array.isArray(entries)) {
+      return res.status(400).json({ success: false, message: '參數錯誤，需提供 phone、name、entries[]' });
+    }
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const col = db.collection('Coach_roster');
+    const ops = entries.map(e => ({
+      updateOne: {
+        filter: { phone, name, date: e.date },
+        update: { $set: { phone, name, date: e.date, time: e.time || '', location: e.location || '', updatedAt: new Date() } },
+        upsert: true
+      }
+    }));
+    if (ops.length > 0) await col.bulkWrite(ops);
+    await client.close();
+    return res.json({ success: true, count: ops.length });
+  } catch (e) {
+    console.error('❌ 保存更表錯誤:', e);
+    return res.status(500).json({ success: false, message: '保存更表失敗', error: e.message });
   }
 });
 
