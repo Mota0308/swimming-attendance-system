@@ -2,46 +2,60 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "PingFang TC", "Microsoft JhengHei", sans-serif;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #ffffff;
+  color: #333333;
 }
 .section { display: none; }
 .section.active { display: block; }
 .hidden { display: none; }
 
 /* simple containers */
-.login-container { max-width: 420px; margin: 60px auto; padding: 24px; background: #111827; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.login-container { max-width: 420px; margin: 60px auto; padding: 24px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #eee; }
 .login-header h1 { margin: 0 0 4px; font-size: 28px; }
-.login-header p { margin: 0; color: #9ca3af; }
+.login-header p { margin: 0; color: #666; }
 .login-form { margin-top: 16px; }
 .form-group { margin-bottom: 14px; }
-.form-group label { display: block; margin-bottom: 6px; color: #cbd5e1; }
-.form-group input, .form-group select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: #e2e8f0; }
+.form-group label { display: block; margin-bottom: 6px; color: #555; }
+.form-group input, .form-group select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #d0d7de; background: #fff; color: #333; }
 .login-btn, .refresh-btn, .back-btn, .logout-btn { cursor: pointer; background: #3b82f6; color: white; border: 0; padding: 10px 14px; border-radius: 8px; }
 .login-btn:hover, .refresh-btn:hover, .back-btn:hover, .logout-btn:hover { background: #2563eb; }
 
-.top-nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #0b1220; border-bottom: 1px solid #1f2937; }
+.top-nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
 .nav-left h2 { margin: 0; font-size: 20px; }
-.user-info { color: #cbd5e1; }
+.user-info { color: #fff; }
 .main-content { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
 .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-.feature-card { background: #111827; padding: 16px; border-radius: 10px; border: 1px solid #1f2937; cursor: pointer; }
-.feature-card:hover { border-color: #334155; }
+.feature-card { background: #ffffff; padding: 16px; border-radius: 10px; border: 1px solid #e5e7eb; box-shadow: 0 2px 10px rgba(0,0,0,0.04); cursor: pointer; }
+.feature-card:hover { border-color: #cbd5e1; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 
 .interface-header { display: flex; justify-content: space-between; align-items: center; margin: 18px 0; }
 .control-group { margin-right: 10px; }
-.attendance-controls, .work-hours-controls, .roster-controls, .location-club-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; background: #0b1220; padding: 12px; border: 1px solid #1f2937; border-radius: 10px; }
+.attendance-controls, .work-hours-controls, .roster-controls, .location-club-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; background: #ffffff; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; }
 
-.attendance-table { margin-top: 16px; border: 1px solid #1f2937; border-radius: 10px; overflow: hidden; }
+.attendance-table { margin-top: 16px; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #fff; }
 .table-header, .table-body { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; }
-.table-header { background: #0b1220; color: #cbd5e1; }
-.table-header .table-cell { padding: 10px 12px; border-right: 1px solid #1f2937; }
+.table-header { background: #f8fafc; color: #475569; }
+.table-header .table-cell { padding: 10px 12px; border-right: 1px solid #e5e7eb; }
 .table-body .row { display: contents; }
-.table-body .cell { padding: 10px 12px; border-top: 1px solid #1f2937; border-right: 1px solid #1f2937; }
+.table-body .cell { padding: 10px 12px; border-top: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; background: #fff; }
 
-.loading-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 100; }
+.loading-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); z-index: 100; }
 .loading-overlay.hidden { display: none; }
-.loading-spinner { text-align: center; color: #cbd5e1; }
+.loading-spinner { text-align: center; color: #334155; }
 
 /* scheduler area placeholder spacing */
-#schedulerContainer { margin-top: 20px; } 
+#schedulerContainer { margin-top: 20px; }
+
+/* calendar grid and cells (light) */
+.cal.grid-7 { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.cal-head { background: #E3F2FD; color: #1976D2; font-weight: 700; text-align: center; padding: 10px 0; border: 1px solid #cfe8ff; border-radius: 8px; }
+.cal-cell { background: #ffffff; border: 1px solid #eeeeee; padding: 10px; border-radius: 8px; min-height: 80px; display: flex; flex-direction: column; justify-content: flex-start; }
+.cal-cell.is-today { outline: 2px solid #FFCA28; }
+.cal-cell.has-hours .cal-day { color: #2E7D32; }
+.cal-day { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+.cal-hours { color: #0D6EFD; font-weight: 600; }
+.cal-empty { background: #F5F5F5; border: 1px dashed #e5e7eb; }
+
+.work-hours-calendar, .roster-calendar { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-top: 14px; }
+
+@media (min-width: 1200px) { .cal-cell { min-height: 100px; } } 
