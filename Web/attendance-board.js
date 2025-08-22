@@ -86,8 +86,21 @@
     });
   }
 
+  async function waitForConnector(){
+    if (window.databaseConnector && typeof window.databaseConnector.fetchStudentsRaw === 'function') return;
+    await new Promise(resolve => {
+      const timer = setInterval(()=>{
+        if (window.databaseConnector && typeof window.databaseConnector.fetchStudentsRaw === 'function') {
+          clearInterval(timer); resolve();
+        }
+      }, 100);
+      setTimeout(()=>{ clearInterval(timer); resolve(); }, 5000);
+    });
+  }
+
   async function loadBoardData(){
     try{
+      await waitForConnector();
       const raw = await window.databaseConnector.fetchStudentsRaw();
       const normalized = raw.map(normalizeStudent);
       // 去重：phone+name

@@ -356,12 +356,20 @@
     <script src="scheduler.js?v=1"></script>
     <script src="attendance-board.js?v=1"></script>
     <script>
-      document.addEventListener('DOMContentLoaded', () => {
+      function initAttendanceUIs(){
         if (window.initSchedulerInAttendance) {
           window.initSchedulerInAttendance('schedulerContainer');
         }
         if (window.initAttendanceBoard) {
           window.initAttendanceBoard('attendanceBoardContainer');
+        }
+      }
+      // 首選：等待資料連接器就緒
+      document.addEventListener('databaseConnectorReady', initAttendanceUIs);
+      // 後備：DOM Ready 時若已就緒則立即初始化
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.databaseConnector && typeof window.databaseConnector.fetchStudentsRaw === 'function') {
+          initAttendanceUIs();
         }
       });
     </script>
