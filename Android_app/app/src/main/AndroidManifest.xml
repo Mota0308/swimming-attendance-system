@@ -49,7 +49,8 @@
             android:name=".ui.admin.AdminMainActivity"
             android:exported="false"
             android:theme="@style/Theme.SwimmingAttendanceApp"
-            android:label="管理員" />
+            android:label="管理員"
+            android:windowSoftInputMode="stateVisible|adjustResize" />
 
         <activity
             android:name=".ui.TestConnectionActivity"

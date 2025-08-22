@@ -1,48 +1,47 @@
 # Apple 游泳課程管理應用
 
 ## 項目概述
-這是一個用於管理游泳課程的iOS應用，包含兩個UI系統：
-- 家長版本：查看學生的出席記錄
-- 教練版本：管理課程和學生資料
+最小可用的 iOS SwiftUI 應用，支持：
+- 教練登入（本地暫存）
+- 查詢更表（/coach-roster）
+- 查詢工時（/coach-work-hours）
 
-## 功能特點
-- 雙UI系統（家長/教練）
-- 用戶認證系統
-- 雲端數據同步
-- 出席記錄管理
-
-## 技術棧
-- SwiftUI
-- Firebase (Firestore)
-- Combine Framework
-
-## 項目結構
+## 結構
 ```
 Apple_app/
+├── project.yml                # XcodeGen 專案定義
 ├── SwimmingApp/
-│   ├── SwimmingAppApp.swift
-│   ├── Views/
-│   │   ├── MainView.swift
-│   │   ├── LoginView.swift
-│   │   ├── CreateAccountView.swift
-│   │   ├── ParentDashboardView.swift
-│   │   └── CoachDashboardView.swift
-│   ├── Models/
-│   │   ├── StudentAccount.swift
-│   │   └── AttendanceRecord.swift
-│   ├── ViewModels/
-│   │   ├── LoginViewModel.swift
-│   │   ├── CreateAccountViewModel.swift
-│   │   └── ParentDashboardViewModel.swift
+│   ├── Info.plist
+│   ├── Config.plist           # 配置 API BaseURL 與密鑰
+│   ├── SwimmingAppApp.swift   # App 入口
 │   ├── Services/
-│   │   └── FirebaseService.swift
-│   └── Utils/
-│       └── Constants.swift
-├── SwimmingApp.xcodeproj/
+│   │   └── APIClient.swift
+│   └── Views/
+│       ├── RootView.swift
+│       ├── LoginView.swift
+│       └── CoachDashboardView.swift
 └── README.md
 ```
 
-## 安裝和運行
-1. 使用Xcode打開項目
-2. 配置Firebase項目
-3. 運行應用 
+## 構建步驟（建議使用 XcodeGen）
+1. 安裝 XcodeGen（如未安裝）
+```bash
+brew install xcodegen
+```
+2. 在 `Apple_app` 目錄執行：
+```bash
+xcodegen generate
+```
+會生成 `SwimmingApp.xcodeproj`
+
+3. 用 Xcode 打開 `SwimmingApp.xcodeproj`
+4. 在 `SwimmingApp/Config.plist` 設置：
+   - BaseURL: 你的 API 服務器
+   - PublicApiKey / PrivateApiKey: 與 Android 相同的 API Key
+5. 設置團隊簽名（Signing & Capabilities -> Team）
+6. 選擇 iOS Simulator 或真機，點擊 Run
+
+## 備註
+- 目前登入僅本地保存電話與姓名，無伺服器驗證。
+- 工時請求需要 `location` 與 `club`；本示例暫傳空字串，你可擴展 UI 增加地點/泳會選擇並傳入參數。
+- 之後可逐步補齊家長端、出席記錄等功能。 

@@ -504,6 +504,21 @@
                         </div>
                     </div>
 
+                    <!-- 編輯更表 -->
+                    <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #17a2b8;">
+                        <h3 style="margin: 0 0 10px 0; color: #17a2b8;">編輯更表</h3>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                            <select id="rosterMonthSelect" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">選擇月份</option>
+                            </select>
+                            <button onclick="loadCoachRoster()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">載入更表</button>
+                            <button onclick="saveCoachRoster()" style="padding: 8px 16px; background: #20c997; color: white; border: none; border-radius: 4px; cursor: pointer;">保存更表</button>
+                        </div>
+                        <div id="rosterCalendarContainer" style="background: white; border-radius: 5px; padding: 15px; border: 1px solid #ddd;">
+                            <div style="text-align: center; color: #666;">請選擇月份載入更表</div>
+                        </div>
+                    </div>
+
                     <!-- 工时记录 -->
                     <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #007bff;">
                         <h3 style="margin: 0 0 10px 0; color: #007bff;">工時記錄</h3>
@@ -511,8 +526,15 @@
                             <select id="coachMonthSelect" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                                 <option value="">選擇月份</option>
                             </select>
+                            <select id="coachLocationSelect" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">選擇地點</option>
+                            </select>
+                            <select id="coachClubSelect" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">選擇泳會</option>
+                            </select>
                             <button onclick="loadCoachWorkHours()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">載入工時</button>
                             <button onclick="saveCoachWorkHours()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">保存工時</button>
+                            <button onclick="refreshCoachWorkHours()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 同步</button>
                             <button onclick="exportCoachWorkHours()" style="padding: 8px 16px; background: #ffc107; color: #212529; border: none; border-radius: 4px; cursor: pointer;">導出報表</button>
                             <div style="display: flex; align-items: center; gap: 5px;">
                                 <label style="font-weight: bold; color: #333; font-size: 14px;">路徑:</label>
@@ -576,6 +598,7 @@
                             </div>
                             <button onclick="resetConfigSearch()" style="padding:8px 16px;background:#95a5a6;color:white;border:none;border-radius:4px;cursor:pointer;">重置</button>
                             <button onclick="generateTimetable()" style="padding:8px 16px;background:#e67e22;color:white;border:none;border-radius:4px;cursor:pointer;">生成課表</button>
+                            <button onclick="filterWaitStudents()" style="padding:8px 16px;background:#2ecc71;color:white;border:none;border-radius:4px;cursor:pointer;margin-left:8px;">查詢待約</button>
                         </div>
                     </div>
                     
@@ -680,5 +703,4 @@
     <script src="flatpickr_zh_tw.js"></script> 
     <script src="renderer.js"></script>
 </body>
-</html> 
 </html> 

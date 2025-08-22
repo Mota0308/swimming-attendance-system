@@ -1531,28 +1531,45 @@ function saveSelectedStudents() {
         const checkbox = tr.querySelector('.studentRowCheckbox, .student-row-checkbox');
         if (checkbox && checkbox.checked) {
             let cells = tr.children;
-            let time = cells[10].textContent.trim(); // 調整索引，因為新增了3個欄位
-            let dates = cells[11].textContent.trim(); // 調整索引
+            
+            // 檢查是否有足夠的欄位
+            if (cells.length < 15) {
+                console.warn('表格行欄位不足:', cells.length);
+                continue;
+            }
+            
+            let time = cells[10]?.textContent?.trim() || '';
+            let dates = cells[11]?.textContent?.trim() || '';
             
             // 讀取新增的三個欄位值
-            let option1 = cells[7].querySelector('select')?.value || ''; // 出席
-            let option2 = cells[8].querySelector('select')?.value || ''; // 補/調堂
-            let option3 = cells[9].querySelector('input')?.value || ''; // 總共點數
+            let option1 = cells[7]?.querySelector('select')?.value || '';
+            let option2 = cells[8]?.querySelector('select')?.value || '';
+            let option3 = cells[9]?.querySelector('input')?.value || '';
+            
+            // 驗證必要欄位
+            let name = cells[2]?.textContent?.trim() || '';
+            let location = cells[5]?.textContent?.trim() || '';
+            let type = cells[6]?.textContent?.trim() || '';
+            
+            if (!name || !location || !type) {
+                console.warn('跳過缺少必要欄位的學生資料:', { name, location, type });
+                continue;
+            }
             
             selected.push({
-                name: cells[2].textContent.trim(),
-                phone: cells[3].textContent.trim().replace(/[:：]/g, ''),
-                age: cells[4].textContent.trim(),
-                location: cells[5].textContent.trim(),
-                type: cells[6].textContent.trim(),
+                name: name,
+                phone: cells[3]?.textContent?.trim().replace(/[:：]/g, '') || '',
+                age: cells[4]?.textContent?.trim() || '',
+                location: location,
+                type: type,
                 option1: option1,
                 option2: option2,
                 option3: option3,
                 time: time,
                 dates: dates,
-                waitMonth: cells[13].textContent.trim(), // 調整索引
-                wait: cells[12].textContent.trim(), // 調整索引
-                year: cells[14].textContent.trim(), // 調整索引
+                waitMonth: cells[13]?.textContent?.trim() || '',
+                wait: cells[12]?.textContent?.trim() || '',
+                year: cells[14]?.textContent?.trim() || '',
             });
         }
     }
@@ -1563,6 +1580,12 @@ function saveSelectedStudents() {
     } catch (e) {}
     // 疊加新資料
     selected.forEach(stu => {
+        // 確保 stu.location 存在且有效
+        if (!stu.location || typeof stu.location !== 'string' || stu.location.trim() === '') {
+            console.warn('跳過無效地點的學生資料:', stu);
+            return; // 跳過這個學生
+        }
+        
         if (!locationMap[stu.location]) locationMap[stu.location] = [];
         // 避免重複（根據姓名、時間、課程類型、日期）
         let isDup = locationMap[stu.location].some(s =>
@@ -1576,8 +1599,19 @@ function saveSelectedStudents() {
         // 按地點和日期分組
         let groupMap = {};
         selected.forEach(stu => {
+            // 確保學生資料完整
+            if (!stu.location || !stu.dates || !stu.name) {
+                console.warn('跳過不完整的學生資料:', stu);
+                return;
+            }
+            
             // 將日期字符串分割成數組
             let dateArr = stu.dates.split(/[、,，]/).map(d => d.trim()).filter(Boolean);
+            if (dateArr.length === 0) {
+                console.warn('學生沒有有效日期:', stu);
+                return;
+            }
+            
             dateArr.forEach(dateStr => {
                 // 轉換中文日期為ISO格式
                 function chineseDateToISO(str) {
@@ -1594,6 +1628,11 @@ function saveSelectedStudents() {
                     return str;
                 }
                 let stdDate = chineseDateToISO(dateStr);
+                if (!stdDate || stdDate === dateStr) {
+                    console.warn('無法解析日期:', dateStr, '學生:', stu.name);
+                    return;
+                }
+                
                 let key = `${stu.location}||${stdDate}`;
                 if (!groupMap[key]) groupMap[key] = { date: stdDate, students: [] };
                 groupMap[key].students.push({
@@ -1716,16 +1755,27 @@ window.searchStudentsByLocation = function(loc) {
             if (!end) end = start;
             let startDate = new Date(start);
             let endDate = new Date(end);
-            let stuDates = (stu.dates || '').split('、').map(s => s.trim()).filter(Boolean);
-            // 只要有一个日期在区间内就显示
-            let inRange = stuDates.some(dateStr => {
-                let m = dateStr.match(/(\d{1,2})月(\d{1,2})日/);
-                if (!m) return false;
-                let y = new Date().getFullYear();
-                let d = new Date(y, parseInt(m[1],10)-1, parseInt(m[2],10));
-                return d >= startDate && d <= endDate;
-            });
-            match = match && inRange;
+            
+            // 確保 stu.dates 存在且有效
+            if (!stu.dates || typeof stu.dates !== 'string' || stu.dates.trim() === '') {
+                match = false; // 如果沒有日期資料，不匹配
+            } else {
+                let stuDates = stu.dates.split('、').map(s => s.trim()).filter(Boolean);
+                // 確保 stuDates 是有效的數組
+                if (Array.isArray(stuDates) && stuDates.length > 0) {
+                    // 只要有一个日期在区间内就显示
+                    let inRange = stuDates.some(dateStr => {
+                        let m = dateStr.match(/(\d{1,2})月(\d{1,2})日/);
+                        if (!m) return false;
+                        let y = new Date().getFullYear();
+                        let d = new Date(y, parseInt(m[1],10)-1, parseInt(m[2],10));
+                        return d >= startDate && d <= endDate;
+                    });
+                    match = match && inRange;
+                } else {
+                    match = false; // 如果沒有有效的日期，不匹配
+                }
+            }
         }
         return match;
     });
@@ -1785,29 +1835,37 @@ window.deleteStudentByInfo = function(loc, studentName, date) {
     // 找到要刪除的學生索引
     let studentIndex = -1;
     locationMap[loc].forEach((stu, index) => {
-        let stuDates = (stu.dates || '').split('、').map(d => d.trim()).filter(Boolean);
-        if (stu.name === studentName && stuDates.includes(date)) {
-            studentIndex = index;
+        // 確保 stu.dates 存在且有效
+        if (stu.dates && typeof stu.dates === 'string' && stu.dates.trim() !== '') {
+            let stuDates = stu.dates.split('、').map(d => d.trim()).filter(Boolean);
+            if (stu.name === studentName && stuDates.includes(date)) {
+                studentIndex = index;
+            }
         }
     });
     
     if (studentIndex !== -1) {
         let student = locationMap[loc][studentIndex];
-        let stuDates = (student.dates || '').split('、').map(d => d.trim()).filter(Boolean);
-        
-        // 從日期列表中移除指定日期
-        let remainingDates = stuDates.filter(d => d !== date);
-        
-        if (remainingDates.length === 0) {
-            // 如果沒有剩餘日期，刪除整個學生記錄
-            locationMap[loc].splice(studentIndex, 1);
+        // 確保 student.dates 存在且有效
+        if (student.dates && typeof student.dates === 'string' && student.dates.trim() !== '') {
+            let stuDates = student.dates.split('、').map(d => d.trim()).filter(Boolean);
+            
+            // 從日期列表中移除指定日期
+            let remainingDates = stuDates.filter(d => d !== date);
+            
+            if (remainingDates.length === 0) {
+                // 如果沒有剩餘日期，刪除整個學生記錄
+                locationMap[loc].splice(studentIndex, 1);
+            } else {
+                // 更新學生的日期列表，只保留其他日期
+                student.dates = remainingDates.join('、');
+            }
+            
+            localStorage.setItem('savedStudentsByLocation', JSON.stringify(locationMap));
+            showStudentsByLocation(loc);
         } else {
-            // 更新學生的日期列表，只保留其他日期
-            student.dates = remainingDates.join('、');
+            alert('找不到要刪除的學生資料');
         }
-        
-        localStorage.setItem('savedStudentsByLocation', JSON.stringify(locationMap));
-        showStudentsByLocation(loc);
     } else {
         alert('找不到要刪除的學生資料');
     }

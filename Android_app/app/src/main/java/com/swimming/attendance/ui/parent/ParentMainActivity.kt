@@ -791,17 +791,17 @@ class ParentMainActivity : AppCompatActivity() {
                     // 直接根據電話號碼從API服務器獲取學生資料
                     val userStudents = cloudApiService.fetchUserStudentsFromCloud(currentPhone)
 
-                    if (userStudents.isNotEmpty()) {
-                        statusText.text = "✅ 成功獲取您的 ${userStudents.size} 筆學生資料"
-                        
+                        if (userStudents.isNotEmpty()) {
+                            statusText.text = "✅ 成功獲取您的 ${userStudents.size} 筆學生資料"
+                            
                         // 更新學生列表 - 顯示學生姓名+上課日期+待約數量
                         displayStudentListWithDetails(userStudents)
                         
                         // 更新用戶信息顯示
                         updateUserInfoDisplay(userStudents)
-                        
-                        Toast.makeText(this@ParentMainActivity,
-                            "成功獲取您的學生資料！", Toast.LENGTH_SHORT).show()
+                            
+                            Toast.makeText(this@ParentMainActivity,
+                                "成功獲取您的學生資料！", Toast.LENGTH_SHORT).show()
                     } else {
                         statusText.text = "⚠️ 未找到與您電話號碼匹配的學生資料"
                         

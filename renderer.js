@@ -150,6 +150,13 @@ window.switchTab = function(tabName, event) {
 
 // 載入標籤內容
 window.loadTabContent = function(tabName) {
+    // 如果切換到非教練頁面，清理教練頁面的自動刷新
+    if (tabName !== 'coach' && window.coachAutoRefreshInterval) {
+        clearInterval(window.coachAutoRefreshInterval);
+        window.coachAutoRefreshInterval = null;
+        console.log('已清理教練頁面自動刷新');
+    }
+    
     switch(tabName) {
         case 'attendance':
             loadAttendanceContent();
@@ -197,10 +204,17 @@ window.renderAttendanceTable = function() {
     let locationGroups = {};
     allStudents.forEach(stu => {
         let location = stu.location || '未知地點'; // 如果沒有location欄位，使用預設值
-        if (!locationGroups[location]) {
-            locationGroups[location] = [];
+        
+        // 標準化地點名稱，移除表情符號和多餘空格
+        let normalizedLocation = location
+            .replace(/[🏊‍♂🏊♂]/g, '') // 移除游泳表情符號
+            .replace(/\s+/g, ' ') // 將多個空格替換為單個空格
+            .trim(); // 移除首尾空格
+        
+        if (!locationGroups[normalizedLocation]) {
+            locationGroups[normalizedLocation] = [];
         }
-        locationGroups[location].push(stu);
+        locationGroups[normalizedLocation].push(stu);
     });
     
     // 生成搜索界面
@@ -251,7 +265,7 @@ window.renderAttendanceTable = function() {
         
         // 為每個地點生成一個表格
         html += `<div style="margin-top:20px;"><b>${location}</b></div>`;
-        html += `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
+                    html += `<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
             <tr style="background:#f5f5f5;">
                 <th style="border:1px solid #ddd;padding:8px;">學生姓名</th>
                 <th style="border:1px solid #ddd;padding:8px;">學生年齡</th>
@@ -263,6 +277,7 @@ window.renderAttendanceTable = function() {
                 <th style="border:1px solid #ddd;padding:8px;">已出席堂數</th>
                 <th style="border:1px solid #ddd;padding:8px;color: #FF0000;">剩餘堂數</th>
                 <th style="border:1px solid #ddd;padding:8px;color: #FF0000;">剩餘點數</th>
+                <th style="border:1px solid #ddd;padding:8px;color:#e67e22;">需補堂數</th>
             </tr>`;
         
         Object.values(studentMap).forEach(stu => {
@@ -280,6 +295,7 @@ window.renderAttendanceTable = function() {
                 <td style="border:1px solid #ddd;padding:8px;">${stats.attendedCount}</td>
                 <td style="border:1px solid #ddd;padding:8px;">${stats.remainingCount}</td>
                 <td style="border:1px solid #ddd;padding:8px;">${stats.remainingpoints}</td>
+                <td style="border:1px solid #ddd;padding:8px;color:#e67e22;">${stats.needMakeUpCount || 0}</td>
             </tr>`;
         });
         html += '</table>';
@@ -372,6 +388,7 @@ function loadConfigContent() {
         <button id="exportCloudBtn" style="padding:10px 20px;margin-bottom:20px;">導出雲端資料</button>
         <button id="createWaitBtn" style="padding:10px 20px;margin-bottom:20px;margin-left:10px;background:#27ae60;color:white;border:none;border-radius:5px;cursor:pointer;">創建待約</button>
         <button id="addStudentBtn" style="padding:10px 20px;margin-bottom:20px;margin-left:10px;background:#3498db;color:white;border:none;border-radius:5px;cursor:pointer;">添加學生</button>
+        <button id="createFormBtn" style="padding:10px 20px;margin-bottom:20px;margin-left:10px;background:#8e44ad;color:white;border:none;border-radius:5px;cursor:pointer;">創建表單</button>
         <button id="exportExcelBtn" style="padding:10px 20px;margin-bottom:20px;margin-left:10px;background:#e67e22;color:white;border:none;border-radius:5px;cursor:pointer;">導出Excel</button>
         
         <!-- 導出路徑設置 -->
@@ -401,6 +418,7 @@ function loadConfigContent() {
                 </div>
                 <button onclick="resetConfigSearch()" style="padding:8px 16px;background:#95a5a6;color:white;border:none;border-radius:4px;cursor:pointer;">重置</button>
                 <button onclick="generateTimetable()" style="padding:8px 16px;background:#e67e22;color:white;border:none;border-radius:4px;cursor:pointer;">生成課表</button>
+                <button onclick="filterWaitStudents()" style="padding:8px 16px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;">查詢待約</button>
             </div>
         </div>
         
@@ -409,6 +427,13 @@ function loadConfigContent() {
     document.getElementById('exportCloudBtn').onclick = loadCloudStudents;
     document.getElementById('createWaitBtn').onclick = showCreateWaitModal;
     document.getElementById('addStudentBtn').onclick = showAddStudentModal;
+    document.getElementById('createFormBtn').onclick = function(){
+        if (!window.__TAILWIND_FORM_HTML__) {
+            alert('尚未載入表單模板');
+            return;
+        }
+        showCreateFormModal();
+    };
     document.getElementById('exportExcelBtn').onclick = exportCloudExcel;
     
     // 初始化搜索功能
@@ -432,10 +457,17 @@ function renderCloudStudentsTableFromCache() {
     let locationGroups = {};
     allStudents.forEach(stu => {
         let location = stu.location || '未知地點'; // 如果沒有location欄位，使用預設值
-        if (!locationGroups[location]) {
-            locationGroups[location] = [];
+        
+        // 標準化地點名稱，移除表情符號和多餘空格
+        let normalizedLocation = location
+            .replace(/[🏊‍♂🏊♂]/g, '') // 移除游泳表情符號
+            .replace(/\s+/g, ' ') // 將多個空格替換為單個空格
+            .trim(); // 移除首尾空格
+        
+        if (!locationGroups[normalizedLocation]) {
+            locationGroups[normalizedLocation] = [];
         }
-        locationGroups[location].push(stu);
+        locationGroups[normalizedLocation].push(stu);
     });
     
     // 生成表格，按地點分類
@@ -471,18 +503,43 @@ function renderCloudStudentsTableFromCache() {
                 <span style="font-size: 12px; color: #999;">(共 ${dateStudents.length} 名學生)</span>
             </div>`;
             html += '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">';
-            html += '<tr style="background:#f5f5f5;"><th style="border:1px solid #ddd;padding:8px;">選擇</th><th style="border:1px solid #ddd;padding:8px;">姓名</th><th style="border:1px solid #ddd;padding:8px;">年齡</th><th style="border:1px solid #ddd;padding:8px;">電話號碼</th><th style="border:1px solid #ddd;padding:8px;">課程類型</th><th style="border:1px solid #ddd;padding:8px;">待約</th><th style="border:1px solid #ddd;padding:8px;">待約月份</th><th style="border:1px solid #ddd;padding:8px;">出席</th><th style="border:1px solid #ddd;padding:8px;">補/調堂</th><th style="border:1px solid #ddd;padding:8px;">補/調堂點數</th><th style="border:1px solid #ddd;padding:8px;">時間</th><th style="border:1px solid #ddd;padding:8px;">上課日期</th><th style="border:1px solid #ddd;padding:8px;">操作</th></tr>';
+            html += '<tr style="background:#f5f5f5;"><th style="border:1px solid #ddd;padding:8px;">選擇</th><th style="border:1px solid #ddd;padding:8px;">姓名</th><th style="border:1px solid #ddd;padding:8px;">年齡</th><th style="border:1px solid #ddd;padding:8px;">電話號碼</th><th style="border:1px solid #ddd;padding:8px;">課程類型</th><th style="border:1px solid #ddd;padding:8px;">待約</th><th style="border:1px solid #ddd;padding:8px;">待約月份</th><th style="border:1px solid #ddd;padding:8px;">出席</th><th style="border:1px solid #ddd;padding:8px;">補/調堂</th><th style="border:1px solid #ddd;padding:8px;">補/調堂點數</th><th style="border:1px solid #ddd;padding:8px;">時間</th><th style="border:1px solid #ddd;padding:8px;">上課日期</th><th style="border:1px solid #ddd;padding:8px;">操作</th><th style="border:1px solid #ddd;padding:8px;">請假</th></tr>';
             
             dateStudents.forEach(stu => {
                 // 解析時間格式
                 let timeStart = '', timeEnd = '';
                 if (stu.time) {
+                    console.log(`解析時間: ${stu.time}`);
                     let timeParts = stu.time.split('-');
                     if (timeParts.length === 2) {
-                        let startParts = timeParts[0].split(':');
-                        let endParts = timeParts[1].split(':');
-                        timeStart = startParts.length === 2 ? `${startParts[0]}:${startParts[1]}` : '';
-                        timeEnd = endParts.length === 2 ? `${endParts[0]}:${endParts[1]}` : '';
+                        let startTime = timeParts[0].trim();
+                        let endTime = timeParts[1].trim();
+                        
+                        // 處理開始時間 - 移除中文星期部分
+                        startTime = startTime.replace(/星期[一二三四五六日]\s*/, '');
+                        if (startTime.includes(':')) {
+                            timeStart = startTime;
+                        } else {
+                            // 如果只有數字，假設是小時，補充分鐘
+                            let startHour = parseInt(startTime);
+                            if (!isNaN(startHour)) {
+                                timeStart = `${String(startHour).padStart(2, '0')}:00`;
+                            }
+                        }
+                        
+                        // 處理結束時間 - 移除pm/am等後綴
+                        endTime = endTime.replace(/[ap]m$/i, '');
+                        if (endTime.includes(':')) {
+                            timeEnd = endTime;
+                        } else {
+                            // 如果只有數字，假設是小時，補充分鐘
+                            let endHour = parseInt(endTime);
+                            if (!isNaN(endHour)) {
+                                timeEnd = `${String(endHour).padStart(2, '0')}:00`;
+                            }
+                        }
+                        
+                        console.log(`解析結果: ${timeStart} - ${timeEnd}`);
                     }
                 }
                 
@@ -505,6 +562,12 @@ function renderCloudStudentsTableFromCache() {
                         }
                     }
                 }
+                
+                // 讀取請假狀態
+                let leaveMap = {};
+                try { leaveMap = JSON.parse(localStorage.getItem('leaveStatusMap') || '{}'); } catch(e) {}
+                const key = `${stu.name}|${stu.Phone_number||stu.phone||''}|${stu['上課日期']}`;
+                const leaveOn = !!leaveMap[key];
                 
                 html += `<tr>
                     <td style="border:1px solid #ddd;padding:8px;text-align:center;"><input type="checkbox"></td>
@@ -539,14 +602,17 @@ function renderCloudStudentsTableFromCache() {
                         <input type="text" value="${stu.option3 || ''}" style="width: 60px; text-align: center;" readonly>
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;">
-                        <input type="number" min="0" max="23" value="${timeStart.split(':')[0] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
-                        <input type="number" min="0" max="59" value="${timeStart.split(':')[1] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')"> -
-                        <input type="number" min="0" max="23" value="${timeEnd.split(':')[0] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
-                        <input type="number" min="0" max="59" value="${timeEnd.split(':')[1] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">
+                        <input type="number" min="0" max="23" value="${timeStart.includes(':') ? timeStart.split(':')[0] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
+                        <input type="number" min="0" max="59" value="${timeStart.includes(':') ? timeStart.split(':')[1] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')"> -
+                        <input type="number" min="0" max="23" value="${timeEnd.includes(':') ? timeEnd.split(':')[0] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
+                        <input type="number" min="0" max="59" value="${timeEnd.includes(':') ? timeEnd.split(':')[1] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="date" value="${dateValue}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'date')" style="width:130px; border: none; background: transparent;"></td>
                     <td style="border:1px solid #ddd;padding:8px;text-align:center;">
                         <button onclick="deleteCloudStudent('${stu.name || ''}', '${stu['上課日期'] || ''}')" style="padding:4px 10px;background:#e74c3c;color:white;border:none;border-radius:3px;">刪除</button>
+                    </td>
+                    <td style="border:1px solid #ddd;padding:8px;text-align:center;">
+                        <button onclick="toggleLeaveForStudent('${stu.name || ''}', '${stu.Phone_number || stu.phone || ''}', '${stu['上課日期'] || ''}', '${stu.option3 || ''}', '${stu.option1 || ''}', '${stu.option2 || ''}', this)" style="padding:4px 10px;background:${leaveOn ? '#34495e' : '#e67e22'};color:white;border:none;border-radius:3px;">請假</button>
                     </td>
                 </tr>`;
             });
@@ -563,6 +629,10 @@ window.loadCloudStudents = async function() {
         const grouped = await ipcRenderer.invoke('fetch-students-from-cloud');
         window.cloudStudentsGrouped = grouped;
         renderCloudStudentsTableFromCache();
+        
+        // 自動更新地點選項
+        updateLocationOptions();
+        
         return grouped;
     } catch (error) {
         console.error('載入雲端資料失敗:', error);
@@ -1535,17 +1605,17 @@ async function saveSelectedStudents() {
                     };
                     
                     // 檢查是否已存在相同的學生記錄（避免重複）
-                    let isDuplicate = dateGroups[date].some(existing => 
+                    let isDuplicate = dateGroups[standardDate].some(existing => 
                         existing.name === cloudStudent.name && 
                         existing.time === cloudStudent.time && 
                         existing.type === cloudStudent.type
                     );
                     
                     if (!isDuplicate) {
-                        dateGroups[date].push(cloudStudent);
+                        dateGroups[standardDate].push(cloudStudent);
                     } else {
                         totalSkipped++;
-                        console.log(`跳過重複記錄: ${cloudStudent.name} - ${date}`);
+                        console.log(`跳過重複記錄: ${cloudStudent.name} - ${standardDate}`);
                     }
                 });
             });
@@ -1562,7 +1632,7 @@ async function saveSelectedStudents() {
             const result = await ipcRenderer.invoke('import-students-to-cloud', groupedData, true);
             
             if (result.success) {
-                totalSaved += result.details.upsertedCount;
+                totalSaved += result.details.upsertedCount + result.details.modifiedCount;
                 console.log(`地點 ${location} 保存成功:`, result.details);
             } else {
                 console.error(`地點 ${location} 保存失敗:`, result.error);
@@ -1590,6 +1660,69 @@ async function saveSelectedStudents() {
         console.error('保存到雲端資料庫失敗:', error);
         alert('保存失敗: ' + error.message);
     }
+}
+
+// 時間解析函數
+function parseTimeString(timeStr) {
+    if (!timeStr) return { timeStart: '', timeEnd: '' };
+    
+    console.log(`解析時間: ${timeStr}`);
+    let timeParts = timeStr.split('-');
+    if (timeParts.length !== 2) return { timeStart: '', timeEnd: '' };
+    
+    let startTime = timeParts[0].trim();
+    let endTime = timeParts[1].trim();
+    let timeStart = '', timeEnd = '';
+    
+    // 處理開始時間
+    if (startTime.includes(':')) {
+        timeStart = startTime;
+    } else {
+        // 如果只有數字，假設是小時，補充分鐘
+        let startHour = parseInt(startTime);
+        if (!isNaN(startHour)) {
+            timeStart = `${String(startHour).padStart(2, '0')}:00`;
+        }
+    }
+    
+    // 處理結束時間
+    if (endTime.includes(':')) {
+        timeEnd = endTime;
+    } else {
+        // 如果只有數字，假設是小時，補充分鐘
+        let endHour = parseInt(endTime);
+        if (!isNaN(endHour)) {
+            timeEnd = `${String(endHour).padStart(2, '0')}:00`;
+        }
+    }
+    
+    console.log(`解析結果: ${timeStart} - ${timeEnd}`);
+    return { timeStart, timeEnd };
+}
+
+// 安全地獲取時間的小時和分鐘
+function getTimeHour(timeStr) {
+    if (!timeStr || !timeStr.includes(':')) return '';
+    let timePart = timeStr.split(':')[0] || '';
+    // 移除非數字字符（如"星期四"）
+    let hour = timePart.replace(/[^0-9]/g, '');
+    return hour;
+}
+
+function getTimeMinute(timeStr) {
+    if (!timeStr || !timeStr.includes(':')) return '';
+    let timePart = timeStr.split(':')[1] || '';
+    // 移除非數字字符（如"pm"）
+    let minute = timePart.replace(/[^0-9]/g, '');
+    return minute;
+}
+
+// 生成時間輸入框的HTML
+function generateTimeInputs(timeStart, timeEnd, studentName, classDate) {
+    return `<input type="number" min="0" max="23" value="${getTimeHour(timeStart)}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${studentName}', '${classDate}')">:
+            <input type="number" min="0" max="59" value="${getTimeMinute(timeStart)}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${studentName}', '${classDate}')"> -
+            <input type="number" min="0" max="23" value="${getTimeHour(timeEnd)}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${studentName}', '${classDate}')">:
+            <input type="number" min="0" max="59" value="${getTimeMinute(timeEnd)}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${studentName}', '${classDate}')">`;
 }
 
 // 創建待約相關函數
@@ -2261,11 +2394,6 @@ window.updateOption3FromTime = function(input) {
     updateOption3RealTime(input);
 }
 
-// 實時更新選項3的函數（從日期變化觸發）
-window.updateOption3FromDate = function(input) {
-    updateOption3RealTime(input);
-}
-
 // 實時更新選項3的函數（從課程類型變化觸發）
 window.updateOption3FromCourseType = function(input) {
     updateOption3RealTime(input);
@@ -2453,8 +2581,9 @@ function calculateStudentStats(student, allStudents) {
         waitCount: 0,         // 待約堂數
         bookedCount: 0,       // 已約堂數
         attendedCount: 0,     // 已出席堂數
-        remainingCount: 0,     // 剩餘堂數
-        remainingpoints: 0    // 剩餘點數
+        remainingCount: 0,    // 剩餘堂數
+        remainingpoints: 0,   // 剩餘點數
+        needMakeUpCount: 0    // 需補堂數（由請假按鈕計算）
     };
     
     // 根據姓名+電話號碼找到該學生的所有記錄
@@ -2465,7 +2594,6 @@ function calculateStudentStats(student, allStudents) {
     
     // 計算已約堂數（統計該學生的資料格中的"上課日期"有内容的數量）
     studentRecords.forEach(record => {
-        // 檢查多種可能的日期欄位
         let hasDate = false;
         if (record["上課日期"] && record["上課日期"].trim() !== '') {
             hasDate = true;
@@ -2480,43 +2608,107 @@ function calculateStudentStats(student, allStudents) {
         }
     });
     
-    // 計算待約堂數（從雲端資料的"待約"欄位獲取）
+    // 計算待約堂數
     stats.waitCount = parseInt(student.wait || student.待約 || '0');
     
-    // 計算已購買堂數（查看雲端中同一學生出現的資料格數量，判斷條件是相同姓名+電話號碼）
+    // 計算已購買堂數（相同姓名+電話號碼的出現次數）
     stats.totalPurchased = studentRecords.length;
     
-    // 計算已購買點數（該學生資料格中的option3的數字和"待約"的數字的總和）
+    // 計算已購買點數（option3 累計 + 待約）
     let totalOption3Points = 0;
     studentRecords.forEach(record => {
         if (record.option3 && record.option3.trim() !== '') {
             let points = parseFloat(record.option3);
-            if (!isNaN(points)) {
-                totalOption3Points += points;
-            }
+            if (!isNaN(points)) totalOption3Points += points;
         }
     });
     stats.totalPoints = totalOption3Points + stats.waitCount;
     
-    // 計算已出席堂數（同一名學生中"選項1"有顯示文字的資料格數量）
+    // 計算已出席堂數（選項1有值的筆數）
     studentRecords.forEach(record => {
         if (record.option1 && record.option1.trim() !== '') {
             stats.attendedCount++;
         }
     });
     
-    // 計算剩餘堂數（已購買堂數 - 已出席堂數）
+    // 剩餘堂數（已購買堂數 - 已出席堂數）
     stats.remainingCount = Math.max(0, stats.totalPurchased - stats.attendedCount);
     
-    // 計算剩餘點數（已購買點數減去該學生的所有資料庫中的該學生所有的"option3"的數字的總和）
+    // 剩餘點數（已購買點數 - option3 和）
     stats.remainingpoints = Math.max(0, stats.totalPoints - totalOption3Points);
+    
+    // 需補堂數：彙總該學生所有已標記請假的日期對應的差額
+    try {
+        let leaveMap = {};
+        leaveMap = JSON.parse(localStorage.getItem('leaveStatusMap') || '{}');
+        let sum = 0;
+        Object.keys(leaveMap).forEach(k => {
+            if (!leaveMap[k]) return;
+            const [n, p, d] = k.split('|');
+            if (n !== (student.name || '') || p !== (student.phone || '')) return;
+            // 找到該日期的紀錄
+            const rec = studentRecords.find(r => {
+                const rd = (r['上課日期'] || r.date || '').replace(/[🎈]/g, '').trim();
+                const kd = (d || '').replace(/[🎈]/g, '').trim();
+                return rd === kd;
+            });
+            if (!rec) return;
+            sum += calculateMakeUpDelta(rec.option3, rec.option1, rec.option2);
+        });
+        stats.needMakeUpCount = sum;
+    } catch (e) {
+        stats.needMakeUpCount = 0;
+    }
     
     return stats;
 }
 
+// 依規則計算一筆請假需要增加的補堂數
+function calculateMakeUpDelta(optionPoints, attendanceText, makeUpText) {
+    const p = parseFloat(optionPoints || '0') || 0;
+    const att = (attendanceText || '').trim();
+    const mk = (makeUpText || '').trim();
+    // 若補/調堂有內容，視為已補，不新增需求
+    if (mk) return 0;
+    // 規則：當出席與點數的合計不得超過點數，這裡只計算差額
+    if (p === 1.5) {
+        if (att === '出席1') return 0.5;
+        if (att === '缺席') return 1.5;
+    }
+    if (p === 2) {
+        if (att === '出席1') return 1;
+        if (att === '出席1.5') return 0.5;
+        if (att === '缺席') return 2;
+    }
+    if (p === 1) {
+        if (att === '缺席') return 1;
+    }
+    // 其他情況：若出席值可解析為數值且小於點數，則補堂為差值
+    const attNum = att.replace('出席','');
+    const attVal = parseFloat(attNum);
+    if (!isNaN(attVal) && attVal < p) return p - attVal;
+    return 0;
+}
 
-
-// renderStudentsTable 只顯示合併後的日期欄位，選項1/2/3保持下拉清單
+// 切換請假狀態並更新出席記錄中的需補堂數
+window.toggleLeaveForStudent = function(name, phone, date, option3Points, option1Text, option2Text, btn) {
+    const key = `${name}|${phone}|${date}`;
+    let leaveMap = {};
+    try { leaveMap = JSON.parse(localStorage.getItem('leaveStatusMap') || '{}'); } catch(e) {}
+    const currentlyOn = !!leaveMap[key];
+    leaveMap[key] = !currentlyOn;
+    localStorage.setItem('leaveStatusMap', JSON.stringify(leaveMap));
+    if (btn) {
+        btn.style.background = leaveMap[key] ? '#34495e' : '#e67e22';
+        btn.style.color = 'white';
+    }
+    // 若出席記錄頁面已載入，重新渲染以即時反映
+    try {
+        if (document.getElementById('attendanceTableArea')) {
+            renderAttendanceTable();
+        }
+    } catch (e) {}
+}
 
 window.toggleSelectAllManageRows = function(checkbox) {
     document.querySelectorAll('.manageRowCheckbox').forEach(cb => {
@@ -3593,7 +3785,15 @@ function updateLocationOptions() {
         window.cloudStudentsGrouped.forEach(group => {
             group.students.forEach(student => {
                 if (student.location) {
-                    locations.add(student.location);
+                    // 標準化地點名稱，移除表情符號和多餘空格
+                    let normalizedLocation = student.location
+                        .replace(/[🏊‍♂🏊♂]/g, '') // 移除游泳表情符號
+                        .replace(/\s+/g, ' ') // 將多個空格替換為單個空格
+                        .trim(); // 移除首尾空格
+                    
+                    if (normalizedLocation) {
+                        locations.add(normalizedLocation);
+                    }
                 }
             });
         });
@@ -3605,6 +3805,8 @@ function updateLocationOptions() {
             option.textContent = location;
             locationSelect.appendChild(option);
         });
+        
+        console.log('📍 更新地點選項:', Array.from(locations).sort());
     }
 }
 
@@ -3722,18 +3924,41 @@ function renderFilteredCloudStudents(filteredGroups) {
                 <span style="font-size: 12px; color: #999;">(共 ${dateStudents.length} 名學生)</span>
             </div>`;
             html += '<table style="width:100%;border-collapse:collapse;margin-bottom:10px;">';
-            html += '<tr style="background:#f5f5f5;"><th style="border:1px solid #ddd;padding:8px;">選擇</th><th style="border:1px solid #ddd;padding:8px;">姓名</th><th style="border:1px solid #ddd;padding:8px;">年齡</th><th style="border:1px solid #ddd;padding:8px;">電話號碼</th><th style="border:1px solid #ddd;padding:8px;">課程類型</th><th style="border:1px solid #ddd;padding:8px;">待約</th><th style="border:1px solid #ddd;padding:8px;">待約月份</th><th style="border:1px solid #ddd;padding:8px;">出席</th><th style="border:1px solid #ddd;padding:8px;">補/調堂</th><th style="border:1px solid #ddd;padding:8px;">補/調堂點數</th><th style="border:1px solid #ddd;padding:8px;">時間</th><th style="border:1px solid #ddd;padding:8px;">上課日期</th><th style="border:1px solid #ddd;padding:8px;">操作</th></tr>';
+            html += '<tr style="background:#f5f5f5;"><th style="border:1px solid #ddd;padding:8px;">選擇</th><th style="border:1px solid #ddd;padding:8px;">姓名</th><th style="border:1px solid #ddd;padding:8px;">年齡</th><th style="border:1px solid #ddd;padding:8px;">電話號碼</th><th style="border:1px solid #ddd;padding:8px;">課程類型</th><th style="border:1px solid #ddd;padding:8px;">待約</th><th style="border:1px solid #ddd;padding:8px;">待約月份</th><th style="border:1px solid #ddd;padding:8px;">出席</th><th style="border:1px solid #ddd;padding:8px;">補/調堂</th><th style="border:1px solid #ddd;padding:8px;">補/調堂點數</th><th style="border:1px solid #ddd;padding:8px;">時間</th><th style="border:1px solid #ddd;padding:8px;">上課日期</th><th style="border:1px solid #ddd;padding:8px;">操作</th><th style="border:1px solid #ddd;padding:8px;">請假</th></tr>';
             
             dateStudents.forEach(stu => {
                 // 解析時間格式
                 let timeStart = '', timeEnd = '';
                 if (stu.time) {
+                    console.log(`解析時間: ${stu.time}`);
                     let timeParts = stu.time.split('-');
                     if (timeParts.length === 2) {
-                        let startParts = timeParts[0].split(':');
-                        let endParts = timeParts[1].split(':');
-                        timeStart = startParts.length === 2 ? `${startParts[0]}:${startParts[1]}` : '';
-                        timeEnd = endParts.length === 2 ? `${endParts[0]}:${endParts[1]}` : '';
+                        let startTime = timeParts[0].trim();
+                        let endTime = timeParts[1].trim();
+                        
+                        // 處理開始時間
+                        if (startTime.includes(':')) {
+                            timeStart = startTime;
+                        } else {
+                            // 如果只有數字，假設是小時，補充分鐘
+                            let startHour = parseInt(startTime);
+                            if (!isNaN(startHour)) {
+                                timeStart = `${String(startHour).padStart(2, '0')}:00`;
+                            }
+                        }
+                        
+                        // 處理結束時間
+                        if (endTime.includes(':')) {
+                            timeEnd = endTime;
+                        } else {
+                            // 如果只有數字，假設是小時，補充分鐘
+                            let endHour = parseInt(endTime);
+                            if (!isNaN(endHour)) {
+                                timeEnd = `${String(endHour).padStart(2, '0')}:00`;
+                            }
+                        }
+                        
+                        console.log(`解析結果: ${timeStart} - ${timeEnd}`);
                     }
                 }
                 
@@ -3756,6 +3981,12 @@ function renderFilteredCloudStudents(filteredGroups) {
                         }
                     }
                 }
+                
+                // 讀取請假狀態
+                let leaveMap = {};
+                try { leaveMap = JSON.parse(localStorage.getItem('leaveStatusMap') || '{}'); } catch(e) {}
+                const key = `${stu.name}|${stu.Phone_number||stu.phone||''}|${stu['上課日期']}`;
+                const leaveOn = !!leaveMap[key];
                 
                 html += `<tr>
                     <td style="border:1px solid #ddd;padding:8px;text-align:center;"><input type="checkbox"></td>
@@ -3790,14 +4021,17 @@ function renderFilteredCloudStudents(filteredGroups) {
                         <input type="text" value="${stu.option3 || ''}" style="width: 60px; text-align: center;" readonly>
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;">
-                        <input type="number" min="0" max="23" value="${timeStart.split(':')[0] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
-                        <input type="number" min="0" max="59" value="${timeStart.split(':')[1] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')"> -
-                        <input type="number" min="0" max="23" value="${timeEnd.split(':')[0] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
-                        <input type="number" min="0" max="59" value="${timeEnd.split(':')[1] || ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">
+                        <input type="number" min="0" max="23" value="${timeStart.includes(':') ? timeStart.split(':')[0] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
+                        <input type="number" min="0" max="59" value="${timeStart.includes(':') ? timeStart.split(':')[1] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')"> -
+                        <input type="number" min="0" max="23" value="${timeEnd.includes(':') ? timeEnd.split(':')[0] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">:
+                        <input type="number" min="0" max="59" value="${timeEnd.includes(':') ? timeEnd.split(':')[1] || '' : ''}" style="width:40px;" onchange="onCloudStudentTimeChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}')">
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="date" value="${dateValue}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'date')" style="width:130px; border: none; background: transparent;"></td>
                     <td style="border:1px solid #ddd;padding:8px;text-align:center;">
                         <button onclick="deleteCloudStudent('${stu.name || ''}', '${stu['上課日期'] || ''}')" style="padding:4px 10px;background:#e74c3c;color:white;border:none;border-radius:3px;">刪除</button>
+                    </td>
+                    <td style="border:1px solid #ddd;padding:8px;text-align:center;">
+                        <button onclick="toggleLeaveForStudent('${stu.name || ''}', '${stu.Phone_number || stu.phone || ''}', '${stu['上課日期'] || ''}', '${stu.option3 || ''}', '${stu.option1 || ''}', '${stu.option2 || ''}', this)" style="padding:4px 10px;background:${leaveOn ? '#34495e' : '#e67e22'};color:white;border:none;border-radius:3px;">請假</button>
                     </td>
                 </tr>`;
             });
@@ -3836,8 +4070,16 @@ function getCurrentDisplayedStudents() {
                     }
                     
                     // 地點搜索
-                    if (locationSearch && student.location !== locationSearch) {
-                        return false;
+                    if (locationSearch) {
+                        // 標準化學生地點名稱
+                        let normalizedStudentLocation = student.location
+                            .replace(/[🏊‍♂🏊♂]/g, '') // 移除游泳表情符號
+                            .replace(/\s+/g, ' ') // 將多個空格替換為單個空格
+                            .trim(); // 移除首尾空格
+                        
+                        if (normalizedStudentLocation !== locationSearch) {
+                            return false;
+                        }
                     }
                     
                     // 日期搜索
@@ -3881,6 +4123,48 @@ function getCurrentDisplayedStudents() {
     }
     
     return currentStudents;
+}
+
+// 新增：查詢「待約」學生（去重：姓名+電話）
+window.filterWaitStudents = function() {
+    if (!window.cloudStudentsGrouped || window.cloudStudentsGrouped.length === 0) {
+        alert('尚未載入雲端學生資料');
+        return;
+    }
+    // 收集所有學生並附帶日期
+    let all = [];
+    window.cloudStudentsGrouped.forEach(group => {
+        (group.students || []).forEach(stu => {
+            all.push({...stu, "上課日期": group.date});
+        });
+    });
+    // 過濾「待約」欄有內容
+    let waitList = all.filter(s => {
+        const waitVal = (s.待約 || s.wait || '').toString().trim();
+        return waitVal.length > 0;
+    });
+    // 以 姓名+電話 去重
+    const seen = new Set();
+    const deduped = [];
+    waitList.forEach(s => {
+        const name = (s.name || '').trim();
+        const phone = (s.Phone_number || s.phone || '').toString().trim();
+        const key = `${name}__${phone}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            deduped.push(s);
+        }
+    });
+    // 轉回渲染所需的分組格式：按日期分組
+    const groupsMap = {};
+    deduped.forEach(s => {
+        const date = s['上課日期'];
+        if (!groupsMap[date]) groupsMap[date] = [];
+        groupsMap[date].push(s);
+    });
+    const groups = Object.keys(groupsMap).sort((a,b)=> new Date(a)-new Date(b)).map(date => ({ date, students: groupsMap[date] }));
+    // 渲染
+    renderFilteredCloudStudents(groups);
 }
 
 // 生成課表功能
@@ -4002,6 +4286,11 @@ window.generateTimetable = function() {
                 Object.keys(typeGroups).sort().forEach(type => {
                     let typeStudents = typeGroups[type];
                     
+                    // 對每個課程類型內的學生按時間排序
+                    typeStudents.sort((a, b) => {
+                        return compareTimes(a.time, b.time);
+                    });
+                    
                     typeStudents.forEach(student => {
                         let studentInfo = '';
                         
@@ -4109,6 +4398,33 @@ window.loadCoachContent = function() {
     initializeCoachSelector();
     // 初始化月份選擇器
     initializeMonthSelector();
+    // 初始化地點選擇器
+    initializeLocationSelector();
+    // 初始化泳會選擇器
+    initializeClubSelector();
+    // 初始化更表月份下拉
+    initializeRosterMonthSelector();
+    
+    // 設置自動刷新機制，每30秒檢查一次工時記錄更新
+    if (window.coachAutoRefreshInterval) {
+        clearInterval(window.coachAutoRefreshInterval);
+    }
+    
+    window.coachAutoRefreshInterval = setInterval(() => {
+        // 只有在教練頁面可見且有完整選擇時才自動刷新
+        const coachTab = document.getElementById('coachTab');
+        if (coachTab && coachTab.style.display !== 'none') {
+            const coachSelector = document.getElementById('coachSelector');
+            const monthSelect = document.getElementById('coachMonthSelect');
+            const locationSelect = document.getElementById('coachLocationSelect');
+            const clubSelect = document.getElementById('coachClubSelect');
+            
+            if (coachSelector.value && monthSelect.value && locationSelect.value && clubSelect.value) {
+                // 靜默刷新，不顯示載入提示
+                silentRefreshCoachWorkHours();
+            }
+        }
+    }, 30000); // 30秒刷新一次
 }
 
 // 顯示新增教練彈窗
@@ -4172,9 +4488,11 @@ async function initializeCoachSelector() {
             if (selectedCoach) {
                 document.getElementById('coachName').textContent = selectedCoach.studentName || selectedCoach.name;
                 document.getElementById('coachPhone').textContent = selectedCoach.phone;
-                // 自動載入當前月份的工時記錄
+                // 自動載入當前月份的工時記錄（需要所有選擇都完成）
                 const monthSelect = document.getElementById('coachMonthSelect');
-                if (monthSelect.value) {
+                const locationSelect = document.getElementById('coachLocationSelect');
+                const clubSelect = document.getElementById('coachClubSelect');
+                if (monthSelect.value && locationSelect.value && clubSelect.value) {
                     loadCoachWorkHours();
                 }
             } else {
@@ -4215,24 +4533,103 @@ function initializeMonthSelector() {
     // 添加change事件監聽器，當選擇月份時自動載入工時記錄
     monthSelect.addEventListener('change', function() {
         const coachSelector = document.getElementById('coachSelector');
-        if (coachSelector.value && this.value) {
+        const locationSelect = document.getElementById('coachLocationSelect');
+        const clubSelect = document.getElementById('coachClubSelect');
+        if (coachSelector.value && this.value && locationSelect.value && clubSelect.value) {
             loadCoachWorkHours();
         }
     });
 }
 
-// 載入教練工時
-window.loadCoachWorkHours = async function() {
-    const coachSelector = document.getElementById('coachSelector');
-    const monthSelect = document.getElementById('coachMonthSelect');
+// 初始化地點選擇器
+function initializeLocationSelector() {
+    const locationSelect = document.getElementById('coachLocationSelect');
+    locationSelect.innerHTML = '<option value="">選擇地點</option>';
+    ipcRenderer.invoke('fetch-locations').then(res => {
+        const locations = (res && res.success) ? res.locations : [];
+        locations.forEach(location => {
+            const option = document.createElement('option');
+            option.value = location;
+            option.textContent = location;
+            locationSelect.appendChild(option);
+        });
+    }).catch(() => {});
     
-    if (!coachSelector.value) {
-        alert('請先選擇教練');
-        return;
+    locationSelect.addEventListener('change', async function() {
+        // 當地點改變時，重新載入泳會選單
+        await initializeClubSelector();
+        if (this.value && document.getElementById('coachSelector').value && 
+            document.getElementById('coachMonthSelect').value && 
+            document.getElementById('coachClubSelect').value) {
+            loadCoachWorkHours();
+        }
+    });
+}
+
+// 初始化泳會選擇器（依賴已選地點）
+function initializeClubSelector() {
+    const clubSelect = document.getElementById('coachClubSelect');
+    const locationSelect = document.getElementById('coachLocationSelect');
+    const location = locationSelect.value || '';
+    
+    // 清除舊的事件監聽器
+    const newClubSelect = clubSelect.cloneNode(true);
+    clubSelect.parentNode.replaceChild(newClubSelect, clubSelect);
+    
+    newClubSelect.innerHTML = '<option value="">選擇泳會</option>';
+    if (location) {
+        ipcRenderer.invoke('fetch-clubs-by-location', location).then(res => {
+            const clubs = (res && res.success) ? res.clubs : [];
+            const seen = new Set();
+            clubs.forEach(club => {
+                if (club && !seen.has(club)) {
+                    seen.add(club);
+                    const option = document.createElement('option');
+                    option.value = club;
+                    option.textContent = club;
+                    newClubSelect.appendChild(option);
+                }
+            });
+        }).catch(() => {});
     }
     
-    if (!monthSelect.value) {
-        alert('請先選擇月份');
+    // 添加新的事件監聽器
+    newClubSelect.addEventListener('change', function() {
+        if (this.value && document.getElementById('coachSelector').value && 
+            document.getElementById('coachMonthSelect').value && 
+            document.getElementById('coachLocationSelect').value) {
+            loadCoachWorkHours();
+        }
+    });
+}
+
+// 初始化更表月份下拉
+function initializeRosterMonthSelector() {
+    const monthSelect = document.getElementById('rosterMonthSelect');
+    if (!monthSelect) return;
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    monthSelect.innerHTML = '<option value="">選擇月份</option>';
+    for (let i = -4; i <= 4; i++) {
+        const d = new Date(currentYear, currentMonth - 1 + i, 1);
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        const option = document.createElement('option');
+        option.value = `${y}-${m.toString().padStart(2, '0')}`;
+        option.textContent = `${y}年${m}月`;
+        if (i === 0) option.selected = true;
+        monthSelect.appendChild(option);
+    }
+}
+
+// 靜默刷新教練工時（不顯示提示）
+async function silentRefreshCoachWorkHours() {
+    const coachSelector = document.getElementById('coachSelector');
+    const monthSelect = document.getElementById('coachMonthSelect');
+    const locationSelect = document.getElementById('coachLocationSelect');
+    const clubSelect = document.getElementById('coachClubSelect');
+    
+    if (!coachSelector.value || !monthSelect.value || !locationSelect.value || !clubSelect.value) {
         return;
     }
     
@@ -4241,9 +4638,89 @@ window.loadCoachWorkHours = async function() {
         const workHours = await ipcRenderer.invoke('fetch-coach-work-hours', { 
             phone: coachSelector.value, 
             year: parseInt(year), 
-            month: parseInt(month) 
+            month: parseInt(month),
+            location: locationSelect.value,
+            club: clubSelect.value
         });
+        renderCoachCalendar(workHours, parseInt(year), parseInt(month));
+        updateCoachStats(workHours);
+    } catch (error) {
+        console.error('靜默刷新工時失敗:', error);
+    }
+}
+
+// 手動刷新教練工時
+window.refreshCoachWorkHours = async function() {
+    const coachSelector = document.getElementById('coachSelector');
+    const monthSelect = document.getElementById('coachMonthSelect');
+    const locationSelect = document.getElementById('coachLocationSelect');
+    const clubSelect = document.getElementById('coachClubSelect');
+    
+    if (!coachSelector.value) { alert('請先選擇教練'); return; }
+    if (!monthSelect.value) { alert('請先選擇月份'); return; }
+    if (!locationSelect.value) { alert('請先選擇地點'); return; }
+    if (!clubSelect.value) { alert('請先選擇泳會'); return; }
+    
+    try {
+        // 顯示同步中提示
+        const syncButton = event.target;
+        const originalText = syncButton.textContent;
+        syncButton.textContent = '🔄 同步中...';
+        syncButton.disabled = true;
         
+        const [year, month] = monthSelect.value.split('-');
+        const workHours = await ipcRenderer.invoke('fetch-coach-work-hours', { 
+            phone: coachSelector.value, 
+            year: parseInt(year), 
+            month: parseInt(month),
+            location: locationSelect.value,
+            club: clubSelect.value
+        });
+        renderCoachCalendar(workHours, parseInt(year), parseInt(month));
+        updateCoachStats(workHours);
+        
+        // 恢復按鈕狀態
+        syncButton.textContent = originalText;
+        syncButton.disabled = false;
+        
+        // 顯示同步成功提示
+        const successMsg = document.createElement('div');
+        successMsg.textContent = '✅ 同步成功';
+        successMsg.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 10px 15px; border-radius: 5px; z-index: 1000;';
+        document.body.appendChild(successMsg);
+        setTimeout(() => successMsg.remove(), 2000);
+        
+    } catch (error) {
+        console.error('同步工時失敗:', error);
+        alert('同步工時失敗');
+        
+        // 恢復按鈕狀態
+        const syncButton = event.target;
+        syncButton.textContent = '🔄 同步';
+        syncButton.disabled = false;
+    }
+}
+
+// 載入教練工時
+window.loadCoachWorkHours = async function() {
+    const coachSelector = document.getElementById('coachSelector');
+    const monthSelect = document.getElementById('coachMonthSelect');
+    const locationSelect = document.getElementById('coachLocationSelect');
+    const clubSelect = document.getElementById('coachClubSelect');
+    
+    if (!coachSelector.value) { alert('請先選擇教練'); return; }
+    if (!monthSelect.value) { alert('請先選擇月份'); return; }
+    if (!locationSelect.value) { alert('請先選擇地點'); return; }
+    if (!clubSelect.value) { alert('請先選擇泳會'); return; }
+    try {
+        const [year, month] = monthSelect.value.split('-');
+        const workHours = await ipcRenderer.invoke('fetch-coach-work-hours', { 
+            phone: coachSelector.value, 
+            year: parseInt(year), 
+            month: parseInt(month),
+            location: locationSelect.value,
+            club: clubSelect.value
+        });
         renderCoachCalendar(workHours, parseInt(year), parseInt(month));
         updateCoachStats(workHours);
     } catch (error) {
@@ -4484,40 +4961,222 @@ function updateCoachStats(workHours) {
     document.getElementById('avgHours').textContent = avgHours;
 }
 
+// 載入更表
+window.loadCoachRoster = async function() {
+    const coachSelector = document.getElementById('coachSelector');
+    const rosterMonthSelect = document.getElementById('rosterMonthSelect');
+    if (!coachSelector.value) { alert('請先選擇教練'); return; }
+    if (!rosterMonthSelect.value) { alert('請先選擇月份'); return; }
+    const [year, month] = rosterMonthSelect.value.split('-');
+    const coachName = coachSelector.options[coachSelector.selectedIndex].text;
+    try {
+        const res = await ipcRenderer.invoke('fetch-coach-roster', { phone: coachSelector.value, name: coachName, year: parseInt(year), month: parseInt(month) });
+        const data = (res && res.success) ? res.data : {};
+        renderRosterCalendar(parseInt(year), parseInt(month), data);
+    } catch (e) {
+        console.error('載入更表失敗:', e);
+        alert('載入更表失敗');
+    }
+}
+
+// 渲染更表日曆（與工時一致布局）
+function renderRosterCalendar(year, month, dataMap) {
+    const container = document.getElementById('rosterCalendarContainer');
+    const first = new Date(year, month - 1, 1);
+    const start = new Date(first);
+    start.setDate(start.getDate() - first.getDay());
+    let html = '';
+    html += '<div class="coach-calendar">';
+    const headers = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+    headers.forEach(h => { html += `<div class="calendar-header">${h}</div>`; });
+    const today = new Date();
+    let cur = new Date(start);
+    for (let w = 0; w < 6; w++) {
+        for (let d = 0; d < 7; d++) {
+            const inMonth = cur.getMonth() === month - 1;
+            const isToday = cur.toDateString() === today.toDateString();
+            const day = cur.getDate();
+            // 使用實際日期生成唯一鍵，避免前後月的日期與當月重複
+            const cellYear = cur.getFullYear();
+            const cellMonthStr = (cur.getMonth() + 1).toString().padStart(2, '0');
+            const cellDayStr = day.toString().padStart(2, '0');
+            const dateKey = `${cellYear}-${cellMonthStr}-${cellDayStr}`;
+            const entry = inMonth ? (dataMap[dateKey] || { time: '', location: '' }) : { time: '', location: '' };
+            let dayClass = 'calendar-day';
+            if (!inMonth) dayClass += ' other-month';
+            if (isToday) dayClass += ' today';
+            html += `<div class="${dayClass}">
+                <div style="font-size:12px;color:#666;margin-bottom:2px;">${day}</div>
+                ${inMonth ? `
+                <input type=\"text\" placeholder=\"hh:mm-hh:mm\" value=\"${entry.time || ''}\" data-rdate=\"${dateKey}\" class=\"roster-time-input\" style=\"width:100%;padding:2px;text-align:center;border:1px solid #ccc;border-radius:3px;font-size:12px;\" />
+                <select data-ldate=\"${dateKey}\" class=\"roster-location-select\" style=\"width:100%;margin-top:4px;padding:2px;border:1px solid #ccc;border-radius:3px;font-size:12px;\"><option value=\"\">選擇地點</option></select>
+                ` : `
+                <div style=\"height:52px\"></div>
+                <div style=\"height:26px\"></div>
+                `}
+            </div>`;
+            cur.setDate(cur.getDate() + 1);
+        }
+    }
+    html += '</div>';
+    container.innerHTML = html;
+    // 填充每格的地點下拉
+    populateRosterLocations(dataMap);
+}
+
+async function populateRosterLocations(dataMap) {
+    console.log('🏊‍♂️ 開始填充更表地點選擇器...');
+    
+    let locations = [];
+    try {
+        const res = await ipcRenderer.invoke('fetch-locations');
+        locations = (res && res.success) ? res.locations : [];
+        console.log(`📍 獲取到 ${locations.length} 個地點:`, locations);
+    } catch (e) {
+        console.error('❌ 獲取地點失敗:', e);
+    }
+    
+    const selectors = document.querySelectorAll('#rosterCalendarContainer select.roster-location-select');
+    console.log(`🎯 找到 ${selectors.length} 個地點選擇器`);
+    
+    selectors.forEach((sel, index) => {
+        const dateKey = sel.getAttribute('data-ldate');
+        const current = (dataMap[dateKey] && dataMap[dateKey].location) || '';
+        
+        console.log(`📅 處理第 ${index + 1} 個選擇器:`);
+        console.log(`   日期: ${dateKey}`);
+        console.log(`   當前值: "${current}"`);
+        
+        const options = '<option value="">選擇地點</option>' + 
+                       locations.map(l => `<option value="${l}" ${l===current?'selected':''}>${l}</option>`).join('');
+        
+        sel.innerHTML = options;
+        
+        console.log(`   ✅ 填充完成，選項數: ${sel.options.length}`);
+        
+        // 驗證是否正確設置了選中值
+        if (current && sel.value !== current) {
+            console.warn(`⚠️  警告: 預期選中值 "${current}"，實際值 "${sel.value}"`);
+        }
+    });
+    
+    console.log('✅ 地點選擇器填充完成');
+}
+
+// 保存更表
+window.saveCoachRoster = async function() {
+    const coachSelector = document.getElementById('coachSelector');
+    const rosterMonthSelect = document.getElementById('rosterMonthSelect');
+    if (!coachSelector.value) { alert('請先選擇教練'); return; }
+    if (!rosterMonthSelect.value) { alert('請先選擇月份'); return; }
+    const coachName = coachSelector.options[coachSelector.selectedIndex].text;
+    const roster = {};
+    
+    console.log('🔍 開始收集更表數據...');
+    
+    // 收集所有時間輸入框的數據
+    const timeInputs = document.querySelectorAll('#rosterCalendarContainer .roster-time-input');
+    console.log(`📝 找到 ${timeInputs.length} 個時間輸入框`);
+    
+    timeInputs.forEach((inp, index) => {
+        const dateKey = inp.getAttribute('data-rdate');
+        const time = (inp.value || '').trim();
+        const locSel = document.querySelector(`#rosterCalendarContainer select.roster-location-select[data-ldate="${dateKey}"]`);
+        const location = locSel ? (locSel.value || '').trim() : '';
+        
+        console.log(`📅 處理第 ${index + 1} 個輸入框:`);
+        console.log(`   日期: ${dateKey}`);
+        console.log(`   時間: "${time}"`);
+        console.log(`   地點選擇器存在: ${!!locSel}`);
+        console.log(`   地點值: "${location}"`);
+        
+        if (!locSel) {
+            console.warn(`⚠️  警告: 日期 ${dateKey} 的地點選擇器不存在`);
+        }
+        
+        // 改進的邏輯：只要有時間或地點就保存，即使其中一個為空
+        if (time || location) {
+            roster[dateKey] = { time, location };
+            console.log(`   ✅ 加入更表: ${JSON.stringify(roster[dateKey])}`);
+        } else {
+            console.log(`   ❌ 跳過: 時間和地點都為空`);
+        }
+        
+        // 額外檢查：如果UI顯示有地點但收集到的是空值，記錄警告
+        if (locSel && locSel.selectedIndex > 0 && !location) {
+            console.warn(`⚠️  異常: 日期 ${dateKey} 的選擇器有選中項但值為空`);
+            console.warn(`   選擇器選中索引: ${locSel.selectedIndex}`);
+            console.warn(`   選擇器選中文本: "${locSel.options[locSel.selectedIndex]?.text}"`);
+            console.warn(`   選擇器值: "${locSel.value}"`);
+        }
+    });
+    
+    console.log('📊 最終收集的更表數據:');
+    console.log(JSON.stringify(roster, null, 2));
+    
+    // 額外檢查：驗證所有地點選擇器的狀態
+    console.log('\n🔍 驗證地點選擇器狀態:');
+    const allLocationSelectors = document.querySelectorAll('#rosterCalendarContainer select.roster-location-select');
+    allLocationSelectors.forEach((sel, index) => {
+        const dateKey = sel.getAttribute('data-ldate');
+        const selectedIndex = sel.selectedIndex;
+        const selectedText = sel.options[selectedIndex]?.text || '';
+        const selectedValue = sel.value || '';
+        
+        console.log(`選擇器 ${index + 1} (${dateKey}):`);
+        console.log(`   選中索引: ${selectedIndex}`);
+        console.log(`   選中文本: "${selectedText}"`);
+        console.log(`   選中值: "${selectedValue}"`);
+        console.log(`   總選項數: ${sel.options.length}`);
+        
+        // 檢查是否有選中但值為空的情況
+        if (selectedIndex > 0 && !selectedValue) {
+            console.error(`❌ 異常: 日期 ${dateKey} 有選中項但值為空!`);
+        }
+    });
+    
+    try {
+        const saveData = { phone: coachSelector.value, name: coachName, roster };
+        console.log('💾 準備保存數據:', JSON.stringify(saveData, null, 2));
+        
+        await ipcRenderer.invoke('save-coach-roster', saveData);
+        alert('更表保存成功');
+        console.log('✅ 更表保存成功');
+    } catch (e) {
+        console.error('❌ 保存更表失敗:', e);
+        alert('保存更表失敗: ' + e.message);
+    }
+}
+
 // 保存教練工時
 window.saveCoachWorkHours = async function() {
     const coachSelector = document.getElementById('coachSelector');
     const monthSelect = document.getElementById('coachMonthSelect');
+    const locationSelect = document.getElementById('coachLocationSelect');
+    const clubSelect = document.getElementById('coachClubSelect');
     
-    if (!coachSelector.value) {
-        alert('請先選擇教練');
-        return;
-    }
-    
-    if (!monthSelect.value) {
-        alert('請先選擇月份');
-        return;
-    }
-    
+    if (!coachSelector.value) { alert('請先選擇教練'); return; }
+    if (!monthSelect.value) { alert('請先選擇月份'); return; }
+    if (!locationSelect.value) { alert('請先選擇地點'); return; }
+    if (!clubSelect.value) { alert('請先選擇泳會'); return; }
     try {
         const workHours = {};
         const inputs = document.querySelectorAll('#calendarContainer input[data-date]');
-        
         inputs.forEach(input => {
             const date = input.dataset.date;
             const hours = parseFloat(input.value) || 0;
-            if (hours > 0) {
-                workHours[date] = hours;
-            }
+            if (hours > 0) workHours[date] = hours;
         });
-        
         await ipcRenderer.invoke('save-coach-work-hours', { 
             phone: coachSelector.value, 
-            workHours 
+            workHours,
+            location: locationSelect.value,
+            club: clubSelect.value
         });
-        
         alert('工時保存成功');
-        updateCoachStatsFromInputs();
+        
+        // 保存成功後重新載入工時數據以確保同步
+        await loadCoachWorkHours();
     } catch (error) {
         console.error('保存工時失敗:', error);
         alert('保存工時失敗');
@@ -4529,34 +5188,26 @@ window.exportCoachWorkHours = async function() {
     const coachSelector = document.getElementById('coachSelector');
     const monthSelect = document.getElementById('coachMonthSelect');
     const exportPath = document.getElementById('exportPath').value;
+    const locationSelect = document.getElementById('coachLocationSelect');
+    const clubSelect = document.getElementById('coachClubSelect');
     
-    if (!coachSelector.value) {
-        alert('請先選擇教練');
-        return;
-    }
-    
-    if (!monthSelect.value) {
-        alert('請先選擇月份');
-        return;
-    }
-    
-    if (!exportPath) {
-        alert('請先選擇保存路徑');
-        return;
-    }
-    
+    if (!coachSelector.value) { alert('請先選擇教練'); return; }
+    if (!monthSelect.value) { alert('請先選擇月份'); return; }
+    if (!exportPath) { alert('請先選擇保存路徑'); return; }
+    if (!locationSelect.value) { alert('請先選擇地點'); return; }
+    if (!clubSelect.value) { alert('請先選擇泳會'); return; }
     try {
         const [year, month] = monthSelect.value.split('-');
         const coachName = coachSelector.options[coachSelector.selectedIndex].text;
-        
         await ipcRenderer.invoke('export-coach-work-hours', { 
             phone: coachSelector.value, 
             year: parseInt(year), 
             month: parseInt(month), 
             coachName,
-            exportPath
+            exportPath,
+            location: locationSelect.value,
+            club: clubSelect.value
         });
-        
         alert('報表導出成功');
     } catch (error) {
         console.error('導出報表失敗:', error);

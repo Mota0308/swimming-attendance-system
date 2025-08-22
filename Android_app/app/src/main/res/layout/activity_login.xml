@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
+    android:background="#F5F5F5"
     android:fillViewport="true">
 
     <LinearLayout
@@ -17,120 +17,121 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/login_title"
+            android:text="游泳課程出席管理系統"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:textColor="@color/text_primary"
+            android:textColor="#333333"
             android:layout_marginBottom="32dp" />
 
         <!-- 登入身份選擇 -->
-        <com.google.android.material.card.MaterialCardView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#FFFFFF"
+            android:padding="20dp"
             android:layout_marginBottom="24dp"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/surface">
+            android:elevation="4dp">
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:text="登入身份"
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="登入身份"
-                    android:textSize="16sp"
-                    android:textColor="@color/text_primary"
-                    android:layout_marginBottom="16dp" />
+            <Spinner
+                android:id="@+id/loginRoleSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:spinnerMode="dropdown"
+                android:background="@drawable/bg_text_border"
+                android:padding="12dp" />
 
-                <Spinner
-                    android:id="@+id/loginRoleSpinner"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:spinnerMode="dropdown" />
-
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
         <!-- 登入表單 -->
-        <com.google.android.material.card.MaterialCardView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/surface">
+            android:orientation="vertical"
+            android:background="#FFFFFF"
+            android:padding="24dp"
+            android:elevation="4dp">
 
-            <LinearLayout
+            <!-- 電話號碼輸入 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="電話號碼"
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <EditText
+                android:id="@+id/phoneEditText"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:inputType="phone"
+                android:hint="請輸入電話號碼"
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:textColorHint="#999999"
+                android:background="@drawable/bg_text_border"
+                android:padding="16dp"
+                android:layout_marginBottom="20dp" />
+
+            <!-- 測試賬號提示 -->
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="24dp">
+                android:layout_marginBottom="20dp"
+                android:text="💡 測試賬號: 0912345678 密碼: 123456"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:gravity="center"
+                android:padding="12dp"
+                android:background="#F8F9FA" />
 
-                <!-- 電話號碼輸入 -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/phoneInputLayout"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    android:hint="@string/phone_number"
-                    app:boxStrokeColor="@color/primary"
-                    app:hintTextColor="@color/primary">
+            <!-- 密碼輸入 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="密碼"
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/phoneEditText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="text"
-                        android:hint="測試賬號: 0912345678"
-                        android:maxLines="1" />
+            <EditText
+                android:id="@+id/passwordEditText"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:inputType="textPassword"
+                android:hint="請輸入密碼"
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:textColorHint="#999999"
+                android:background="@drawable/bg_text_border"
+                android:padding="16dp"
+                android:layout_marginBottom="24dp" />
 
-                </com.google.android.material.textfield.TextInputLayout>
+            <!-- 登入按鈕 -->
+            <Button
+                android:id="@+id/loginButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="登入"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#2196F3"
+                android:layout_marginTop="8dp" />
 
-                <!-- 測試賬號提示 -->
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    android:text="💡 測試賬號: 0912345678 密碼: 123456"
-                    android:textSize="12sp"
-                    android:gravity="center"
-                    android:padding="8dp" />
-
-                <!-- 密碼輸入 -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/passwordInputLayout"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="24dp"
-                    android:hint="@string/password"
-                    app:boxStrokeColor="@color/primary"
-                    app:hintTextColor="@color/primary"
-                    app:passwordToggleEnabled="true">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/passwordEditText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="textPassword"
-                        android:maxLines="1" />
-
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <!-- 登入按鈕 -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/loginButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:text="@string/login"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="8dp" />
-
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
         <!-- 錯誤訊息 -->
         <TextView
@@ -138,7 +139,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:textColor="@color/error"
+            android:textColor="#E74C3C"
             android:textSize="14sp"
             android:gravity="center"
             android:visibility="gone" />

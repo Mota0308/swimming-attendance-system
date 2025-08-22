@@ -92,8 +92,8 @@ class LoginActivity : AppCompatActivity() {
                     showLoading(false)
                     showError("登入失敗：${e.message}")
                 }
+            }
         }
-    }
 
     private fun showLoading(loading: Boolean) {
         binding.errorTextView.visibility = View.GONE

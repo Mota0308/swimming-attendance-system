@@ -383,27 +383,21 @@ ipcMain.handle('import-students-to-cloud', async (event, grouped, allowCreate = 
                 
                 if (dbStu) {
                     console.log(`找到雲端學生: ${dbStu.name}, 將進行更新`);
+                    console.log(`現有數據:`, JSON.stringify(dbStu, null, 2));
+                    console.log(`新數據:`, JSON.stringify(stu, null, 2));
                     matchedCount++;
-                    let updateFields = {};
-                    // 只 set 有變動的欄位
-                    for (const key of Object.keys(stu)) {
-                        if (stu[key] !== dbStu[key]) {
-                            updateFields[key] = stu[key];
-                            console.log(`欄位 ${key} 有變動: ${dbStu[key]} -> ${stu[key]}`);
-                        }
-                    }
                     
-                    // 只有變動欄位才更新
-                    if (Object.keys(updateFields).length > 0) {
-                        const result = await collection.updateOne(
-                            { name: stu.name, "上課日期": stu["上課日期"] },
-                            { $set: updateFields },
-                            { upsert: false }
-                        );
-                        modifiedCount += result.modifiedCount;
-                        console.log(`更新學生 ${stu.name} 的欄位:`, Object.keys(updateFields), `影響文檔數: ${result.modifiedCount}`);
-                    } else {
-                        console.log(`學生 ${stu.name} 沒有變動，跳過更新`);
+                    // 強制更新所有欄位，確保數據同步
+                    const result = await collection.updateOne(
+                        { name: stu.name, "上課日期": stu["上課日期"] },
+                        { $set: stu },
+                        { upsert: false }
+                    );
+                    
+                    // 即使沒有實際修改，也計算為已處理的記錄
+                    if (result.matchedCount > 0) {
+                        modifiedCount += 1;
+                        console.log(`更新學生 ${stu.name} 的記錄，匹配文檔數: ${result.matchedCount}, 修改文檔數: ${result.modifiedCount}`);
                     }
                 } else {
                     console.log(`學生 ${stu.name} 不存在於雲端`);
@@ -487,6 +481,46 @@ ipcMain.handle('fetch-students-from-cloud', async (event) => {
     }
 }); 
 
+// 新增：從 Location_club 讀取地點與泳會
+ipcMain.handle('fetch-locations', async () => {
+  try {
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const col = db.collection('Location_club');
+    const raw = await col.distinct('location');
+    await client.close();
+    const normalize = (s) => (s || '').replace(/[🏊‍♂🏊♂]/g, '').replace(/\s+/g, ' ').trim();
+    const set = new Set();
+    (raw || []).forEach(v => set.add(normalize(v)));
+    const locations = Array.from(set).filter(v => v);
+    return { success: true, locations };
+  } catch (e) {
+    return { success: false, error: e.message, locations: [] };
+  }
+});
+
+ipcMain.handle('fetch-clubs-by-location', async (event, location) => {
+  try {
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const col = db.collection('Location_club');
+    const normalize = (s) => (s || '').replace(/[🏊‍♂🏊♂]/g, '').replace(/\s+/g, ' ').trim();
+    const locNorm = normalize(location);
+    const docs = await col.find({}).project({ location: 1, club: 1, _id: 0 }).toArray();
+    const set = new Set();
+    (docs || []).forEach(d => {
+      if (normalize(d.location) === locNorm) set.add(normalize(d.club));
+    });
+    const clubs = Array.from(set).filter(v => v);
+    await client.close();
+    return { success: true, clubs };
+  } catch (e) {
+    return { success: false, error: e.message, clubs: [] };
+  }
+});
+
 // 教練工時相關的IPC處理程序
 ipcMain.handle('fetch-all-coaches', async (event) => {
     try {
@@ -524,34 +558,12 @@ ipcMain.handle('create-coach', async (event, { name, phone, password }) => {
             studentName: name,
             phone: phone,
             password: password,
+            location: '',
+            club: '',
             createdAt: new Date()
         };
         
-        const result = await coachCollection.insertOne(newCoach);
-        
-        // 為新教練創建初始工時記錄（當前月份）
-        const currentDate = new Date();
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth() + 1;
-        
-        // 生成該月份的所有日期
-        const daysInMonth = new Date(year, month, 0).getDate();
-        const workHoursRecords = [];
-        
-        for (let day = 1; day <= daysInMonth; day++) {
-            const dateKey = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-            workHoursRecords.push({
-                phone: phone,
-                date: dateKey,
-                hours: 0,
-                createdAt: new Date()
-            });
-        }
-        
-        if (workHoursRecords.length > 0) {
-            await workHoursCollection.insertMany(workHoursRecords);
-        }
-        
+    await coachCollection.insertOne(newCoach);
         await client.close();
         return { success: true, message: '教練創建成功' };
     } catch (e) {
@@ -560,7 +572,7 @@ ipcMain.handle('create-coach', async (event, { name, phone, password }) => {
     }
 });
 
-ipcMain.handle('fetch-coach-work-hours', async (event, { phone, year, month }) => {
+ipcMain.handle('fetch-coach-work-hours', async (event, { phone, year, month, location, club }) => {
     try {
         const client = new MongoClient(MONGO_URI);
         await client.connect();
@@ -570,18 +582,29 @@ ipcMain.handle('fetch-coach-work-hours', async (event, { phone, year, month }) =
         const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
         const endDate = `${year}-${month.toString().padStart(2, '0')}-31`;
         
-        const workHours = await collection.find({
+        const query = {
             phone: phone,
-            date: {
-                $gte: startDate,
-                $lte: endDate
-            }
-        }).toArray();
+      date: { $gte: startDate, $lte: endDate },
+      location: location || '',
+      club: club || ''
+    };
+    
+    let workHours = await collection.find(query).toArray();
+    
+    // 如該月該地點+泳會沒有資料，為該教練創建0值資料格（方便後續編輯保存）
+    if (workHours.length === 0) {
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const docs = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateKey = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        docs.push({ phone, date: dateKey, hours: 0, location: location || '', club: club || '', createdAt: new Date() });
+        }
+      if (docs.length) await collection.insertMany(docs);
+      workHours = docs;
+    }
         
         const workHoursMap = {};
-        workHours.forEach(record => {
-            workHoursMap[record.date] = record.hours;
-        });
+    workHours.forEach(record => { workHoursMap[record.date] = record.hours; });
         
         await client.close();
         return workHoursMap;
@@ -591,7 +614,7 @@ ipcMain.handle('fetch-coach-work-hours', async (event, { phone, year, month }) =
     }
 });
 
-ipcMain.handle('save-coach-work-hours', async (event, { phone, workHours }) => {
+ipcMain.handle('save-coach-work-hours', async (event, { phone, workHours, location = '', club = '' }) => {
     try {
         const client = new MongoClient(MONGO_URI);
         await client.connect();
@@ -602,8 +625,8 @@ ipcMain.handle('save-coach-work-hours', async (event, { phone, workHours }) => {
         Object.entries(workHours).forEach(([date, hours]) => {
             operations.push({
                 updateOne: {
-                    filter: { phone: phone, date: date },
-                    update: { $set: { phone: phone, date: date, hours: hours, updatedAt: new Date() } },
+          filter: { phone: phone, date: date, location: location, club: club },
+          update: { $set: { phone, date, hours, location, club, updatedAt: new Date() } },
                     upsert: true
                 }
             });
@@ -621,7 +644,7 @@ ipcMain.handle('save-coach-work-hours', async (event, { phone, workHours }) => {
     }
 });
 
-ipcMain.handle('export-coach-work-hours', async (event, { phone, year, month, coachName, exportPath }) => {
+ipcMain.handle('export-coach-work-hours', async (event, { phone, year, month, coachName, exportPath, location = '', club = '' }) => {
     try {
         const client = new MongoClient(MONGO_URI);
         await client.connect();
@@ -633,10 +656,9 @@ ipcMain.handle('export-coach-work-hours', async (event, { phone, year, month, co
         
         const workHours = await collection.find({
             phone: phone,
-            date: {
-                $gte: startDate,
-                $lte: endDate
-            }
+      date: { $gte: startDate, $lte: endDate },
+      location: location || '',
+      club: club || ''
         }).sort({ date: 1 }).toArray();
         
         await client.close();
@@ -645,14 +667,11 @@ ipcMain.handle('export-coach-work-hours', async (event, { phone, year, month, co
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('教練工時報表');
         
-        // 添加標題
         worksheet.addRow([`${coachName}${year}年${month}月份工時記錄表`]);
+    worksheet.addRow([`地點：${location || '—'}   泳會：${club || '—'}`]);
         worksheet.addRow([]);
-        
-        // 添加表頭
         worksheet.addRow(['日期', '星期', '工時(小時)', '備註']);
         
-        // 添加數據
         let totalHours = 0;
         workHours.forEach(record => {
             const date = new Date(record.date);
@@ -660,16 +679,12 @@ ipcMain.handle('export-coach-work-hours', async (event, { phone, year, month, co
             worksheet.addRow([record.date, `星期${weekday}`, record.hours, '']);
             totalHours += record.hours;
         });
-        
-        // 添加統計
         worksheet.addRow([]);
         worksheet.addRow(['總計', '', totalHours, '']);
-        
-        // 設置列寬
         worksheet.columns.forEach(col => { col.width = 15; });
         
-        // 保存文件到指定路徑
-        const filename = path.join(exportPath, `${coachName}${year}年${month}月份工時記錄表.xlsx`);
+    const safe = (s) => (s || '').toString().replace(/[\\/\\:*?"<>|]/g, '_');
+    const filename = path.join(exportPath, `${safe(coachName)}_${year}年${month}月_${safe(location)}_${safe(club)}_工時記錄表.xlsx`);
         await workbook.xlsx.writeFile(filename);
         
         return { success: true, filePath: filename };
@@ -696,4 +711,58 @@ ipcMain.handle('select-export-directory', async (event) => {
         console.error('選擇導出目錄失敗:', e);
         return { success: false, error: e.message };
     }
+}); 
+
+// 更表：載入
+ipcMain.handle('fetch-coach-roster', async (event, { phone, name, year, month }) => {
+  try {
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const collection = db.collection('Coach_roster');
+    const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
+    const endDate = `${year}-${month.toString().padStart(2, '0')}-31`;
+    const docs = await collection.find({
+      phone,
+      name,
+      date: { $gte: startDate, $lte: endDate }
+    }).toArray();
+    await client.close();
+    const map = {};
+    docs.forEach(d => { map[d.date] = { time: d.time || '', location: d.location || '' }; });
+    return { success: true, data: map };
+  } catch (e) {
+    console.error('載入更表失敗:', e);
+    return { success: false, error: e.message, data: {} };
+  }
+});
+
+// 更表：保存
+ipcMain.handle('save-coach-roster', async (event, { phone, name, roster }) => {
+  try {
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const collection = db.collection('Coach_roster');
+    const ops = [];
+    Object.entries(roster || {}).forEach(([date, val]) => {
+      const time = (val && val.time) || '';
+      const location = (val && val.location) || '';
+      if (!time && !location) return;
+      ops.push({
+        updateOne: {
+          filter: { phone, name, date },
+          update: { $set: { phone, name, date, time, location, updatedAt: new Date() } },
+          upsert: true
+        }
+      });
+    });
+    if (ops.length) await collection.bulkWrite(ops);
+    await client.close();
+
+    return { success: true };
+  } catch (e) {
+    console.error('保存更表失敗:', e);
+    return { success: false, error: e.message };
+  }
 }); 

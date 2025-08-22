@@ -35,8 +35,7 @@ class AttendanceAdapter : ListAdapter<Student, AttendanceAdapter.ViewHolder>(Stu
                 timeTextView.text = student.time
                 dateTextView.text = student.date
                 attendanceTextView.text = student.attendance
-                noteTextView.text = student.note
-                option3TextView.text = student.option3
+                notesTextView.text = student.note ?: ""
             }
         }
     }

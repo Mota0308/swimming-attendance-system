@@ -1,171 +1,133 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/background">
+    android:background="#F8F9FA">
 
-    <!-- 頂部工具欄 -->
-    <com.google.android.material.appbar.AppBarLayout
+    <!-- 頂部標題 -->
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/surface"
-        app:elevation="4dp">
+        android:text="🏊‍♂ 游泳課程管理系統 - 家長版本"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="#1976D2"
+        android:gravity="center"
+        android:background="#FFFFFF"
+        android:padding="16dp"
+        android:elevation="2dp" />
 
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="@color/surface"
-            app:title="@string/attendance_record"
-            app:titleTextColor="@color/text_primary"
-            app:menu="@menu/parent_main_menu" />
-
-    </com.google.android.material.appbar.AppBarLayout>
-
-    <!-- 篩選區域 -->
-    <com.google.android.material.card.MaterialCardView
+    <!-- 用戶信息 -->
+    <TextView
+        android:id="@+id/userInfoText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="2dp"
-        app:cardBackgroundColor="@color/surface">
+        android:text="👤 當前用戶信息"
+        android:textSize="16sp"
+        android:textColor="#333333"
+        android:gravity="center"
+        android:background="#FFFFFF"
+        android:padding="12dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp"
+        android:elevation="1dp" />
 
+    <!-- 功能按鈕區域 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+        android:background="#FFFFFF"
+        android:padding="20dp"
+        android:layout_marginBottom="16dp"
+        android:elevation="4dp">
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="篩選條件"
+            android:text="📋 功能選單"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#1976D2"
+            android:layout_marginBottom="20dp" />
+
+        <!-- 獲取學生資料按鈕 -->
+        <Button
+            android:id="@+id/getStudentDataButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="📥 獲取我的學生資料"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:textColor="@color/text_primary"
-                android:layout_marginBottom="16dp" />
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#4CAF50"
+            android:layout_marginBottom="12dp" />
 
-            <!-- 日期選擇 -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/dateInputLayout"
+        <!-- 我的學生出席記錄按鈕 -->
+        <Button
+            android:id="@+id/myStudentAttendanceButton"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:hint="@string/select_date"
-                app:boxStrokeColor="@color/primary"
-                app:hintTextColor="@color/primary">
+            android:layout_height="56dp"
+            android:text="📊 我的學生出席記錄"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#2196F3"
+            android:layout_marginBottom="12dp" />
 
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/dateEditText"
+        <!-- 學生總覽按鈕 -->
+        <Button
+            android:id="@+id/studentOverviewButton"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="none"
-                    android:focusable="false"
-                    android:clickable="true" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- 地點選擇 -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/locationInputLayout"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:hint="@string/select_location"
-                app:boxStrokeColor="@color/primary"
-                app:hintTextColor="@color/primary">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/locationEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="none"
-                    android:focusable="false"
-                    android:clickable="true" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- 班級選擇 -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/classInputLayout"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:hint="@string/select_class"
-                app:boxStrokeColor="@color/primary"
-                app:hintTextColor="@color/primary">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/classEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="none"
-                    android:focusable="false"
-                    android:clickable="true" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- 時間選擇 -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/timeInputLayout"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:hint="@string/select_time"
-                app:boxStrokeColor="@color/primary"
-                app:hintTextColor="@color/primary">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/timeEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="none"
-                    android:focusable="false"
-                    android:clickable="true" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- 搜尋按鈕 -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/searchButton"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="@string/search"
+            android:layout_height="56dp"
+            android:text="📈 學生總覽"
                 android:textSize="16sp"
-                app:cornerRadius="8dp" />
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#FF9800" />
 
         </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
 
-    <!-- 出席記錄列表 -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/attendanceRecyclerView"
+    <!-- 學生列表區域 -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginHorizontal="16dp"
+        android:orientation="vertical"
+        android:background="#FFFFFF"
+        android:padding="16dp"
+        android:elevation="2dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="👥 學生列表"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#333333"
         android:layout_marginBottom="16dp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <LinearLayout
+                android:id="@+id/studentListContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+        </ScrollView>
+
+    </LinearLayout>
 
     <!-- 載入中指示器 -->
     <ProgressBar
-        android:id="@+id/progressBar"
+        android:id="@+id/loadingProgressBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:visibility="gone" />
-
-    <!-- 無資料提示 -->
-    <TextView
-        android:id="@+id/noDataTextView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="@string/no_data"
-        android:textSize="16sp"
-        android:textColor="@color/text_secondary"
         android:visibility="gone" />
 
 </LinearLayout> 

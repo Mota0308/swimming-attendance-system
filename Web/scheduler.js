@@ -218,20 +218,36 @@
   }
 
   function makeDroppable(containerEl, slot) {
-    containerEl.addEventListener('dragover', (e) => { e.preventDefault(); containerEl.classList.add('drop-target'); });
+    containerEl.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; containerEl.classList.add('drop-target'); });
     containerEl.addEventListener('dragleave', () => containerEl.classList.remove('drop-target'));
     containerEl.addEventListener('drop', async (e) => {
       e.preventDefault(); containerEl.classList.remove('drop-target');
-      if (!dragging) return;
-      const from = scheduleData.timeSlots.find(s => s.id === dragging.fromSlotId);
+      const droppedId = e.dataTransfer && e.dataTransfer.getData ? e.dataTransfer.getData('text/plain') : null;
+      if (!dragging && !droppedId) return;
+      const from = scheduleData.timeSlots.find(s => s.id === (dragging?.fromSlotId));
       const to = scheduleData.timeSlots.find(s => s.id === slot.id);
-      if (!from || !to) return;
-      const idx = from.students.findIndex(st => st.id === dragging.student.id);
-      if (idx === -1) return;
-      const moving = from.students.splice(idx,1)[0];
+      if (!to) return;
+      if (from && from.id === to.id) { dragging = null; return; }
+      // 找出被拖動的學生
+      let moving;
+      if (from) {
+        const idx = from.students.findIndex(st => st.id === (dragging?.student?.id));
+        if (idx !== -1) { moving = from.students.splice(idx,1)[0]; }
+      }
+      if (!moving && droppedId) {
+        // 後備：若 dragging 失敗，透過 id 從所有時段尋找
+        const pack = (() => {
+          for (const s of scheduleData.timeSlots) {
+            const i = s.students.findIndex(x => x.id === droppedId);
+            if (i !== -1) return { from: s, idx: i };
+          }
+          return null;
+        })();
+        if (pack) { moving = pack.from.students.splice(pack.idx,1)[0]; }
+      }
+      if (!moving) return;
       to.students.push(moving);
       renderAll();
-      // 持久化到後端（依電話+姓名更新）
       try {
         if (moving.phone) {
           await databaseConnector.updateStudentLesson({
@@ -255,8 +271,8 @@
   function createStudentCard(stu, slotId) {
     const card = el(`<div class="student-card bg-white border rounded-md p-3 flex items-center justify-between shadow-sm" draggable="true"></div>`);
     card.dataset.id = stu.id; card.dataset.slot = slotId;
-    card.addEventListener('dragstart', () => { dragging = { student: stu, fromSlotId: slotId }; card.classList.add('dragging'); });
-    card.addEventListener('dragend', () => { card.classList.remove('dragging'); setTimeout(() => dragging=null, 100); });
+    card.addEventListener('dragstart', (e) => { try { e.dataTransfer.setData('text/plain', stu.id); e.dataTransfer.effectAllowed='move'; } catch(_){} dragging = { student: stu, fromSlotId: slotId }; card.classList.add('dragging'); });
+    card.addEventListener('dragend', () => { card.classList.remove('dragging'); setTimeout(() => { dragging=null; }, 50); });
 
     const left = el(`<div class="flex items-center"></div>`);
     const btn = el(`<button class="w-6 h-6 rounded-full border flex items-center justify-center mr-2 text-xs"></button>`);

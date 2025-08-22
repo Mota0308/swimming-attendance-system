@@ -3,69 +3,205 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
-    android:padding="12dp">
+    android:background="#F8F9FA"
+    android:padding="16dp">
+
+
 
     <!-- 頂部Tab -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@color/surface"
-        android:padding="8dp">
+        android:background="#FFFFFF"
+        android:padding="4dp"
+        android:layout_marginBottom="12dp"
+        android:elevation="2dp">
 
         <TextView
             android:id="@+id/tabAttendance"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="出席記錄"
+            android:text="📊 出席記錄"
             android:gravity="center"
-            android:padding="10dp"
-            android:textStyle="bold" />
+            android:padding="8dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#1976D2"
+            android:background="#E3F2FD" />
 
         <TextView
             android:id="@+id/tabConfig"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="系統配置"
+            android:text="⚙️ 系統配置"
             android:gravity="center"
-            android:padding="10dp"
-            android:textStyle="bold" />
+            android:padding="8dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#666666" />
 
         <TextView
             android:id="@+id/tabCoachMgmt"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="教練管理"
+            android:text="👥 教練管理"
             android:gravity="center"
-            android:padding="10dp"
-            android:textStyle="bold" />
+            android:padding="8dp"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#666666" />
     </LinearLayout>
 
-    <!-- 出席記錄（簡化） -->
+    <!-- 出席記錄 -->
     <LinearLayout
         android:id="@+id/sectionAttendance"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="0.5"
         android:orientation="vertical"
-        android:padding="12dp"
-        android:visibility="gone">
+        android:background="#FFFFFF"
+        android:padding="20dp"
+        android:visibility="gone"
+        android:elevation="2dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="出席記錄（管理員簡化視圖）"
-            android:textSize="16sp"
+            android:text="📊 出席記錄"
+            android:textSize="20sp"
             android:textStyle="bold"
-            android:paddingBottom="8dp" />
+            android:textColor="#1976D2"
+            android:layout_marginBottom="20dp" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- 搜索功能 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="此處可嵌入家長版的出席列表或簡化統計。" />
+            android:orientation="vertical"
+            android:background="#F8F9FA"
+            android:padding="12dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔍 搜索功能"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#333333"
+                android:layout_marginBottom="8dp" />
+
+            <!-- 搜索條件行（地點搜索 + 日期搜索） -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="12dp">
+
+                <!-- 地點搜索行 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="12dp">
+
+                    <!-- 地點搜索標籤 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="地點搜索："
+                        android:textSize="14sp"
+                        android:textColor="#333333"
+                        android:layout_marginBottom="4dp" />
+
+                    <!-- 地點搜索下拉選單 -->
+                    <Spinner
+                        android:id="@+id/attendanceLocationSpinner"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:background="@drawable/bg_text_border" />
+                </LinearLayout>
+
+                <!-- 日期搜索行 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="12dp">
+
+                    <!-- 日期搜索標籤 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="日期搜索："
+                        android:textSize="14sp"
+                        android:textColor="#333333"
+                        android:layout_marginBottom="4dp" />
+
+                    <!-- 日期搜索行（日期顯示 + 日期選擇按鈕） -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <!-- 日期顯示文本 -->
+                        <TextView
+                            android:id="@+id/attendanceDateText"
+                            android:layout_width="0dp"
+                            android:layout_height="48dp"
+                            android:layout_weight="1"
+                            android:text="選擇日期"
+                            android:gravity="center"
+                            android:background="@drawable/bg_text_border"
+                            android:textColor="#666666"
+                            android:layout_marginEnd="8dp" />
+
+                        <!-- 日期選擇按鈕 -->
+                        <Button
+                            android:id="@+id/attendancePickDateButton"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:text="📅"
+                            android:textSize="16sp"
+                            android:backgroundTint="#FF9800"
+                            android:textColor="#FFFFFF" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="end">
+
+                <Button
+                    android:id="@+id/attendanceSearchButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="搜索"
+                    android:textSize="14sp"
+                    android:backgroundTint="#4CAF50"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginEnd="8dp" />
+
+                <Button
+                    android:id="@+id/attendanceResetButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="重置"
+                    android:textSize="14sp"
+                    android:backgroundTint="#9E9E9E"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 學生資料表格將在彈出窗口中顯示 -->
     </LinearLayout>
 
     <!-- 系統配置（簡化） -->
@@ -74,21 +210,185 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp"
-        android:visibility="gone">
+        android:background="#FFFFFF"
+        android:padding="20dp"
+        android:visibility="gone"
+        android:elevation="2dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="系統配置（簡化）"
-            android:textSize="16sp"
+            android:text="⚙️ 系統配置"
+            android:textSize="20sp"
             android:textStyle="bold"
-            android:paddingBottom="8dp" />
+            android:textColor="#1976D2"
+            android:layout_marginBottom="20dp" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- 搜索功能 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="此處可直接使用教練版本主界面的部分功能。" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔍 搜索："
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:layout_marginEnd="8dp" />
+
+            <EditText
+                android:id="@+id/configSearchEdit"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:hint="輸入搜索關鍵詞"
+                android:background="@drawable/bg_text_border"
+                android:padding="12dp"
+                android:textSize="14sp"
+                android:layout_marginEnd="8dp" />
+
+            <Button
+                android:id="@+id/configSearchButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="搜索"
+                android:textSize="14sp"
+                android:backgroundTint="#FF9800"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+
+        <!-- 功能按鈕區域 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="20dp">
+
+            <!-- 第一行按鈕 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="12dp">
+
+                <Button
+                    android:id="@+id/generateScheduleButton"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:text="📅 生成課表"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="#2196F3"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/createWaitlistButton"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:text="⏳ 創建待約"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="#FF9800"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginStart="6dp" />
+            </LinearLayout>
+
+            <!-- 第二行按鈕 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/addStudentButton"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:text="👤 添加學生"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="#4CAF50"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginEnd="6dp" />
+
+                <Button
+                    android:id="@+id/exportDataButton"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_weight="1"
+                    android:text="📤 導出資料"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:backgroundTint="#9C27B0"
+                    android:textColor="#FFFFFF"
+                    android:layout_marginStart="6dp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 搜索結果顯示區域 -->
+        <LinearLayout
+            android:id="@+id/searchResultsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔍 搜索結果"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#333333"
+                android:layout_marginBottom="12dp" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="200dp">
+
+                <LinearLayout
+                    android:id="@+id/searchResultsList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </ScrollView>
+        </LinearLayout>
+
+        <!-- 功能說明區域 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="20dp"
+            android:background="#F5F5F5"
+            android:padding="16dp"
+            android:visibility="gone"
+            android:id="@+id/functionDescriptionContainer">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="💡 功能說明"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#1976D2"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:id="@+id/functionDescriptionText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="點擊上方按鈕查看詳細功能說明"
+                android:textSize="14sp"
+                android:textColor="#666666" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- 教練管理 -->
@@ -97,14 +397,64 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:background="#FFFFFF"
+        android:padding="20dp"
+        android:elevation="2dp">
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="👥 教練管理"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#1976D2"
+            android:layout_marginBottom="20dp" />
+
+        <!-- 地點選擇 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingBottom="8dp">
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📍 選擇地點："
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:layout_marginEnd="8dp" />
+
+            <Spinner
+                android:id="@+id/locationSpinner"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_spinner"
+                android:layout_marginEnd="8dp"
+                android:popupBackground="#FFFFFF"
+                android:spinnerMode="dropdown" />
+
+            
+            
+        </LinearLayout>
+
+        <!-- 日期選擇 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📅 選擇日期："
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:layout_marginEnd="8dp" />
 
             <TextView
                 android:id="@+id/selectedDateText"
@@ -112,51 +462,88 @@
                 android:layout_height="wrap_content"
                 android:text="2025-01-01"
                 android:textStyle="bold"
-                android:textSize="16sp"
-                android:layout_marginEnd="8dp" />
+                android:textSize="18sp"
+                android:textColor="#1976D2"
+                android:layout_marginEnd="12dp" />
 
             <Button
                 android:id="@+id/pickDateButton"
                 android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="選擇日期"
+                android:textSize="14sp"
+                android:backgroundTint="#2196F3"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+
+        <!-- 教練搜索 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="選擇日期" />
+                android:text="🔍 搜索教練："
+                android:textSize="16sp"
+                android:textColor="#333333"
+                android:layout_marginEnd="8dp" />
 
             <EditText
                 android:id="@+id/coachSearchEdit"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:layout_weight="1"
-                android:hint="搜索教練姓名"
+                android:hint="輸入教練姓名"
                 android:background="@drawable/bg_text_border"
-                android:padding="8dp"
-                android:layout_marginStart="8dp" />
+                android:padding="12dp"
+                android:textSize="14sp"
+                android:layout_marginEnd="8dp" />
 
             <Button
                 android:id="@+id/searchCoachButton"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="48dp"
                 android:text="搜索"
-                android:layout_marginStart="8dp" />
-
-            <Button
-                android:id="@+id/uploadWorkHoursButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="上傳"
-                android:layout_marginStart="8dp" />
+                android:textSize="14sp"
+                android:backgroundTint="#FF9800"
+                android:textColor="#FFFFFF" />
         </LinearLayout>
 
-        <ScrollView
+        <!-- 上傳工時按鈕 -->
+        <Button
+            android:id="@+id/uploadWorkHoursButton"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1">
+            android:layout_height="56dp"
+            android:text="📤 上傳教練工時"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="16dp" />
 
+        <!-- 教練列表按鈕 -->
+        <Button
+            android:id="@+id/coachListButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="📋 教練列表"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:backgroundTint="#1976D2"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="20dp" />
+
+        <!-- 原有的教練列表容器（隱藏，由彈出窗口替代） -->
             <LinearLayout
                 android:id="@+id/coachListContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
-        </ScrollView>
+            android:orientation="vertical"
+            android:visibility="gone" />
 
     </LinearLayout>
 

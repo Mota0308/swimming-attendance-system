@@ -3,10 +3,12 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:padding="12dp"
-    android:background="@drawable/bg_button_primary"
+    android:padding="16dp"
+    android:background="#E3F2FD"
     android:clickable="true"
-    android:focusable="true">
+    android:focusable="true"
+    android:layout_marginBottom="4dp"
+    android:elevation="2dp">
 
     <TextView
         android:id="@+id/studentNameText"
@@ -14,8 +16,8 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:text="📚 學生姓名"
-        android:textSize="16sp"
-        android:textColor="@color/text_primary"
+        android:textSize="18sp"
+        android:textColor="#1976D2"
         android:textStyle="bold" />
 
     <TextView
@@ -24,16 +26,17 @@
         android:layout_height="wrap_content"
         android:text="⏳ 待約數量: 0"
         android:textSize="14sp"
-        android:textColor="@color/text_primary"
-        android:layout_marginEnd="8dp" />
+        android:textColor="#FF9800"
+        android:textStyle="bold"
+        android:layout_marginEnd="12dp" />
 
     <TextView
         android:id="@+id/expandIcon"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="▶"
-        android:textSize="18sp"
-        android:textColor="@color/text_primary"
+        android:textSize="20sp"
+        android:textColor="#1976D2"
         android:textStyle="bold" />
 
 </LinearLayout> 

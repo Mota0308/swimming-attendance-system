@@ -2,33 +2,90 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:padding="8dp">
+    android:orientation="vertical"
+    android:background="#F8F9FA"
+    android:padding="20dp"
+    android:layout_marginBottom="16dp">
+
+    <!-- 第一行：時間輸入框 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="16dp">
+
+        <EditText
+            android:id="@+id/startTimeEdit"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:hint="開始時間 (HHMM)"
+            android:inputType="number"
+            android:background="@drawable/bg_time_input"
+            android:padding="16dp"
+            android:textSize="16sp"
+            android:maxLines="1"
+            android:gravity="center_vertical"
+            android:layout_marginEnd="12dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:clickable="true"
+            android:enabled="true"
+            android:imeOptions="actionNext"
+            android:singleLine="true"
+            android:maxLength="4"
+            android:digits="0123456789" />
 
     <EditText
-        android:id="@+id/timeSlotEdit"
+            android:id="@+id/endTimeEdit"
         android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:hint="結束時間 (HHMM)"
+            android:inputType="number"
+            android:background="@drawable/bg_time_input"
+            android:padding="16dp"
+            android:textSize="16sp"
+            android:maxLines="1"
+            android:gravity="center_vertical"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:clickable="true"
+            android:enabled="true"
+            android:imeOptions="actionDone"
+            android:singleLine="true"
+            android:maxLength="4"
+            android:digits="0123456789" />
+    </LinearLayout>
+
+    <!-- 第二行：按鈕 -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:hint="HH:mm-HH:mm"
-        android:inputType="text"
-        android:background="@drawable/bg_text_border"
-        android:padding="8dp"
-        android:maxLines="1" />
+        android:orientation="horizontal"
+        android:gravity="center">
 
     <Button
-        android:id="@+id/saveSlotButton"
+            android:id="@+id/addTimeSlotButton"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="保存"
-        android:layout_marginStart="8dp" />
+            android:layout_height="56dp"
+            android:text="添加"
+            android:textSize="16sp"
+        android:backgroundTint="#4CAF50"
+        android:textColor="#FFFFFF"
+            android:layout_marginEnd="16dp"
+            android:minWidth="100dp" />
 
     <Button
-        android:id="@+id/deleteSlotButton"
+            android:id="@+id/cancelTimeSlotButton"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="刪除"
-        android:layout_marginStart="8dp" />
+            android:layout_height="56dp"
+            android:text="取消"
+            android:textSize="16sp"
+        android:backgroundTint="#F44336"
+        android:textColor="#FFFFFF"
+            android:minWidth="100dp" />
+    </LinearLayout>
 
 </LinearLayout> 

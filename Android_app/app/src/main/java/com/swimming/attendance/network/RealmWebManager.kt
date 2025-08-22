@@ -107,7 +107,10 @@ class RealmWebManager {
                 date = "2024-01-15",
                 pending = "",
                 pendingMonth = "",
-                attendance = "出席"
+                attendance = "出席",
+                option1 = "出席1",
+                option2 = "--",
+                option3 = "1.0"
             ),
             Student(
                 id = 2, 
@@ -120,7 +123,10 @@ class RealmWebManager {
                 date = "2024-01-15",
                 pending = "",
                 pendingMonth = "",
-                attendance = "出席"
+                attendance = "出席",
+                option1 = "出席2",
+                option2 = "🌟補1堂",
+                option3 = "2.0"
             ),
             Student(
                 id = 3,
@@ -133,7 +139,10 @@ class RealmWebManager {
                 date = "2024-01-15",
                 pending = "",
                 pendingMonth = "",
-                attendance = "缺席"
+                attendance = "缺席",
+                option1 = "缺席",
+                option2 = "--",
+                option3 = "0.0"
             ),
             Student(
                 id = 4,

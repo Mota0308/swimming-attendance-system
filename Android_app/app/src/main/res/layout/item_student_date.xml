@@ -3,9 +3,11 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:padding="8dp"
-    android:paddingStart="24dp"
-    android:background="@drawable/bg_button_back">
+    android:padding="12dp"
+    android:background="#F5F5F5"
+    android:layout_marginStart="16dp"
+    android:layout_marginEnd="8dp"
+    android:layout_marginBottom="2dp">
 
     <TextView
         android:id="@+id/dateText"
@@ -13,6 +15,6 @@
         android:layout_height="wrap_content"
         android:text="📅 上課日期"
         android:textSize="14sp"
-        android:textColor="@color/text_primary" />
+        android:textColor="#666666" />
 
 </LinearLayout> 

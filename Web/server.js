@@ -8,14 +8,6 @@ const PORT = process.env.PORT || 8080;
 const DEFAULT_PORT = 8080;
 const EXPECTED_PORT = PORT;
 
-// 强制端口检查
-if (PORT !== FORCE_PORT) {
-    console.log(`⚠️  警告：检测到端口不匹配！`);
-    console.log(`🔧 强制端口: ${FORCE_PORT}`);
-    console.log(`🌐 当前端口: ${PORT}`);
-    console.log(`📋 环境变量: ${process.env.PORT || '未设置'}`);
-    console.log(`🔄 正在强制使用端口 ${FORCE_PORT}...`);
-}
 
 // 启用CORS
 app.use(cors());

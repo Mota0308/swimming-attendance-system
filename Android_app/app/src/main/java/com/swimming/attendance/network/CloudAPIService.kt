@@ -370,10 +370,33 @@ class CloudAPIService(
     /**
      * 獲取教練列表
      */
-    suspend fun fetchCoaches(): APIResponse {
+    suspend fun fetchCoaches(club: String = ""): APIResponse {
         return withContext(Dispatchers.IO) {
             try {
-                val url = URL("${getBaseUrl()}/coaches")
+                val urlString = if (club.isNotEmpty()) {
+                    "${getBaseUrl()}/coaches?club=${URLEncoder.encode(club, "UTF-8")}"
+                } else {
+                    "${getBaseUrl()}/coaches"
+                }
+                val url = URL(urlString)
+                val connection = createConnection(url, "GET")
+                val code = connection.responseCode
+                val body = readResponse(connection)
+                connection.disconnect()
+                if (code == 200) APIResponse(true, "OK", body) else APIResponse(false, "${code}", null, code)
+            } catch (e: Exception) {
+                APIResponse(false, e.message ?: "error")
+            }
+        }
+    }
+
+    /**
+     * 獲取單個教練信息
+     */
+    suspend fun fetchCoachInfo(phone: String): APIResponse {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("${getBaseUrl()}/coaches?phone=${URLEncoder.encode(phone, "UTF-8")}")
                 val connection = createConnection(url, "GET")
                 val code = connection.responseCode
                 val body = readResponse(connection)
@@ -388,18 +411,23 @@ class CloudAPIService(
     /**
      * 批量上傳教練工時
      */
-    suspend fun uploadCoachWorkHours(date: String, totals: Map<String, Double>): APIResponse {
+    suspend fun uploadCoachWorkHours(date: String, workHoursData: List<Map<String, Any>>, location: String = "", club: String = ""): APIResponse {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL("${getBaseUrl()}/coach-work-hours/batch")
                 val connection = createConnection(url, "POST")
                 val payload = JSONObject().apply {
                     put("date", date)
+                    put("location", location)
+                    put("club", club)
                     val arr = JSONArray()
-                    totals.forEach { (phone, hours) ->
+                    workHoursData.forEach { record ->
                         arr.put(JSONObject().apply {
-                            put("phone", phone)
-                            put("hours", hours)
+                            put("phone", record["phone"])
+                            put("name", record["name"])
+                            put("hours", record["hours"])
+                            put("timeSlots", JSONArray(record["timeSlots"] as List<String>))
+                            put("uploadTime", record["uploadTime"])
                         })
                     }
                     put("entries", arr)
@@ -422,10 +450,71 @@ class CloudAPIService(
     /**
      * 獲取某教練在指定年月的工時記錄
      */
-    suspend fun fetchCoachMonthlyWorkHours(phone: String, year: Int, month: Int): APIResponse {
+    suspend fun fetchCoachMonthlyWorkHours(phone: String, year: Int, month: Int, location: String = "", club: String = ""): APIResponse {
         return withContext(Dispatchers.IO) {
             try {
-                val url = URL("${getBaseUrl()}/coach-work-hours?phone=${URLEncoder.encode(phone, "UTF-8")}&year=$year&month=$month")
+                val urlBuilder = StringBuilder("${getBaseUrl()}/coach-work-hours?phone=${URLEncoder.encode(phone, "UTF-8")}&year=$year&month=$month")
+                if (location.isNotEmpty() && location != "全部地點") {
+                    urlBuilder.append("&location=${URLEncoder.encode(location, "UTF-8")}")
+                }
+                if (club.isNotEmpty() && club != "全部泳會") {
+                    urlBuilder.append("&club=${URLEncoder.encode(club, "UTF-8")}")
+                }
+                val url = URL(urlBuilder.toString())
+                val connection = createConnection(url, "GET")
+                val code = connection.responseCode
+                val body = readResponse(connection)
+                connection.disconnect()
+                if (code == 200) APIResponse(true, "OK", body) else APIResponse(false, "${code}", null, code)
+            } catch (e: Exception) {
+                APIResponse(false, e.message ?: "error")
+            }
+        }
+    }
+    
+    /**
+     * 獲取教練某月份的更表
+     */
+    suspend fun fetchCoachMonthlyRoster(phone: String, name: String, year: Int, month: Int): APIResponse {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("${getBaseUrl()}/coach-roster?phone=${URLEncoder.encode(phone, "UTF-8")}&name=${URLEncoder.encode(name, "UTF-8")}&year=$year&month=$month")
+                val connection = createConnection(url, "GET")
+                val code = connection.responseCode
+                val body = readResponse(connection)
+                connection.disconnect()
+                if (code == 200) APIResponse(true, "OK", body) else APIResponse(false, "$code", null, code)
+            } catch (e: Exception) {
+                APIResponse(false, e.message ?: "error")
+            }
+        }
+    }
+    
+    /**
+     * 獲取 Location_club 中所有地點
+     */
+    suspend fun fetchAllLocations(): APIResponse {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("${getBaseUrl()}/locations")
+                val connection = createConnection(url, "GET")
+                val code = connection.responseCode
+                val body = readResponse(connection)
+                connection.disconnect()
+                if (code == 200) APIResponse(true, "OK", body) else APIResponse(false, "${code}", null, code)
+            } catch (e: Exception) {
+                APIResponse(false, e.message ?: "error")
+            }
+        }
+    }
+    
+    /**
+     * 獲取指定地點的所有泳會
+     */
+    suspend fun fetchClubsByLocation(location: String): APIResponse {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("${getBaseUrl()}/clubs?location=${URLEncoder.encode(location, "UTF-8")}")
                 val connection = createConnection(url, "GET")
                 val code = connection.responseCode
                 val body = readResponse(connection)
@@ -491,7 +580,7 @@ class CloudAPIService(
                     courseType = jsonObject.optString("courseType", ""),
                     type = jsonObject.optString("type", ""),
                     time = jsonObject.optString("time", ""),
-                    date = jsonObject.optString("上課日期", ""),
+                    date = jsonObject.optString("上課日期", ""), // 使用實際存在的"上課日期"字段
                     pending = jsonObject.optString("待約", "0"),
                     pendingMonth = jsonObject.optString("待約月份", ""),
                     attendance = jsonObject.optString("attendance", ""),
