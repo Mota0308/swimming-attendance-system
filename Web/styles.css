@@ -59,3 +59,21 @@ body {
 .work-hours-calendar, .roster-calendar { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-top: 14px; }
 
 @media (min-width: 1200px) { .cal-cell { min-height: 100px; } } 
+
+@media (max-width: 768px) {
+  .top-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .feature-grid { grid-template-columns: 1fr; }
+  .attendance-controls, .work-hours-controls, .roster-controls, .location-club-controls { gap: 8px; }
+  .table-header, .table-body { grid-template-columns: 1.5fr 1fr 1fr 1fr; }
+  .login-container { margin: 24px auto; padding: 16px; }
+}
+
+/* Mobile calendar responsiveness */
+@media (max-width: 640px) {
+  .work-hours-calendar, .roster-calendar { overflow-x: auto; }
+  .work-hours-calendar .cal.grid-7, .roster-calendar .cal.grid-7 { min-width: 660px; gap: 6px; }
+  .cal-head { font-size: 12px; padding: 6px 0; white-space: nowrap; }
+  .cal-cell { min-height: 64px; padding: 8px; }
+  .cal-day { font-size: 12px; }
+  .cal-hours { font-size: 12px; }
+} 
