@@ -189,6 +189,9 @@
 
                 <!-- 新增：課程編排 UI 容器 -->
                 <div id="schedulerContainer" class="mt-6"></div>
+
+                <!-- 新增：出席排列板（獨立 UI） -->
+                <div id="attendanceBoardContainer" class="mt-6"></div>
             </div>
 
             <!-- 工時管理界面 -->
@@ -347,17 +350,20 @@
         </div>
     </div>
 
-        <script src="security.js?v=24"></script>
+        <script src="security.js?v=3"></script>
     <script src="database-connector.js?v=24"></script>
-    <script src="scheduler.js?v=1"></script>
     <script src="script.js?v=24"></script>
+    <script src="scheduler.js?v=1"></script>
+    <script src="attendance-board.js?v=1"></script>
     <script>
-      document.addEventListener('databaseConnectorReady', function () {
-        const box = document.getElementById('schedulerContainer');
-        if (box && window.initSchedulerInAttendance) {
-          setTimeout(() => initSchedulerInAttendance('schedulerContainer'), 100);
+      document.addEventListener('DOMContentLoaded', () => {
+        if (window.initSchedulerInAttendance) {
+          window.initSchedulerInAttendance('schedulerContainer');
+        }
+        if (window.initAttendanceBoard) {
+          window.initAttendanceBoard('attendanceBoardContainer');
         }
       });
     </script>
-  </body>
-  </html> 
+</body>
+</html> 

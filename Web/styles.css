@@ -77,3 +77,25 @@ body {
   .cal-day { font-size: 12px; }
   .cal-hours { font-size: 12px; }
 } 
+
+/* Attendance Board (出席排列板) */
+.ab-container { margin-top: 12px; }
+.ab-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 12px; }
+.ab-column { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.ab-lane-header { background: #f8fafc; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eef2f7; font-weight: 600; font-size: 14px; }
+.ab-lane { min-height: 120px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.ab-lane.drop { outline: 2px dashed #60a5fa; background: #eff6ff; }
+.ab-time { color: #111827; }
+.ab-type { color: #6b7280; font-size: 12px; margin-left: 6px; }
+.ab-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; cursor: grab; box-shadow: 0 1px 1px rgba(0,0,0,0.04); }
+.ab-card:active { cursor: grabbing; }
+.ab-card-name { font-size: 14px; font-weight: 600; color: #111827; }
+.ab-card-sub { font-size: 12px; color: #6b7280; }
+
+@media (max-width: 640px) {
+  .ab-board { grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 8px; }
+  .ab-lane { min-height: 100px; padding: 8px; }
+  .ab-lane-header { font-size: 12px; padding: 6px 8px; }
+  .ab-card-name { font-size: 13px; }
+  .ab-card-sub { font-size: 11px; }
+} 
