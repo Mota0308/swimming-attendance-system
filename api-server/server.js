@@ -1339,6 +1339,53 @@ app.get('/clubs', validateApiKeys, async (req, res) => {
     }
 });
 
+// 更新單一學生的課程時間/類型（依電話+姓名定位）
+app.post('/students/update-lesson', validateApiKeys, async (req, res) => {
+  try {
+    const safe = v => (typeof v === 'string' ? v.trim() : (v || '')).toString();
+    const phone = safe(req.body.phone);
+    const name = safe(req.body.name);
+    const date = safe(req.body.date); // 選填：供前端記錄用，不一定寫入
+    const location = safe(req.body.location);
+    const time = safe(req.body.time);
+    const type = safe(req.body.type);
+
+    if (!phone || !name) {
+      return res.status(400).json({ success: false, message: '缺少必要參數 phone 或 name' });
+    }
+    if (!time && !type && !location) {
+      return res.status(400).json({ success: false, message: '至少提供一個要更新的欄位（time/type/location）' });
+    }
+
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const col = db.collection('students');
+
+    // 基本過濾：以電話+姓名定位；若提供地點則一併匹配（避免同名同電話不同地點的情況）
+    const filter = { Phone_number: phone, name: name };
+    if (location) filter.location = location;
+
+    const $set = { updatedAt: new Date() };
+    if (time) $set.time = time;
+    if (type) $set.type = type;
+    if (location) $set.location = location;
+    if (date) $set.lastScheduleDate = date; // 僅記錄參考
+
+    const result = await col.updateOne(filter, { $set });
+    await client.close();
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: '找不到對應學生（phone+name 不匹配）' });
+    }
+
+    return res.json({ success: true, matched: result.matchedCount, modified: result.modifiedCount });
+  } catch (e) {
+    console.error('❌ 更新學生課程失敗:', e);
+    return res.status(500).json({ success: false, message: '更新失敗', error: e.message });
+  }
+});
+
 // 錯誤處理中間件
 app.use((error, req, res, next) => {
     console.error('❌ 服務器錯誤:', error);
