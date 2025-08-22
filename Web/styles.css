@@ -1,0 +1,47 @@
+/* Basic styles for the web app; keeps layout readable */
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+.section { display: none; }
+.section.active { display: block; }
+.hidden { display: none; }
+
+/* simple containers */
+.login-container { max-width: 420px; margin: 60px auto; padding: 24px; background: #111827; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.login-header h1 { margin: 0 0 4px; font-size: 28px; }
+.login-header p { margin: 0; color: #9ca3af; }
+.login-form { margin-top: 16px; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; margin-bottom: 6px; color: #cbd5e1; }
+.form-group input, .form-group select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: #e2e8f0; }
+.login-btn, .refresh-btn, .back-btn, .logout-btn { cursor: pointer; background: #3b82f6; color: white; border: 0; padding: 10px 14px; border-radius: 8px; }
+.login-btn:hover, .refresh-btn:hover, .back-btn:hover, .logout-btn:hover { background: #2563eb; }
+
+.top-nav { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #0b1220; border-bottom: 1px solid #1f2937; }
+.nav-left h2 { margin: 0; font-size: 20px; }
+.user-info { color: #cbd5e1; }
+.main-content { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.feature-card { background: #111827; padding: 16px; border-radius: 10px; border: 1px solid #1f2937; cursor: pointer; }
+.feature-card:hover { border-color: #334155; }
+
+.interface-header { display: flex; justify-content: space-between; align-items: center; margin: 18px 0; }
+.control-group { margin-right: 10px; }
+.attendance-controls, .work-hours-controls, .roster-controls, .location-club-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; background: #0b1220; padding: 12px; border: 1px solid #1f2937; border-radius: 10px; }
+
+.attendance-table { margin-top: 16px; border: 1px solid #1f2937; border-radius: 10px; overflow: hidden; }
+.table-header, .table-body { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; }
+.table-header { background: #0b1220; color: #cbd5e1; }
+.table-header .table-cell { padding: 10px 12px; border-right: 1px solid #1f2937; }
+.table-body .row { display: contents; }
+.table-body .cell { padding: 10px 12px; border-top: 1px solid #1f2937; border-right: 1px solid #1f2937; }
+
+.loading-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 100; }
+.loading-overlay.hidden { display: none; }
+.loading-spinner { text-align: center; color: #cbd5e1; }
+
+/* scheduler area placeholder spacing */
+#schedulerContainer { margin-top: 20px; } 
