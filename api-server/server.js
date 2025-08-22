@@ -1383,7 +1383,7 @@ app.post('/students/update-lesson', validateApiKeys, async (req, res) => {
   } catch (e) {
     console.error('❌ 更新學生課程失敗:', e);
     return res.status(500).json({ success: false, message: '更新失敗', error: e.message });
-  }
+    }
 });
 
 // 錯誤處理中間件
