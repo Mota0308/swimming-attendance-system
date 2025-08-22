@@ -192,7 +192,7 @@ class DatabaseConnector {
             if (location) params.append('location', location);
             if (club) params.append('club', club);
             
-            const response = await fetch(`${this.apiConfig.baseURL}/api/students?${params}`, {
+            const response = await fetch(`${this.apiConfig.baseURL}/students?${params}`, {
                 method: 'GET',
                 headers: this.getStandardHeaders()
             });
