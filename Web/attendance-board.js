@@ -87,10 +87,10 @@
   }
 
   async function waitForConnector(){
-    if (window.databaseConnector && typeof window.databaseConnector.fetchStudentsRaw === 'function') return;
+    if (window.databaseConnector && (typeof window.databaseConnector.fetchStudentsRaw === 'function' || typeof window.databaseConnector.fetchStudents === 'function')) return;
     await new Promise(resolve => {
       const timer = setInterval(()=>{
-        if (window.databaseConnector && typeof window.databaseConnector.fetchStudentsRaw === 'function') {
+        if (window.databaseConnector && (typeof window.databaseConnector.fetchStudentsRaw === 'function' || typeof window.databaseConnector.fetchStudents === 'function')) {
           clearInterval(timer); resolve();
         }
       }, 100);
@@ -98,10 +98,24 @@
     });
   }
 
+  async function getStudentsViaConnector(){
+    const locSel = document.getElementById('attendanceLocation');
+    const clubSel = document.getElementById('attendanceClub');
+    const location = locSel && locSel.value ? locSel.value : '';
+    const club = clubSel && clubSel.value ? clubSel.value : '';
+    if (typeof window.databaseConnector.fetchStudentsRaw === 'function') {
+      return await window.databaseConnector.fetchStudentsRaw();
+    }
+    if (typeof window.databaseConnector.fetchStudents === 'function') {
+      return await window.databaseConnector.fetchStudents(location, club);
+    }
+    return [];
+  }
+
   async function loadBoardData(){
     try{
       await waitForConnector();
-      const raw = await window.databaseConnector.fetchStudentsRaw();
+      const raw = await getStudentsViaConnector();
       const normalized = raw.map(normalizeStudent);
       // 去重：phone+name
       const seen = new Set();
