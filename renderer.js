@@ -1013,33 +1013,12 @@ function extractStudentInfo() {
                 }
                 // 若找到時間和日期，生成一組學生資料
                 if (foundTime && dateArr.length > 0) {
-                    // 🎈 檢查上課日期是否包含🎈標記
-                    let hasBalloonMark = false;
-                    let markedDates = [];
-                    
-                    dateArr.forEach(date => {
-                        if (date.includes('🎈')) {
-                            hasBalloonMark = true;
-                            markedDates.push(date);
-                        }
-                    });
-                    
-                    // 如果有🎈標記，在學生姓名前添加🎈
-                    let studentName = currentStudentBase.name;
-                    if (hasBalloonMark) {
-                        studentName = '🎈' + studentName;
-                        console.log(`🎈 檢測到上課日期包含🎈標記，學生姓名已標記: ${studentName}`);
-                    }
-                    
                     const studentData = { 
                         ...currentStudentBase, 
-                        name: studentName,  // 使用標記後的姓名
                         time, 
                         weekday, 
                         dates: dateArr.join('、'), 
-                        datesArr: dateArr,
-                        hasBalloonMark: hasBalloonMark,  // 記錄是否有🎈標記
-                        markedDates: markedDates  // 記錄帶🎈的日期
+                        datesArr: dateArr
                     };
                     
                     // 新增：檢查下一行是否為"10.待約課堂"
@@ -1087,15 +1066,10 @@ function extractStudentInfo() {
             students.forEach((stu, idx) => {
                 const tr = document.createElement('tr');
                 const datesArr = stu.datesArr || (stu.dates ? stu.dates.split('、') : []);
-                // 🎈 為帶🎈標記的學生添加特殊樣式
-                const nameCellStyle = stu.hasBalloonMark ? 
-                    'border:1px solid #ddd;padding:8px;background-color:#fff3cd;font-weight:bold;' : 
-                    'border:1px solid #ddd;padding:8px;';
-                
                 tr.innerHTML = `
                     <td style='border:1px solid #ddd;padding:8px;'><input type='checkbox' class='student-row-checkbox'></td>
                     <td style='border:1px solid #ddd;padding:8px;'>${tbody.children.length + 1}</td>
-                    <td style='${nameCellStyle}'>${stu.name || ''}</td>
+                    <td style='border:1px solid #ddd;padding:8px;'>${stu.name || ''}</td>
                     <td style='border:1px solid #ddd;padding:8px;'>${stu.phone || ''}</td>
                     <td style='border:1px solid #ddd;padding:8px;'>${stu.age || ''}</td>
                     <td style='border:1px solid #ddd;padding:8px;'>${stu.location || ''}</td>
@@ -1620,9 +1594,37 @@ async function saveSelectedStudents() {
                         dateGroups[standardDate] = [];
                     }
                     
-                    // 🎈 構建符合雲端資料庫格式的學生資料
+                    // 🎈 檢查該日期是否包含🎈標記，如果有則在學生姓名前添加🎈
+                    let studentName = stu.name;
+                    let hasBalloonMark = false;
+                    let remark = '';
+                    
+                    // 檢查原始日期數組中是否包含🎈
+                    if (stu.datesArr && stu.datesArr.length > 0) {
+                        // 找到對應的原始日期（包含🎈標記的）
+                        let matchingOriginalDate = null;
+                        stu.datesArr.forEach(originalDate => {
+                            // 將中文日期轉換為標準格式進行比較
+                            let originalStandardDate = convertChineseDateToStandard(originalDate.replace('🎈', ''));
+                            if (originalStandardDate === standardDate) {
+                                matchingOriginalDate = originalDate;
+                            }
+                        });
+                        
+                        // 只有當匹配的原始日期包含🎈時才添加🎈標記
+                        if (matchingOriginalDate && matchingOriginalDate.includes('🎈')) {
+                            hasBalloonMark = true;
+                            studentName = '🎈' + stu.name;
+                            remark = '🎈標記學生';
+                            console.log(`🎈 檢測到日期 ${standardDate} 包含🎈標記，學生 ${stu.name} 姓名已標記為: ${studentName}`);
+                        } else {
+                            console.log(`📅 日期 ${standardDate} 不包含🎈標記，學生 ${stu.name} 保持原樣`);
+                        }
+                    }
+                    
+                    // 構建符合雲端資料庫格式的學生資料
                     let cloudStudent = {
-                        name: stu.name,  // 已包含🎈標記（如果有的話）
+                        name: studentName,  // 根據🎈標記決定是否添加🎈
                         age: stu.age,
                         type: stu.type,
                         time: stu.time,
@@ -1633,10 +1635,10 @@ async function saveSelectedStudents() {
                         option1: '',
                         option2: '',
                         option3: stu.option3,
-                        remark: stu.hasBalloonMark ? '🎈標記學生' : '',  // 添加🎈標記備註
+                        remark: remark,  // 🎈標記備註
                         "上課日期": standardDate,
-                        hasBalloonMark: stu.hasBalloonMark || false,  // 記錄是否有🎈標記
-                        markedDates: stu.markedDates || []  // 記錄帶🎈的日期
+                        hasBalloonMark: hasBalloonMark,  // 記錄是否有🎈標記
+                        originalDates: stu.datesArr || []  // 記錄原始日期數組（包含🎈）
                     };
                     
                     // 檢查是否已存在相同的學生記錄（避免重複）
