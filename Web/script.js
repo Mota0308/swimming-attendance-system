@@ -854,29 +854,49 @@ async function exportWorkHoursExcel() {
         const coachPhone = localStorage.getItem('current_user_phone') || '';
         const coachName = localStorage.getItem('current_user_name') || '教練';
         
+        console.log('🔍 开始导出Excel:', { coachPhone, coachName });
+        
         if (!coachPhone) {
             alert('請先登入教練賬號');
             return;
         }
         
-        // 如果还没有全部工時数据，先获取
-        if (!window.allWorkHoursData) {
-            await updateAllWorkHoursSummary(coachPhone);
-        }
+        // 强制重新获取全部工時数据
+        console.log('📊 强制重新获取全部工時数据...');
+        await updateAllWorkHoursSummary(coachPhone);
         
         const data = window.allWorkHoursData;
-        if (!data || !data.locationClubStats) {
-            alert('沒有工時數據可導出');
+        console.log('📋 全部工時数据:', data);
+        
+        if (!data) {
+            alert('無法獲取工時數據，請先刷新數據');
+            return;
+        }
+        
+        if (!data.locationClubStats || Object.keys(data.locationClubStats).length === 0) {
+            // 如果没有数据，创建一个空的Excel文件
+            console.log('📝 没有工时数据，创建空记录Excel');
+            const emptyData = {
+                locationClubStats: {},
+                totalAllDays: 0,
+                totalAllHours: 0
+            };
+            const excelData = generateWorkHoursExcelData(coachName, emptyData);
+            downloadExcelFile(excelData, `${coachName}_工時記錄_${new Date().toISOString().split('T')[0]}.xlsx`);
+            alert('已導出空記錄Excel文件（當前無工時數據）');
             return;
         }
         
         // 生成Excel数据
+        console.log('📊 生成Excel数据...');
         const excelData = generateWorkHoursExcelData(coachName, data);
         
         // 下载Excel文件
-        downloadExcelFile(excelData, `${coachName}_工時記錄_${new Date().toISOString().split('T')[0]}.xlsx`);
+        const filename = `${coachName}_工時記錄_${new Date().toISOString().split('T')[0]}.xlsx`;
+        downloadExcelFile(excelData, filename);
         
-        console.log('✅ Excel导出成功');
+        console.log('✅ Excel导出成功:', filename);
+        alert('Excel文件已成功導出！');
         
     } catch (error) {
         console.error('❌ Excel导出失败:', error);
@@ -887,6 +907,8 @@ async function exportWorkHoursExcel() {
 // 生成工時Excel数据
 function generateWorkHoursExcelData(coachName, data) {
     const { locationClubStats, totalAllDays, totalAllHours } = data;
+    
+    console.log('📊 生成Excel数据:', { coachName, locationClubStats, totalAllDays, totalAllHours });
     
     // 创建工作簿
     const workbook = {
@@ -919,22 +941,35 @@ function generateWorkHoursExcelData(coachName, data) {
     
     // 数据行
     let row = 6;
-    const locationClubArray = Object.values(locationClubStats);
+    const locationClubArray = Object.values(locationClubStats || {});
     
-    locationClubArray.forEach(stat => {
-        worksheet[`A${row}`] = { v: stat.location, t: 's' };
-        worksheet[`B${row}`] = { v: stat.club, t: 's' };
-        worksheet[`C${row}`] = { v: stat.days, t: 'n' };
-        worksheet[`D${row}`] = { v: stat.hours, t: 'n' };
+    console.log('📋 地点泳会数组:', locationClubArray);
+    
+    if (locationClubArray.length === 0) {
+        // 如果没有数据，添加一行说明
+        worksheet[`A${row}`] = { v: '暫無工時記錄', t: 's' };
+        worksheet[`B${row}`] = { v: '', t: 's' };
+        worksheet[`C${row}`] = { v: 0, t: 'n' };
+        worksheet[`D${row}`] = { v: 0, t: 'n' };
         row++;
-    });
+    } else {
+        locationClubArray.forEach(stat => {
+            console.log('📝 添加数据行:', stat);
+            worksheet[`A${row}`] = { v: stat.location || '', t: 's' };
+            worksheet[`B${row}`] = { v: stat.club || '', t: 's' };
+            worksheet[`C${row}`] = { v: stat.days || 0, t: 'n' };
+            worksheet[`D${row}`] = { v: stat.hours || 0, t: 'n' };
+            row++;
+        });
+    }
     
     // 总计行
     worksheet[`A${row}`] = { v: '全部工作天數', t: 's' };
-    worksheet[`C${row}`] = { v: totalAllDays, t: 'n' };
+    worksheet[`C${row}`] = { v: totalAllDays || 0, t: 'n' };
     worksheet[`A${row + 1}`] = { v: '全部工作時數', t: 's' };
-    worksheet[`D${row + 1}`] = { v: totalAllHours, t: 'n' };
+    worksheet[`D${row + 1}`] = { v: totalAllHours || 0, t: 'n' };
     
+    console.log('✅ Excel工作簿生成完成');
     return workbook;
 }
 
