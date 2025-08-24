@@ -11,8 +11,24 @@ if (typeof fetch === 'undefined') {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// 启用CORS
-app.use(cors());
+// 启用CORS - 允许前端域名访问
+app.use(cors({
+    origin: [
+        'https://swimming-system-web-production.up.railway.app',
+        'http://localhost:3000',
+        'http://localhost:3001'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-API-Public-Key', 
+        'X-API-Private-Key',
+        'Accept',
+        'Origin'
+    ]
+}));
 
 // 中间件
 app.use(express.json());

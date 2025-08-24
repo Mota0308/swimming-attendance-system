@@ -4,9 +4,9 @@ let currentUserType = null;
 let locations = [];
 let clubs = [];
 
-// API配置
+// API配置 - 使用代理，避免CORS问题
 const API_CONFIG = {
-    BASE_URL: 'https://swiming-production.up.railway.app',
+    BASE_URL: '', // 使用空字符串，通过代理访问
     PUBLIC_API_KEY: 'ttdrcccy',
     PRIVATE_API_KEY: '2b207365-cbf0-4e42-a3bf-f932c84557c4'
 };

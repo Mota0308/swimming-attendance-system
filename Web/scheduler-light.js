@@ -578,21 +578,46 @@
       createdDate: new Date().toISOString()
     };
 
-    // 添加到第一個時段（如果沒有時段則創建一個）
-    if (!scheduleData.timeSlots.length) {
+    // 🔄 智能分类：按日期、时间、课程类型分类到正确位置
+    let targetSlot = null;
+    
+    // 查找匹配的时段
+    for (const slot of scheduleData.timeSlots) {
+      if (slot.date === date && slot.time === time && slot.type === type) {
+        targetSlot = slot;
+        break;
+      }
+    }
+    
+    // 如果没有找到匹配的时段，创建新的
+    if (!targetSlot) {
       const slotId = generateId('t');
-      scheduleData.timeSlots.push({ 
+      targetSlot = { 
         id: slotId, 
-        time: '18:00-18:40', 
-        type: '指小', 
+        date: date,
+        time: time, 
+        type: type, 
         teachers: [], 
         students: [], 
         location: location || ''
+      };
+      scheduleData.timeSlots.push(targetSlot);
+      
+      // 重新排序时段
+      scheduleData.timeSlots.sort((a, b) => {
+        // 日期排序
+        if (a.date !== b.date) {
+          if (a.date === '未設定日期') return 1;
+          if (b.date === '未設定日期') return -1;
+          return new Date(a.date) - new Date(b.date);
+        }
+        // 时间排序
+        return parseStartMinutes(a.time) - parseStartMinutes(b.time);
       });
     }
-
-    // 添加學生到第一個時段
-    scheduleData.timeSlots[0].students.push(newStudent);
+    
+    // 添加學生到正確的時段
+    targetSlot.students.push(newStudent);
     
     // 關閉對話框
     const dialog = document.querySelector('.add-student-dialog');
