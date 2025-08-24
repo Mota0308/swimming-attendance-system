@@ -277,7 +277,7 @@ class DatabaseConnector {
             let coachName = '';
             try { coachName = localStorage.getItem('current_user_name') || ''; } catch (_) {}
             if (!coachName) {
-                const coachResp = await fetch(`${this.apiConfig.baseURL}/coaches?phone=${encodeURIComponent(coachPhone)}`, {
+                const coachResp = await fetch(`${this.apiConfig.baseURL}/api/coaches?phone=${encodeURIComponent(coachPhone)}`, {
                     method: 'GET',
                     headers: this.getStandardHeaders()
                 });
@@ -300,7 +300,7 @@ class DatabaseConnector {
             
             console.log('🔍 獲取更表數據:', { phone: coachPhone, year, month, name: coachName });
             
-            const response = await fetch(`${this.apiConfig.baseURL}/coach-roster?${params}`, {
+            const response = await fetch(`${this.apiConfig.baseURL}/api/coach-roster?${params}`, {
                 method: 'GET',
                 headers: this.getStandardHeaders()
             });
