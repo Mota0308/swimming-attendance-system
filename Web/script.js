@@ -6,7 +6,7 @@ let clubs = [];
 
 // API配置
 const API_CONFIG = {
-    BASE_URL: 'https://swimming-attendance-system-production.up.railway.app',
+    BASE_URL: 'https://swiming-production.up.railway.app',
     PUBLIC_API_KEY: 'ttdrcccy',
     PRIVATE_API_KEY: '2b207365-cbf0-4e42-a3bf-f932c84557c4'
 };

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:background="@drawable/bg_text_border">
+
+    <!-- 姓名列 -->
+    <TextView
+        android:id="@+id/studentNameText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:textSize="14sp"
+        android:textColor="@android:color/black"
+        android:gravity="center"
+        android:layout_marginEnd="4dp" />
+
+    <!-- 出席狀況列 -->
+    <Spinner
+        android:id="@+id/attendanceSpinner"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:layout_marginEnd="4dp"
+        android:background="@drawable/bg_text_border"
+        android:padding="4dp" />
+
+    <!-- 補/調堂列 -->
+    <Spinner
+        android:id="@+id/makeupSpinner"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:layout_marginEnd="4dp"
+        android:background="@drawable/bg_text_border"
+        android:padding="4dp" />
+
+    <!-- 補/調堂點數列 -->
+    <EditText
+        android:id="@+id/pointsEdit"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="4dp"
+        android:inputType="numberDecimal"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:background="@drawable/bg_text_border"
+        android:padding="4dp" />
+
+    <!-- 時間列 -->
+    <TextView
+        android:id="@+id/timeText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="2"
+        android:textSize="14sp"
+        android:textColor="@android:color/black"
+        android:gravity="center" />
+
+</LinearLayout> 

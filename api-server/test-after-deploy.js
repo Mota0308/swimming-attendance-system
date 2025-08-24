@@ -1,6 +1,6 @@
 const https = require('https');
 
-const RAILWAY_URL = 'https://swimming-attendance-system-production.up.railway.app';
+const RAILWAY_URL = 'https://swiming-production.up.railway.app';
 const API_HEADERS = {
     'x-api-public-key': 'ttdrcccy',
     'x-api-private-key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'

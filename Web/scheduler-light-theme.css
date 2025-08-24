@@ -1,0 +1,541 @@
+/* 課程編排系統 - 淺色主題樣式 */
+
+.scheduler-light-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e8eaed;
+}
+
+.scheduler-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f1f3f4;
+}
+
+.scheduler-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a73e8;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.scheduler-title i {
+  font-size: 28px;
+  color: #34a853;
+}
+
+.scheduler-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.scheduler-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.scheduler-btn-primary {
+  background: linear-gradient(135deg, #1a73e8, #4285f4);
+  color: white;
+}
+
+.scheduler-btn-primary:hover {
+  background: linear-gradient(135deg, #1557b0, #3367d6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
+}
+
+.scheduler-btn-secondary {
+  background: linear-gradient(135deg, #34a853, #0f9d58);
+  color: white;
+}
+
+.scheduler-btn-secondary:hover {
+  background: linear-gradient(135deg, #2d8745, #0b8043);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(52, 168, 83, 0.3);
+}
+
+.scheduler-btn-success {
+  background: linear-gradient(135deg, #f4b400, #f57c00);
+  color: white;
+}
+
+.scheduler-btn-success:hover {
+  background: linear-gradient(135deg, #e6a800, #e65100);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(244, 180, 0, 0.3);
+}
+
+.scheduler-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e8eaed;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-group label {
+  font-weight: 500;
+  color: #5f6368;
+  font-size: 14px;
+}
+
+.control-input,
+.control-select {
+  padding: 10px 12px;
+  border: 2px solid #e8eaed;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.control-input:focus,
+.control-select:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+}
+
+.time-slots-container {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.time-slot {
+  background: white;
+  border: 2px solid #e8eaed;
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.2s ease;
+}
+
+.time-slot:hover {
+  border-color: #1a73e8;
+  box-shadow: 0 4px 16px rgba(26, 115, 232, 0.1);
+}
+
+.time-slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f3f4;
+}
+
+.time-slot-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #202124;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-slot-title i {
+  color: #1a73e8;
+}
+
+.time-slot-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.time-slot-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.time-slot-btn-edit {
+  background: #e8f0fe;
+  color: #1a73e8;
+}
+
+.time-slot-btn-edit:hover {
+  background: #d2e3fc;
+}
+
+.time-slot-btn-delete {
+  background: #fce8e6;
+  color: #d93025;
+}
+
+.time-slot-btn-delete:hover {
+  background: #fad2cf;
+}
+
+.students-list {
+  display: grid;
+  gap: 12px;
+  min-height: 60px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px dashed #dadce0;
+  transition: all 0.2s ease;
+}
+
+.students-list.drag-over {
+  border-color: #1a73e8;
+  background: #e8f0fe;
+}
+
+.student-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  cursor: move;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.student-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.student-card.dragging {
+  opacity: 0.5;
+  transform: rotate(5deg);
+}
+
+.student-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.status-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-btn.present {
+  background: #34a853;
+  color: white;
+}
+
+.status-btn.absent {
+  background: #ea4335;
+  color: white;
+}
+
+.status-btn.unknown {
+  background: #9aa0a6;
+  color: white;
+}
+
+.student-name {
+  font-weight: 500;
+  color: #202124;
+}
+
+.student-notes {
+  font-size: 12px;
+  color: #5f6368;
+  background: #f1f3f4;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.student-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5f6368;
+}
+
+.action-btn:hover {
+  background: #f1f3f4;
+  color: #202124;
+}
+
+.teacher-hours-section {
+  background: white;
+  border: 1px solid #e8eaed;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.teacher-hours-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #202124;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.teacher-hours-title i {
+  color: #f4b400;
+}
+
+.teacher-hours-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.teacher-hour-card {
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.teacher-hour-name {
+  font-weight: 500;
+  color: #202124;
+  margin-bottom: 8px;
+}
+
+.teacher-hour-time {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a73e8;
+}
+
+/* 新增學生對話框樣式 */
+.add-student-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.add-student-dialog .bg-white {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+.add-student-dialog h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #202124;
+  margin: 0 0 16px 0;
+}
+
+.add-student-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.add-student-dialog label {
+  font-weight: 500;
+  color: #5f6368;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.add-student-dialog input,
+.add-student-dialog select,
+.add-student-dialog textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #e8eaed;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.add-student-dialog input:focus,
+.add-student-dialog select:focus,
+.add-student-dialog textarea:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+}
+
+.add-student-dialog .flex {
+  display: flex;
+  gap: 12px;
+}
+
+.add-student-dialog button {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-student-dialog button[type="submit"] {
+  background: #1a73e8;
+  color: white;
+}
+
+.add-student-dialog button[type="submit"]:hover {
+  background: #1557b0;
+}
+
+.add-student-dialog button[type="button"] {
+  background: #f1f3f4;
+  color: #5f6368;
+}
+
+.add-student-dialog button[type="button"]:hover {
+  background: #e8eaed;
+}
+
+.close-dialog {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #9aa0a6;
+  transition: color 0.2s ease;
+}
+
+.close-dialog:hover {
+  color: #5f6368;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .scheduler-light-container {
+    padding: 16px;
+    margin: 8px;
+  }
+  
+  .scheduler-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .scheduler-actions {
+    justify-content: center;
+  }
+  
+  .scheduler-controls {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .time-slot-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .student-card {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .student-left {
+    justify-content: center;
+  }
+  
+  .student-actions {
+    justify-content: center;
+  }
+}
+
+/* 動畫效果 */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.scheduler-light-container {
+  animation: slideInUp 0.5s ease-out;
+}
+
+.time-slot {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.student-card {
+  animation: fadeIn 0.2s ease-out;
+} 

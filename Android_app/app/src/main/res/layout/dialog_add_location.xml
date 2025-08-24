@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#FFFFFF"
+    android:padding="20dp">
+
+    <!-- 標題 -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📍 添加新地點"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#1976D2"
+        android:gravity="center"
+        android:layout_marginBottom="20dp" />
+
+    <!-- 地點名稱輸入 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="地點名稱："
+        android:textSize="16sp"
+        android:textColor="#333333"
+        android:layout_marginBottom="8dp" />
+
+    <EditText
+        android:id="@+id/locationNameEdit"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:hint="請輸入地點名稱"
+        android:background="@drawable/bg_text_border"
+        android:padding="12dp"
+        android:textSize="14sp"
+        android:layout_marginBottom="20dp" />
+
+    <!-- 底部按鈕 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+
+        <Button
+            android:id="@+id/cancelLocationButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="取消"
+            android:textSize="14sp"
+            android:backgroundTint="#9E9E9E"
+            android:textColor="#FFFFFF"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/confirmLocationButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="確認"
+            android:textSize="14sp"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+
+</LinearLayout> 

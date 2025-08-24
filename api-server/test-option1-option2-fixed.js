@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 // 測試配置 - 使用正確的Railway域名
-const API_BASE_URL = 'https://swimming-attendance-system-production.up.railway.app';
+const API_BASE_URL = 'https://swiming-production.up.railway.app';
 const API_PUBLIC_KEY = 'ttdrcccy';
 const API_PRIVATE_KEY = '2b207365-cbf0-4e42-a3bf-f932c84557c4';
 

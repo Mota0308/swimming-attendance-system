@@ -1,7 +1,7 @@
 // 测试网页应用API端点
 const axios = require('axios');
 
-const API_BASE_URL = 'https://swimming-attendance-system-production.up.railway.app';
+const API_BASE_URL = 'https://swiming-production.up.railway.app';
 
 // 测试配置
 const testConfig = {

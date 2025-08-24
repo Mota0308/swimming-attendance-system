@@ -67,7 +67,7 @@ API_PRIVATE_KEY=2b207365-cbf0-4e42-a3bf-f932c84557c4
 
 ```bash
 # 測試健康檢查
-curl -H "x-api-public-key: ttdrcccy" -H "x-api-private-key: 2b207365-cbf0-4e42-a3bf-f932c84557c4" "https://swimming-attendance-system-production.up.railway.app/health"
+curl -H "x-api-public-key: ttdrcccy" -H "x-api-private-key: 2b207365-cbf0-4e42-a3bf-f932c84557c4" "https://swiming-production.up.railway.app/health"
 
 # 測試更表端點
 curl -H "x-api-public-key: ttdrcccy" -H "x-api-private-key: 2b207365-cbf0-4e42-a3bf-f932c84557c4" "https://swimming-attendance-system-production.up.railway.app/coach-roster?phone=66666666&name=AAAb&year=2025&month=8"

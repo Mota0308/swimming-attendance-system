@@ -5,7 +5,7 @@ async function testRailwayApi() {
         console.log('🔍 測試Railway API服務器...');
         
         // 測試健康檢查端點
-        const healthUrl = 'https://swimming-attendance-system-production.up.railway.app/health';
+        const healthUrl = 'https://swiming-production.up.railway.app/health';
         console.log(`📡 健康檢查URL: ${healthUrl}`);
         
         const healthOptions = {
@@ -62,7 +62,7 @@ async function testCoachRoster() {
         const year = 2025;
         const month = 8;
         
-        const url = `https://swimming-attendance-system-production.up.railway.app/coach-roster?phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}&year=${year}&month=${month}`;
+        const url = `https://swiming-production.up.railway.app/coach-roster?phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}&year=${year}&month=${month}`;
         
         console.log(`📡 更表請求URL: ${url}`);
         

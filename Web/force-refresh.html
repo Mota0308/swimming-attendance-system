@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>強制刷新 - 游泳系統</title>
+    <style>
+        body { 
+            font-family: 'Inter', Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            max-width: 600px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 { margin-bottom: 20px; font-size: 2.5em; }
+        .status { 
+            background: rgba(255, 255, 255, 0.2); 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin: 20px 0; 
+            font-family: monospace;
+        }
+        .btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover { background: #45a049; transform: translateY(-2px); }
+        .btn-danger { background: #f44336; }
+        .btn-danger:hover { background: #da190b; }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .log {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 強制刷新</h1>
+        <p>此頁面將幫助您清除瀏覽器緩存並重新加載游泳系統</p>
+        
+        <div class="status">
+            <strong>當前狀態:</strong> 準備就緒
+        </div>
+        
+        <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <button class="btn" onclick="startRefresh()">🚀 開始強制刷新</button>
+        <button class="btn btn-danger" onclick="clearAllCache()">🗑️ 清除所有緩存</button>
+        <button class="btn" onclick="goToMain()">🏠 返回主頁</button>
+        
+        <div class="log" id="log">
+            <div>📋 日誌將在這裡顯示...</div>
+        </div>
+    </div>
+
+    <script>
+        let progress = 0;
+        const log = document.getElementById('log');
+        const progressBar = document.getElementById('progressBar');
+        const status = document.querySelector('.status');
+
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logEntry.style.color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#51cf66' : '#ffffff';
+            log.appendChild(logEntry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateProgress(value) {
+            progress = value;
+            progressBar.style.width = progress + '%';
+        }
+
+        function updateStatus(message) {
+            status.innerHTML = `<strong>當前狀態:</strong> ${message}`;
+        }
+
+        async function startRefresh() {
+            addLog('🚀 開始強制刷新流程...', 'info');
+            updateStatus('正在清除緩存...');
+            updateProgress(10);
+
+            try {
+                // 步驟1: 清除localStorage
+                addLog('🗑️ 清除localStorage...', 'info');
+                localStorage.clear();
+                updateProgress(30);
+                await sleep(500);
+
+                // 步驟2: 清除sessionStorage
+                addLog('🗑️ 清除sessionStorage...', 'info');
+                sessionStorage.clear();
+                updateProgress(50);
+                await sleep(500);
+
+                // 步驟3: 清除IndexedDB
+                addLog('🗑️ 清除IndexedDB...', 'info');
+                if ('indexedDB' in window) {
+                    const databases = await indexedDB.databases();
+                    for (const db of databases) {
+                        await indexedDB.deleteDatabase(db.name);
+                    }
+                }
+                updateProgress(70);
+                await sleep(500);
+
+                // 步驟4: 清除Service Worker
+                addLog('🗑️ 清除Service Worker...', 'info');
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const registration of registrations) {
+                        await registration.unregister();
+                    }
+                }
+                updateProgress(90);
+                await sleep(500);
+
+                // 步驟5: 完成
+                updateProgress(100);
+                addLog('✅ 緩存清除完成!', 'success');
+                updateStatus('緩存清除完成');
+                
+                // 等待3秒後自動跳轉
+                addLog('⏳ 3秒後自動跳轉到主頁...', 'info');
+                await sleep(3000);
+                goToMain();
+
+            } catch (error) {
+                addLog(`❌ 錯誤: ${error.message}`, 'error');
+                updateStatus('發生錯誤');
+            }
+        }
+
+        async function clearAllCache() {
+            addLog('🗑️ 清除所有緩存...', 'info');
+            updateStatus('正在清除所有緩存...');
+            
+            try {
+                // 清除瀏覽器緩存
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    for (const cacheName of cacheNames) {
+                        await caches.delete(cacheName);
+                    }
+                    addLog('✅ 瀏覽器緩存已清除', 'success');
+                }
+
+                // 清除localStorage和sessionStorage
+                localStorage.clear();
+                sessionStorage.clear();
+                addLog('✅ 存儲緩存已清除', 'success');
+
+                // 強制重新加載頁面
+                addLog('🔄 強制重新加載頁面...', 'info');
+                updateStatus('正在重新加載...');
+                await sleep(1000);
+                window.location.reload(true);
+
+            } catch (error) {
+                addLog(`❌ 錯誤: ${error.message}`, 'error');
+            }
+        }
+
+        function goToMain() {
+            addLog('🏠 跳轉到主頁...', 'info');
+            updateStatus('正在跳轉...');
+            // 使用時間戳強制刷新
+            window.location.href = `index.html?t=${Date.now()}`;
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // 頁面加載完成
+        window.addEventListener('load', () => {
+            addLog('📱 強制刷新頁面已加載', 'success');
+            addLog('💡 點擊"開始強制刷新"來清除所有緩存', 'info');
+        });
+
+        // 防止頁面被緩存
+        window.addEventListener('beforeunload', () => {
+            // 強制清除緩存
+            if (window.performance && window.performance.navigation.type === 1) {
+                window.location.reload(true);
+            }
+        });
+    </script>
+</body>
+</html> 

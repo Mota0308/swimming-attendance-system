@@ -99,3 +99,288 @@ body {
   .ab-card-name { font-size: 13px; }
   .ab-card-sub { font-size: 11px; }
 } 
+
+/* ===== 新增：平滑動畫效果和響應式佈局 ===== */
+
+/* 全局動畫過渡 */
+* {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 登入界面動畫 */
+.login-container {
+  animation: slideInUp 0.6s ease-out;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.login-container:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+}
+
+/* 功能卡片動畫 */
+.feature-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s;
+}
+
+.feature-card:hover::before {
+  left: 100%;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+  border-color: #3b82f6;
+}
+
+/* 按鈕動畫效果 */
+.login-btn, .refresh-btn, .back-btn, .logout-btn {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.login-btn::before, .refresh-btn::before, .back-btn::before, .logout-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255,255,255,0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.login-btn:hover::before, .refresh-btn:hover::before, .back-btn:hover::before, .logout-btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.login-btn:hover, .refresh-btn:hover, .back-btn:hover, .logout-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+}
+
+/* 導航欄動畫 */
+.top-nav {
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.top-nav::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, #667eea, #764ba2, #667eea);
+  transform: scaleX(0);
+  transition: transform 0.6s ease;
+}
+
+.top-nav:hover::after {
+  transform: scaleX(1);
+}
+
+/* 信息卡片動畫 */
+.info-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.info-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+}
+
+.info-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  transform: scaleX(0);
+  transition: transform 0.4s ease;
+}
+
+.info-card:hover::before {
+  transform: scaleX(1);
+}
+
+/* 表格動畫 */
+.attendance-table {
+  transition: all 0.3s ease;
+}
+
+.table-body .row {
+  transition: all 0.3s ease;
+}
+
+.table-body .row:hover {
+  background: #f8fafc;
+  transform: scale(1.01);
+}
+
+/* 控制面板動畫 */
+.attendance-controls, .work-hours-controls, .roster-controls, .location-club-controls {
+  transition: all 0.3s ease;
+}
+
+.attendance-controls:hover, .work-hours-controls:hover, .roster-controls:hover, .location-club-controls:hover {
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
+}
+
+/* 輸入框動畫 */
+.form-group input, .form-group select, .control-group input, .control-group select {
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.form-group input:focus, .form-group select:focus, .control-group input:focus, .control-group select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  transform: translateY(-1px);
+}
+
+/* 載入動畫 */
+.loading-spinner i {
+  animation: spin 1s linear infinite;
+}
+
+.loading-spinner p {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* 頁面切換動畫 */
+.section {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.5s ease;
+}
+
+.section.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 功能界面切換動畫 */
+.feature-interface {
+  opacity: 0;
+  transform: translateX(20px);
+  transition: all 0.4s ease;
+}
+
+.feature-interface:not(.hidden) {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* 響應式動畫調整 */
+@media (max-width: 768px) {
+  .feature-card:hover {
+    transform: translateY(-4px) scale(1.01);
+  }
+  
+  .info-card:hover {
+    transform: translateY(-3px);
+  }
+  
+  .attendance-controls:hover, .work-hours-controls:hover, .roster-controls:hover, .location-club-controls:hover {
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 480px) {
+  .feature-card:hover {
+    transform: none;
+  }
+  
+  .info-card:hover {
+    transform: none;
+  }
+}
+
+/* 動畫關鍵幀 */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 滾動動畫 */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: all 0.8s ease;
+}
+
+.scroll-reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 懸停效果增強 */
+.feature-card, .info-card, .attendance-table {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 觸控設備優化 */
+@media (hover: none) and (pointer: coarse) {
+  .feature-card:hover, .info-card:hover {
+    transform: none;
+  }
+  
+  .feature-card:active, .info-card:active {
+    transform: scale(0.98);
+  }
+} 

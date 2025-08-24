@@ -51,7 +51,7 @@ app.get('/port-info', (req, res) => {
 
 // API代理 - 转发到后端API服务器
 app.use('/api', (req, res) => {
-    const targetUrl = `https://swimming-attendance-system-production.up.railway.app${req.url}`;
+    const targetUrl = `https://swiming-production.up.railway.app${req.url}`;
     
     // 这里可以添加代理逻辑，或者直接重定向
     res.redirect(targetUrl);

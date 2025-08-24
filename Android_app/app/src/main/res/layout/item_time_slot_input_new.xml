@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#F8F9FA"
+    android:padding="16dp"
+    android:layout_marginBottom="8dp">
+
+    <!-- 時間標籤 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="時間"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#333333"
+        android:gravity="center"
+        android:layout_gravity="center"
+        android:layout_marginBottom="12dp" />
+
+    <!-- 時間輸入區域 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- 左括號 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="("
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginEnd="4dp" />
+
+        <!-- 開始時間 - 4位數字 -->
+        <EditText
+            android:id="@+id/startTimeEdit"
+            android:layout_width="80dp"
+            android:layout_height="48dp"
+            android:hint="1030"
+            android:inputType="number"
+            android:maxLength="4"
+            android:digits="0123456789"
+            android:gravity="center"
+            android:background="@drawable/bg_text_border"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:clickable="true" />
+
+        <!-- 右括號 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=")"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginHorizontal="4dp" />
+
+        <!-- 連字符 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=" - "
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginHorizontal="8dp" />
+
+        <!-- 左括號 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="("
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginEnd="4dp" />
+
+        <!-- 結束時間 - 4位數字 -->
+        <EditText
+            android:id="@+id/endTimeEdit"
+            android:layout_width="80dp"
+            android:layout_height="48dp"
+            android:hint="1430"
+            android:inputType="number"
+            android:maxLength="4"
+            android:digits="0123456789"
+            android:gravity="center"
+            android:background="@drawable/bg_text_border"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:clickable="true" />
+
+        <!-- 右括號 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=")"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="#333333"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <!-- 按鈕區域 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_marginTop="12dp">
+
+        <Button
+            android:id="@+id/saveSlotButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="保存"
+            android:textSize="14sp"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/deleteSlotButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="刪除"
+            android:textSize="14sp"
+            android:backgroundTint="#F44336"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+
+</LinearLayout> 

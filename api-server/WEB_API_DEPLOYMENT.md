@@ -120,17 +120,17 @@ node test-web-api.js
 
 **健康检查**:
 ```
-GET https://swimming-attendance-system-production.up.railway.app/api/health
+GET https://swiming-production.up.railway.app/api/health
 ```
 
 **地点数据**:
 ```
-GET https://swimming-attendance-system-production.up.railway.app/api/locations
+GET https://swiming-production.up.railway.app/api/locations
 ```
 
 **登录测试**:
 ```
-POST https://swimming-attendance-system-production.up.railway.app/api/auth/login
+POST https://swiming-production.up.railway.app/api/auth/login
 Content-Type: application/json
 
 {

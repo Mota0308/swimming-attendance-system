@@ -2,7 +2,7 @@
 class DatabaseConnector {
     constructor() {
         this.apiConfig = {
-            baseURL: 'https://swimming-attendance-system-production.up.railway.app',
+            baseURL: '', // 使用空字符串，避免路径重复
             publicKey: 'ttdrcccy',
             privateKey: '2b207365-cbf0-4e42-a3bf-f932c84557c4'
         };
@@ -115,7 +115,7 @@ class DatabaseConnector {
     // 获取地点数据（匹配手机版逻辑）
     async fetchLocations() {
         try {
-            const url = `${this.apiConfig.baseURL}/locations`;  // 修复：移除/api前缀
+            const url = `${this.apiConfig.baseURL}/api/locations`;  // 修复：添加/api前缀
             const response = await fetch(url, {
                 method: 'GET',
                 headers: this.getStandardHeaders()
@@ -154,7 +154,7 @@ class DatabaseConnector {
             if (cleanLoc && cleanLoc !== '全部地點') {
                 params.append('location', cleanLoc);
             }
-            const url = params.toString() ? `${this.apiConfig.baseURL}/clubs?${params}` : `${this.apiConfig.baseURL}/clubs`;
+            const url = params.toString() ? `${this.apiConfig.baseURL}/api/clubs?${params}` : `${this.apiConfig.baseURL}/api/clubs`;
             const response = await fetch(url, {
                 method: 'GET',
                 headers: this.getStandardHeaders()
@@ -192,7 +192,7 @@ class DatabaseConnector {
             if (location) params.append('location', location);
             if (club) params.append('club', club);
             
-            const response = await fetch(`${this.apiConfig.baseURL}/students?${params}`, {
+            const response = await fetch(`${this.apiConfig.baseURL}/api/students?${params}`, {
                 method: 'GET',
                 headers: this.getStandardHeaders()
             });
@@ -323,11 +323,11 @@ class DatabaseConnector {
         }
     }
 
-    // 获取工时管理的地点数据（从 /locations 端点）
+    // 获取工时管理的地点数据（从 /api/locations 端点）
     async fetchWorkHoursLocations() {
         try {
             console.log('🔍 开始获取地点数据...');
-            const response = await fetch(`${this.apiConfig.baseURL}/locations`, {
+            const response = await fetch(`${this.apiConfig.baseURL}/api/locations`, {
                 method: 'GET',
                 headers: this.getStandardHeaders()
             });
@@ -358,7 +358,7 @@ class DatabaseConnector {
         }
     }
 
-    // 获取工时管理的泳会数据（从 /clubs 端点）
+    // 获取工时管理的泳会数据（从 /api/clubs 端点）
     async fetchWorkHoursClubs(location = '') {
         try {
             const params = new URLSearchParams();
@@ -366,8 +366,8 @@ class DatabaseConnector {
             if (cleanLoc) params.append('location', cleanLoc);
             
             const url = params.toString() 
-                ? `${this.apiConfig.baseURL}/clubs?${params}`
-                : `${this.apiConfig.baseURL}/clubs`;
+                ? `${this.apiConfig.baseURL}/api/clubs?${params}`
+                : `${this.apiConfig.baseURL}/api/clubs`;
                 
             const response = await fetch(url, {
                 method: 'GET',
@@ -399,7 +399,7 @@ class DatabaseConnector {
             if (location) params.append('location', location);
             if (club) params.append('club', club);
             
-            const url = `${this.apiConfig.baseURL}/coach-work-hours?${params}`;
+            const url = `${this.apiConfig.baseURL}/api/coach-work-hours?${params}`;
             console.log('🔍 请求URL:', url);
             
             const response = await fetch(url, {
@@ -436,7 +436,7 @@ class DatabaseConnector {
             if (location) params.append('location', location);
             if (club) params.append('club', club);
             
-            const url = `${this.apiConfig.baseURL}/coach-work-hours-stats?${params}`;
+            const url = `${this.apiConfig.baseURL}/api/coach-work-hours-stats?${params}`;
             
             const response = await fetch(url, {
                 method: 'GET',
@@ -530,7 +530,7 @@ class DatabaseConnector {
     async updateStudentLesson({ phone, name, date = '', location = '', time, type }) {
         try {
             const body = { phone, name, date, location, time, type };
-            const resp = await fetch(`${this.apiConfig.baseURL}/students/update-lesson`, {
+            const resp = await fetch(`${this.apiConfig.baseURL}/api/students/update-lesson`, {
                 method: 'POST',
                 headers: this.getStandardHeaders(),
                 body: JSON.stringify(body)

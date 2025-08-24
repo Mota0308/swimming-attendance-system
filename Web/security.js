@@ -50,7 +50,7 @@ class SecurityManager {
                 style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com;
                 font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com;
                 img-src 'self' data: https:;
-                connect-src 'self' https://swimming-attendance-system-production.up.railway.app;
+                connect-src 'self' https://swiming-production.up.railway.app;
                 object-src 'none';
                 base-uri 'self';
                 form-action 'self';

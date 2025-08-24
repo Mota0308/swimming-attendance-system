@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; connect-src 'self' http://localhost:3001 https://swiming-production.up.railway.app; img-src 'self' data:;">
+    <title>CSP修復測試</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        .result { margin-top: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 CSP修復測試頁面</h1>
+    
+    <div class="test-section info">
+        <h3>📋 測試說明</h3>
+        <p>此頁面用於測試內容安全策略(CSP)是否已正確配置，允許連接到本地API服務器(端口3001)。</p>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 測試1: 本地API連接</h3>
+        <p>測試是否可以連接到 <code>http://localhost:3001</code></p>
+        <button class="btn-primary" onclick="testLocalAPI()">測試本地API</button>
+        <div id="localAPIResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 測試2: 數據庫連接器</h3>
+        <p>測試數據庫連接器是否可以正常初始化</p>
+        <button class="btn-primary" onclick="testDatabaseConnector()">測試數據庫連接器</button>
+        <div id="dbConnectorResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 測試3: 地點和泳會數據</h3>
+        <p>測試是否可以獲取地點和泳會數據</p>
+        <button class="btn-primary" onclick="testLocationData()">測試數據獲取</button>
+        <div id="locationDataResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📊 測試結果</h3>
+        <div id="overallResult"></div>
+    </div>
+
+    <script>
+        let testResults = {
+            localAPI: false,
+            dbConnector: false,
+            locationData: false
+        };
+
+        // 測試本地API連接
+        async function testLocalAPI() {
+            const resultDiv = document.getElementById('localAPIResult');
+            resultDiv.innerHTML = '🔄 測試中...';
+            
+            try {
+                const response = await fetch('http://localhost:3001/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `✅ 成功! 狀態: ${response.status}<br>數據: ${JSON.stringify(data)}`;
+                    resultDiv.className = 'result success';
+                    testResults.localAPI = true;
+                } else {
+                    resultDiv.innerHTML = `⚠️ 連接成功但狀態碼: ${response.status}`;
+                    resultDiv.className = 'result error';
+                    testResults.localAPI = false;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ 連接失敗: ${error.message}`;
+                resultDiv.className = 'result error';
+                testResults.localAPI = false;
+            }
+            
+            updateOverallResult();
+        }
+
+        // 測試數據庫連接器
+        async function testDatabaseConnector() {
+            const resultDiv = document.getElementById('dbConnectorResult');
+            resultDiv.innerHTML = '🔄 測試中...';
+            
+            try {
+                // 檢查數據庫連接器是否可用
+                if (typeof databaseConnector !== 'undefined') {
+                    resultDiv.innerHTML = '✅ 數據庫連接器已加載';
+                    resultDiv.className = 'result success';
+                    testResults.dbConnector = true;
+                } else {
+                    resultDiv.innerHTML = '❌ 數據庫連接器未加載';
+                    resultDiv.className = 'result error';
+                    testResults.dbConnector = false;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ 測試失敗: ${error.message}`;
+                resultDiv.className = 'result error';
+                testResults.dbConnector = false;
+            }
+            
+            updateOverallResult();
+        }
+
+        // 測試地點數據獲取
+        async function testLocationData() {
+            const resultDiv = document.getElementById('locationDataResult');
+            resultDiv.innerHTML = '🔄 測試中...';
+            
+            try {
+                if (typeof databaseConnector !== 'undefined' && databaseConnector.connectionStatus.connected) {
+                    const locations = await databaseConnector.fetchLocations();
+                    const clubs = await databaseConnector.fetchClubs();
+                    
+                    resultDiv.innerHTML = `✅ 數據獲取成功!<br>地點數量: ${locations.length}<br>泳會數量: ${clubs.length}`;
+                    resultDiv.className = 'result success';
+                    testResults.locationData = true;
+                } else {
+                    resultDiv.innerHTML = '❌ 數據庫連接器未連接';
+                    resultDiv.className = 'result error';
+                    testResults.locationData = false;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ 數據獲取失敗: ${error.message}`;
+                resultDiv.className = 'result error';
+                testResults.locationData = false;
+            }
+            
+            updateOverallResult();
+        }
+
+        // 更新整體測試結果
+        function updateOverallResult() {
+            const overallDiv = document.getElementById('overallResult');
+            const passedTests = Object.values(testResults).filter(Boolean).length;
+            const totalTests = Object.keys(testResults).length;
+            
+            if (passedTests === totalTests) {
+                overallDiv.innerHTML = `<div class="success" style="padding: 15px; border-radius: 5px;">
+                    🎉 所有測試通過! (${passedTests}/${totalTests})<br>
+                    CSP配置正確，可以正常連接到本地API服務器。
+                </div>`;
+            } else {
+                overallDiv.innerHTML = `<div class="error" style="padding: 15px; border-radius: 5px;">
+                    ⚠️ 部分測試失敗 (${passedTests}/${totalTests})<br>
+                    請檢查錯誤信息並修復問題。
+                </div>`;
+            }
+        }
+
+        // 頁面加載完成後自動運行第一個測試
+        window.addEventListener('load', () => {
+            console.log('🧪 CSP測試頁面已加載');
+            // 等待一下讓數據庫連接器初始化
+            setTimeout(() => {
+                testDatabaseConnector();
+            }, 2000);
+        });
+    </script>
+</body>
+</html> 

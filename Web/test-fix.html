@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试修复 - 游泳系统</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .primary { background: #007bff; color: white; }
+        .secondary { background: #6c757d; color: white; }
+    </style>
+</head>
+<body>
+    <h1>🧪 游泳系统修复测试</h1>
+    
+    <div id="status" class="status info">正在初始化...</div>
+    
+    <div id="controls" style="display: none;">
+        <h3>测试控制</h3>
+        <button class="primary" onclick="testDatabaseConnection()">测试数据库连接</button>
+        <button class="secondary" onclick="testLocationsLoad()">测试地点数据加载</button>
+        <button class="secondary" onclick="clearCache()">清除缓存</button>
+        <button class="secondary" onclick="reloadPage()">重新加载页面</button>
+    </div>
+    
+    <div id="results"></div>
+    
+    <script src="security.js"></script>
+    <script src="database-connector.js"></script>
+    <script>
+        let testResults = [];
+        
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+        
+        function addResult(message, type = 'info') {
+            const resultsEl = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `status ${type}`;
+            resultDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            resultsEl.appendChild(resultDiv);
+            resultsEl.scrollTop = resultsEl.scrollHeight;
+        }
+        
+        function testDatabaseConnection() {
+            addResult('🔍 测试数据库连接...', 'info');
+            
+            if (typeof databaseConnector === 'undefined') {
+                addResult('❌ databaseConnector 未定义', 'error');
+                return;
+            }
+            
+            if (!databaseConnector.connectionStatus) {
+                addResult('❌ 连接状态不可用', 'error');
+                return;
+            }
+            
+            const status = databaseConnector.getConnectionStatus();
+            addResult(`📊 连接状态: ${JSON.stringify(status)}`, 'info');
+            
+            if (status.connected) {
+                addResult('✅ 数据库连接正常', 'success');
+            } else {
+                addResult('⚠️ 数据库未连接', 'warning');
+            }
+        }
+        
+        function testLocationsLoad() {
+            addResult('🔍 测试地点数据加载...', 'info');
+            
+            if (typeof databaseConnector === 'undefined') {
+                addResult('❌ databaseConnector 未定义', 'error');
+                return;
+            }
+            
+            try {
+                databaseConnector.fetchLocations().then(locations => {
+                    addResult(`✅ 地点数据加载成功: ${locations.length} 个地点`, 'success');
+                    addResult(`📋 地点列表: ${locations.join(', ')}`, 'info');
+                }).catch(error => {
+                    addResult(`❌ 地点数据加载失败: ${error.message}`, 'error');
+                });
+            } catch (error) {
+                addResult(`❌ 测试过程出错: ${error.message}`, 'error');
+            }
+        }
+        
+        function clearCache() {
+            addResult('🗑️ 清除缓存...', 'info');
+            
+            if (typeof databaseConnector === 'undefined') {
+                addResult('❌ databaseConnector 未定义', 'error');
+                return;
+            }
+            
+            try {
+                databaseConnector.clearCache();
+                addResult('✅ 缓存已清除', 'success');
+            } catch (error) {
+                addResult(`❌ 清除缓存失败: ${error.message}`, 'error');
+            }
+        }
+        
+        function reloadPage() {
+            addResult('🔄 重新加载页面...', 'info');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        }
+        
+        // 页面加载完成后的初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            addResult('📱 页面加载完成', 'info');
+            
+            // 监听数据库连接器就绪事件
+            document.addEventListener('databaseConnectorReady', function(event) {
+                addResult('🎉 数据库连接器已就绪', 'success');
+                updateStatus('数据库连接器已就绪，可以开始测试', 'success');
+                document.getElementById('controls').style.display = 'block';
+            });
+            
+            // 检查初始状态
+            setTimeout(() => {
+                if (typeof databaseConnector !== 'undefined' && databaseConnector) {
+                    addResult('✅ 数据库连接器已可用', 'success');
+                    updateStatus('数据库连接器已可用，可以开始测试', 'success');
+                    document.getElementById('controls').style.display = 'block';
+                } else {
+                    addResult('⚠️ 数据库连接器未就绪', 'warning');
+                    updateStatus('数据库连接器未就绪，请等待或检查错误', 'warning');
+                }
+            }, 2000);
+        });
+        
+        // 监听错误
+        window.addEventListener('error', function(event) {
+            addResult(`❌ 页面错误: ${event.message}`, 'error');
+        });
+        
+        window.addEventListener('unhandledrejection', function(event) {
+            addResult(`❌ 未处理的Promise拒绝: ${event.reason}`, 'error');
+        });
+    </script>
+</body>
+</html> 

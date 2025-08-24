@@ -9,7 +9,7 @@ async function testCorrectApi() {
         const year = 2025;
         const month = 8;
         
-        const url = `https://swimming-attendance-system-production.up.railway.app/coach-roster?phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}&year=${year}&month=${month}`;
+        const url = `https://swiming-production.up.railway.app/coach-roster?phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name)}&year=${year}&month=${month}`;
         
         console.log(`📡 請求URL: ${url}`);
         
