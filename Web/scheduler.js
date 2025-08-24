@@ -79,7 +79,7 @@
   // 取得學生名單
   async function fetchStudentsRaw() {
     try {
-      const resp = await fetch(`${databaseConnector.apiConfig.baseURL}/students`, { headers: API_HEADERS });
+      const resp = await fetch(`${databaseConnector.apiConfig.baseURL}/api/students`, { headers: API_HEADERS });
       if (!resp.ok) return [];
       const arr = await resp.json();
       return Array.isArray(arr) ? arr : [];
