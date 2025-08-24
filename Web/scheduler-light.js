@@ -775,8 +775,19 @@
     dayEl.addEventListener('change', onFilterChange);
     locEl.addEventListener('change', onFilterChange);
 
-    container.querySelector('#schSave').addEventListener('click', () => {
-      try { localStorage.setItem('scheduleData', JSON.stringify(scheduleData)); toast('保存成功'); } catch(e){ toast('保存失敗'); }
+    container.querySelector('#schSave').addEventListener('click', async () => {
+      try { 
+        // 先保存到本地
+        localStorage.setItem('scheduleData', JSON.stringify(scheduleData)); 
+        
+        // 同步到后端数据库
+        await syncScheduleDataToBackend(scheduleData);
+        
+        toast('保存成功，已同步到数据库');
+      } catch(e){ 
+        console.error('保存失败:', e);
+        toast('保存失败: ' + e.message);
+      }
     });
 
     container.querySelector('#schAddSlot').addEventListener('click', () => {
@@ -795,6 +806,76 @@
     try { const saved = localStorage.getItem('scheduleData'); if (saved) { scheduleData = JSON.parse(saved); } } catch(_) {}
     const date = container.querySelector('#schDate').value; const day = container.querySelector('#schDay').value; const loc = container.querySelector('#schLoc').value;
     await buildFromStudents({ date, day, location: loc });
+  }
+
+  // 同步课程编排数据到后端数据库
+  async function syncScheduleDataToBackend(scheduleData) {
+    try {
+      console.log('🔄 开始同步课程编排数据到后端...');
+      
+      // 获取当前用户信息
+      const currentUserPhone = localStorage.getItem('current_user_phone');
+      if (!currentUserPhone) {
+        throw new Error('用户未登录，无法保存数据');
+      }
+      
+      // 准备同步的数据
+      const syncData = {
+        coachPhone: currentUserPhone,
+        timestamp: new Date().toISOString(),
+        timeSlots: scheduleData.timeSlots.map(slot => ({
+          id: slot.id,
+          date: slot.date,
+          time: slot.time,
+          type: slot.type,
+          location: slot.location,
+          teachers: slot.teachers || [],
+          students: slot.students.map(student => ({
+            id: student.id,
+            name: student.name,
+            phone: student.phone,
+            age: student.age,
+            type: student.type,
+            date: student.date,
+            time: student.time,
+            location: student.location,
+            notes: student.notes,
+            status: student.status
+          }))
+        }))
+      };
+      
+      console.log('📋 准备同步的数据:', syncData);
+      
+      // 调用后端API保存数据
+      const response = await fetch(`${databaseConnector.apiConfig.baseURL}/api/schedule/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Public-Key': 'ttdrcccy',
+          'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
+        },
+        body: JSON.stringify(syncData)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ 课程编排数据同步成功:', result);
+        return result;
+      } else {
+        throw new Error(result.message || '同步失败');
+      }
+      
+    } catch (error) {
+      console.error('❌ 同步课程编排数据失败:', error);
+      throw error;
+    }
   }
 
   window.initSchedulerLight = async function(containerId) {
