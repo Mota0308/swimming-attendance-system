@@ -1548,6 +1548,7 @@ async function saveSelectedStudents() {
                 type: cells[6].textContent.trim(),
                 time: time,
                 dates: dates,
+                datesArr: dates.split('、').map(d => d.trim()).filter(Boolean), // 添加datesArr
                 waitMonth: cells[10].textContent.trim(),
                 wait: cells[9].textContent.trim(),
                 year: cells[11].textContent.trim(),
@@ -1600,14 +1601,20 @@ async function saveSelectedStudents() {
                     let remark = '';
                     
                     // 檢查原始日期數組中是否包含🎈
+                    console.log(`🔍 檢查學生 ${stu.name} 的日期: ${date}, 標準格式: ${standardDate}`);
+                    console.log(`📋 原始日期數組:`, stu.datesArr);
+                    
                     if (stu.datesArr && stu.datesArr.length > 0) {
                         // 找到對應的原始日期（包含🎈標記的）
                         let matchingOriginalDate = null;
                         stu.datesArr.forEach(originalDate => {
+                            console.log(`🔍 檢查原始日期: ${originalDate}`);
                             // 將中文日期轉換為標準格式進行比較
                             let originalStandardDate = convertChineseDateToStandard(originalDate.replace('🎈', ''));
+                            console.log(`📅 原始日期標準格式: ${originalStandardDate}, 當前日期: ${standardDate}`);
                             if (originalStandardDate === standardDate) {
                                 matchingOriginalDate = originalDate;
+                                console.log(`✅ 找到匹配的原始日期: ${originalDate}`);
                             }
                         });
                         
@@ -1620,6 +1627,8 @@ async function saveSelectedStudents() {
                         } else {
                             console.log(`📅 日期 ${standardDate} 不包含🎈標記，學生 ${stu.name} 保持原樣`);
                         }
+                    } else {
+                        console.log(`⚠️ 學生 ${stu.name} 沒有datesArr數據`);
                     }
                     
                     // 構建符合雲端資料庫格式的學生資料
