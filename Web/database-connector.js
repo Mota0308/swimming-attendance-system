@@ -2,7 +2,7 @@
 class DatabaseConnector {
     constructor() {
         this.apiConfig = {
-            baseURL: '', // 使用空字符串，避免路径重复
+            baseURL: window.location.origin, // 使用当前域名，通过代理访问
             publicKey: 'ttdrcccy',
             privateKey: '2b207365-cbf0-4e42-a3bf-f932c84557c4'
         };
