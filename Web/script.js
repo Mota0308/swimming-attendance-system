@@ -659,9 +659,10 @@ async function loadWorkHoursData() {
 	try {
 		let workHoursList = [];
 		let statsData = null;
+		let coachPhone = '';
 		
 		if (typeof databaseConnector !== 'undefined' && databaseConnector && databaseConnector.connectionStatus.connected) {
-			const coachPhone = localStorage.getItem('current_user_phone') || '';
+			coachPhone = localStorage.getItem('current_user_phone') || '';
 			
 			if (!coachPhone) {
 				console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
