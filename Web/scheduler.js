@@ -149,16 +149,55 @@
   function groupByTimeAndType(students, currentLocation) {
     const map = new Map();
     students.forEach(s => {
-      const key = `${s.time||''}__${s.type||''}`;
-      if (!map.has(key)) map.set(key, { time: s.time||'未設定', type: s.type||'未設定', students: [] });
+      // 🔄 智能分类：按日期、时间、课程类型分类
+      const date = s.date || '';
+      const time = s.time || '';
+      const type = s.type || '';
+      
+      // 分类键：日期_时间_课程类型
+      const key = `${date}__${time}__${type}`;
+      
+      if (!map.has(key)) {
+        map.set(key, { 
+          date: date || '未設定日期',
+          time: time || '未設定時間', 
+          type: type || '未設定類型',
+          students: [] 
+        });
+      }
       map.get(key).students.push(s);
     });
     const slots = [];
     for (const [key, g] of map.entries()) {
       const id = generateId('t');
-      slots.push({ id, time: g.time, type: g.type, teachers: [], location: currentLocation||'', students: g.students.map(x => ({ id: generateId('s'), name: x.name, status: null, notes: '', phone: x.phone })) });
+      slots.push({ 
+        id, 
+        date: g.date,
+        time: g.time, 
+        type: g.type, 
+        teachers: [], 
+        location: currentLocation || '', 
+        students: g.students.map(x => ({ 
+          id: generateId('s'), 
+          name: x.name, 
+          status: null, 
+          notes: '', 
+          phone: x.phone,
+          date: x.date || g.date
+        })) 
+      });
     }
-    slots.sort((a,b) => parseStartMinutes(a.time) - parseStartMinutes(b.time));
+    // 排序：先按日期，再按时间
+    slots.sort((a, b) => {
+      // 日期排序
+      if (a.date !== b.date) {
+        if (a.date === '未設定日期') return 1;
+        if (b.date === '未設定日期') return -1;
+        return new Date(a.date) - new Date(b.date);
+      }
+      // 时间排序
+      return parseStartMinutes(a.time) - parseStartMinutes(b.time);
+    });
     return slots;
   }
 
