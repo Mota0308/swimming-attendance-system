@@ -741,7 +741,9 @@ async function loadWorkHoursData() {
 		}
 		
 		// 獲取全部工時數據並更新全部工時總結
-		await updateAllWorkHoursSummary(coachPhone);
+		if (coachPhone) {
+			await updateAllWorkHoursSummary(coachPhone);
+		}
 		
 		// 只有在沒有數據時才使用默認示例數據
 		if (hoursByDay.size === 0) {

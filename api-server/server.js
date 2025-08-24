@@ -822,6 +822,82 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
     }
 });
 
+// 獲取教練工時統計信息
+app.get('/coach-work-hours-stats', validateApiKeys, async (req, res) => {
+    try {
+        const phone = req.query.phone;
+        const year = parseInt(req.query.year, 10);
+        const month = parseInt(req.query.month, 10);
+        const location = req.query.location;
+        const club = req.query.club;
+        
+        if (!phone || !year || !month) {
+            return res.status(400).json({ success: false, message: '缺少必要參數 phone/year/month' });
+        }
+        
+        console.log(`📊 獲取教練工時統計 - 電話: ${phone}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}`);
+        
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_work_hours');
+
+        // 構建查詢條件
+        const query = {
+            phone,
+            date: { $gte: startDate, $lte: endDate }
+        };
+        
+        // 添加地點過濾
+        if (location && location !== '全部地點') {
+            query.location = location;
+        }
+        
+        // 添加泳會過濾
+        if (club && club !== '全部泳會') {
+            query.club = club;
+        }
+        
+        console.log(`📊 統計查詢條件:`, query);
+
+        const list = await collection.find(query).toArray();
+        await client.close();
+        
+        // 計算統計數據
+        let totalDays = 0;
+        let totalHours = 0;
+        let averageHours = 0;
+        
+        list.forEach(record => {
+            const hours = Number(record.hours || 0);
+            if (hours > 0) {
+                totalDays++;
+                totalHours += hours;
+            }
+        });
+        
+        if (totalDays > 0) {
+            averageHours = Math.round((totalHours / totalDays) * 10) / 10;
+        }
+        
+        const stats = {
+            total_days: totalDays,
+            total_hours: totalHours,
+            average_hours: averageHours,
+            total_records: list.length
+        };
+        
+        console.log(`📊 工時統計結果:`, stats);
+        res.json({ success: true, stats: stats });
+    } catch (error) {
+        console.error('❌ 獲取教練工時統計錯誤:', error);
+        res.status(500).json({ success: false, message: '獲取工時統計失敗', error: error.message });
+    }
+});
+
 // 獲取教練全部工時數據（所有月份、地點、泳會）
 app.get('/coach-work-hours-all', validateApiKeys, async (req, res) => {
     try {
