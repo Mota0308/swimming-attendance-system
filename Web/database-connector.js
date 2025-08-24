@@ -460,6 +460,38 @@ class DatabaseConnector {
         }
     }
 
+    // 获取教练全部工时数据（所有月份、地点、泳会）
+    async fetchAllCoachWorkHours(coachPhone) {
+        try {
+            console.log('📊 获取教练全部工时数据:', { coachPhone });
+            
+            const params = new URLSearchParams();
+            params.append('phone', coachPhone);
+            
+            const url = `${this.apiConfig.baseURL}/api/coach-work-hours-all?${params}`;
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: this.getStandardHeaders()
+            });
+            
+            if (!response.ok) {
+                console.warn('⚠️ 获取教练全部工时数据失败:', response.status, response.statusText);
+                return [];
+            }
+            
+            const json = await response.json();
+            const allWorkHours = json?.records ?? json?.data ?? [];
+            
+            console.log('✅ 获取教练全部工时数据成功:', allWorkHours.length, '条记录');
+            return allWorkHours;
+            
+        } catch (error) {
+            console.error('❌ 获取教练全部工时数据失败:', error);
+            return [];
+        }
+    }
+
     // 更新地点选择器
     updateLocationSelects() {
         const locationSelects = [

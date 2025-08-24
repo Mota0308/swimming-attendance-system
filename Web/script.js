@@ -740,6 +740,9 @@ async function loadWorkHoursData() {
 			});
 		}
 		
+		// 獲取全部工時數據並更新全部工時總結
+		await updateAllWorkHoursSummary(coachPhone);
+		
 		// 只有在沒有數據時才使用默認示例數據
 		if (hoursByDay.size === 0) {
 			console.log('📋 沒有找到工時數據，顯示提示信息');
@@ -770,6 +773,63 @@ function updateWorkHoursSummary(data) {
     document.getElementById('avgWorkHours').textContent = data.averageHours;
 }
 
+// 更新全部工時总结
+async function updateAllWorkHoursSummary(coachPhone) {
+    try {
+        if (typeof databaseConnector !== 'undefined' && databaseConnector && databaseConnector.connectionStatus.connected) {
+            const allWorkHours = await databaseConnector.fetchAllCoachWorkHours(coachPhone);
+            
+            let totalAllDays = 0;
+            let totalAllHours = 0;
+            
+            // 按地点和泳会分组统计
+            const locationClubStats = {};
+            
+            allWorkHours.forEach(record => {
+                const hours = Number(record.hours || 0);
+                const location = record.location || '';
+                const club = record.club || '';
+                const key = `${location}__${club}`;
+                
+                if (hours > 0) {
+                    totalAllDays++;
+                    totalAllHours += hours;
+                    
+                    if (!locationClubStats[key]) {
+                        locationClubStats[key] = {
+                            location: location,
+                            club: club,
+                            days: 0,
+                            hours: 0
+                        };
+                    }
+                    locationClubStats[key].days++;
+                    locationClubStats[key].hours += hours;
+                }
+            });
+            
+            // 更新全部工時总结显示
+            document.getElementById('totalAllWorkDays').textContent = totalAllDays;
+            document.getElementById('totalAllWorkHours').textContent = totalAllHours;
+            
+            // 保存统计数据供Excel导出使用
+            window.allWorkHoursData = {
+                totalAllDays: totalAllDays,
+                totalAllHours: totalAllHours,
+                locationClubStats: locationClubStats
+            };
+            
+            console.log('✅ 全部工時总结更新成功:', {
+                totalAllDays,
+                totalAllHours,
+                locationClubStats
+            });
+        }
+    } catch (error) {
+        console.error('❌ 更新全部工時总结失败:', error);
+    }
+}
+
 // 顯示工時數據加載狀態
 function showWorkHoursLoading(show) {
     const loadingElement = document.getElementById('workHoursLoading');
@@ -783,6 +843,143 @@ function showWorkHoursLoading(show) {
         refreshBtn.disabled = show;
         refreshBtn.innerHTML = show ? '<i class="fas fa-spinner fa-spin"></i> 載入中...' : '<i class="fas fa-sync-alt"></i> 刷新數據';
     }
+}
+
+// 導出工時Excel
+async function exportWorkHoursExcel() {
+    try {
+        const coachPhone = localStorage.getItem('current_user_phone') || '';
+        const coachName = localStorage.getItem('current_user_name') || '教練';
+        
+        if (!coachPhone) {
+            alert('請先登入教練賬號');
+            return;
+        }
+        
+        // 如果还没有全部工時数据，先获取
+        if (!window.allWorkHoursData) {
+            await updateAllWorkHoursSummary(coachPhone);
+        }
+        
+        const data = window.allWorkHoursData;
+        if (!data || !data.locationClubStats) {
+            alert('沒有工時數據可導出');
+            return;
+        }
+        
+        // 生成Excel数据
+        const excelData = generateWorkHoursExcelData(coachName, data);
+        
+        // 下载Excel文件
+        downloadExcelFile(excelData, `${coachName}_工時記錄_${new Date().toISOString().split('T')[0]}.xlsx`);
+        
+        console.log('✅ Excel导出成功');
+        
+    } catch (error) {
+        console.error('❌ Excel导出失败:', error);
+        alert('導出失敗: ' + error.message);
+    }
+}
+
+// 生成工時Excel数据
+function generateWorkHoursExcelData(coachName, data) {
+    const { locationClubStats, totalAllDays, totalAllHours } = data;
+    
+    // 创建工作簿
+    const workbook = {
+        SheetNames: ['工時記錄'],
+        Sheets: {
+            '工時記錄': {}
+        }
+    };
+    
+    const worksheet = workbook.Sheets['工時記錄'];
+    
+    // 设置列宽
+    worksheet['!cols'] = [
+        { width: 15 }, // 地点
+        { width: 15 }, // 泳会
+        { width: 15 }, // 总工作天数
+        { width: 15 }  // 总工作时数
+    ];
+    
+    // 标题行
+    worksheet['A1'] = { v: '教練工時記錄', t: 's' };
+    worksheet['A2'] = { v: `教練姓名: ${coachName}`, t: 's' };
+    worksheet['A3'] = { v: `導出日期: ${new Date().toLocaleDateString('zh-TW')}`, t: 's' };
+    
+    // 表头
+    worksheet['A5'] = { v: '地點', t: 's' };
+    worksheet['B5'] = { v: '泳會', t: 's' };
+    worksheet['C5'] = { v: '總工作天數', t: 's' };
+    worksheet['D5'] = { v: '總工作時數', t: 's' };
+    
+    // 数据行
+    let row = 6;
+    const locationClubArray = Object.values(locationClubStats);
+    
+    locationClubArray.forEach(stat => {
+        worksheet[`A${row}`] = { v: stat.location, t: 's' };
+        worksheet[`B${row}`] = { v: stat.club, t: 's' };
+        worksheet[`C${row}`] = { v: stat.days, t: 'n' };
+        worksheet[`D${row}`] = { v: stat.hours, t: 'n' };
+        row++;
+    });
+    
+    // 总计行
+    worksheet[`A${row}`] = { v: '全部工作天數', t: 's' };
+    worksheet[`C${row}`] = { v: totalAllDays, t: 'n' };
+    worksheet[`A${row + 1}`] = { v: '全部工作時數', t: 's' };
+    worksheet[`D${row + 1}`] = { v: totalAllHours, t: 'n' };
+    
+    return workbook;
+}
+
+// 下载Excel文件
+function downloadExcelFile(workbook, filename) {
+    // 使用SheetJS库生成Excel文件
+    if (typeof XLSX === 'undefined') {
+        // 如果没有SheetJS库，使用简单的CSV格式
+        downloadCSVFile(workbook, filename.replace('.xlsx', '.csv'));
+        return;
+    }
+    
+    const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'binary' });
+    
+    function s2ab(s) {
+        const buf = new ArrayBuffer(s.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+        return buf;
+    }
+    
+    const blob = new Blob([s2ab(wbout)], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+// 下载CSV文件（备用方案）
+function downloadCSVFile(workbook, filename) {
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+    
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }
 
 // 生成工時日曆

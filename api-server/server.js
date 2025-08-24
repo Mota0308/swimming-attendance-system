@@ -822,6 +822,38 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
     }
 });
 
+// 獲取教練全部工時數據（所有月份、地點、泳會）
+app.get('/coach-work-hours-all', validateApiKeys, async (req, res) => {
+    try {
+        const phone = req.query.phone;
+        
+        if (!phone) {
+            return res.status(400).json({ success: false, message: '缺少必要參數 phone' });
+        }
+        
+        console.log(`📊 獲取教練全部工時數據 - 電話: ${phone}`);
+        
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_work_hours');
+
+        // 查詢該教練的所有工時記錄
+        const query = { phone };
+        
+        console.log(`📊 查詢條件:`, query);
+
+        const list = await collection.find(query).sort({ date: 1 }).toArray();
+        await client.close();
+        
+        console.log(`📊 找到 ${list.length} 條全部工時記錄`);
+        res.json({ success: true, records: list });
+    } catch (error) {
+        console.error('❌ 獲取教練全部工時數據錯誤:', error);
+        res.status(500).json({ success: false, message: '獲取全部工時數據失敗', error: error.message });
+    }
+});
+
 // 取得教練某月份的更表資料（Coach_roster）
 app.get('/coach-roster', validateApiKeys, async (req, res) => {
   try {
