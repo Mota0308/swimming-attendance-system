@@ -1723,12 +1723,20 @@ function generateEditableRosterCalendar(year, month, rosterByDay) {
     html += `<div class="cal-title">${year} 年 ${month} 月</div>`;
     html += '<div class="cal grid-7">';
     const daysInMonth = new Date(year, month, 0).getDate();
+    const weekdays = ['日','一','二','三','四','五','六'];
+    // 表頭
+    weekdays.forEach(w => { html += `<div class=\"cal-head\">${w}</div>`; });
+    // 起始偏移
+    const first = new Date(year, month - 1, 1);
+    const offset = first.getDay();
+    for (let i = 0; i < offset; i++) html += '<div class="cal-cell cal-empty"></div>';
+
     for (let day = 1; day <= daysInMonth; day++) {
         const items = rosterByDay.get(day) || [];
         const lines = items.map(it => `${it.time} ${it.location}`);
         html += `<div class="cal-cell">
             <div class="cal-day">${day}</div>
-            <textarea class="cal-editor" data-day="${day}" placeholder="時間 地點\n例如: 09:00 九龍公園">${lines.join('\n')}</textarea>
+            <textarea class="cal-editor" data-day="${day}" placeholder="時間 地點\n例如: 09:00 九龍公園" rows="2" style="resize:none;width:100%;min-height:48px;">${lines.join('\n')}</textarea>
         </div>`;
     }
     html += '</div>';
