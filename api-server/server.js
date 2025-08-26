@@ -23,7 +23,7 @@ app.use((req, res, next) => {
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://chenyaolin0308:9GUhZvnuEpAA1r6c@cluster0.0dhi0qc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 const DB_NAME = process.env.DB_NAME || 'test';
 const STUDENTS_COLLECTION = 'students';
-const ACCOUNTS_COLLECTION = 'Student_account';
+const ACCOUNTS_COLLECTION = process.env.ACCOUNTS_COLLECTION || 'Coach_account';
 
 // 服務器配置 - 支持環境變量
 const SERVER_IP = process.env.SERVER_IP || '0.0.0.0';
