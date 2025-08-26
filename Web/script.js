@@ -1224,9 +1224,10 @@ function generateWorkHoursCalendar(year, month, hoursByDay) {
 	for (let d = 1; d <= daysInMonth; d++) {
 		const h = hoursByDay.get(d) || 0;
 		const isToday = d === todayDate;
+		const hoursHtml = (Number(h) > 0) ? `${Number(h).toFixed(1)}h` : '';
 		html += `<div class="cal-cell ${isToday ? 'is-today' : ''} ${h>0 ? 'has-hours' : ''}">`+
 			`<div class="cal-day">${d}</div>`+
-			`<div class="cal-hours">${(Number.isFinite(h)?h:0).toFixed(1)}h</div>`+
+			`<div class="cal-hours">${hoursHtml}</div>`+
 		`</div>`;
 	}
 	
@@ -1239,7 +1240,7 @@ function generateWorkHoursCalendar(year, month, hoursByDay) {
 		if (day >= 1 && day <= daysInMonth) {
 			const hh = hoursByDay.get(day) || 0;
 			cell.addEventListener('click', () => {
-				alert(`${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}：${hh>0?hh.toFixed(1)+' 小時':'無記錄'}`);
+				alert(`${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}：${hh>0?Number(hh).toFixed(1)+' 小時':'無記錄'}`);
 			});
 		}
 	});
@@ -1264,9 +1265,10 @@ function generateWorkHoursCalendarIn(containerEl, year, month, hoursByDay) {
 	for (let d = 1; d <= daysInMonth; d++) {
 		const h = hoursByDay.get(d) || 0;
 		const isToday = d === todayDate;
+		const hoursHtml = (Number(h) > 0) ? `${Number(h).toFixed(1)}h` : '';
 		html += `<div class="cal-cell ${isToday ? 'is-today' : ''} ${h>0 ? 'has-hours' : ''}">`+
 			`<div class="cal-day">${d}</div>`+
-			`<div class="cal-hours">${(Number.isFinite(h)?h:0).toFixed(1)}h</div>`+
+			`<div class="cal-hours">${hoursHtml}</div>`+
 		`</div>`;
 	}
 	html += '</div>';
