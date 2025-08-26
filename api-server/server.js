@@ -779,33 +779,35 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         const location = req.query.location;
         const club = req.query.club;
         
-        if (!phone || !year || !month) {
-            return res.status(400).json({ success: false, message: '缺少必要參數 phone/year/month' });
+        if (!phone) {
+            return res.status(400).json({ success: false, message: '缺少必要參數 phone' });
         }
         
         console.log(`📊 獲取教練工時 - 電話: ${phone}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}`);
         
-        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
-
         const client = new MongoClient(MONGO_URI);
         await client.connect();
         const db = client.db(DB_NAME);
         const collection = db.collection('Coach_work_hours');
 
         // 構建查詢條件
-        const query = {
-            phone,
-            date: { $gte: startDate, $lte: endDate }
-        };
+        const query = { phone };
+        
+        // 新的邏輯：靈活篩選
+        if (year && month) {
+            // 如果提供了年份和月份，添加日期範圍
+            const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+            query.date = { $gte: startDate, $lte: endDate };
+        }
         
         // 添加地點過濾
-        if (location && location !== '全部地點') {
+        if (location && location.trim() && location !== '全部地點') {
             query.location = location;
         }
         
         // 添加泳會過濾
-        if (club && club !== '全部泳會') {
+        if (club && club.trim() && club !== '全部泳會') {
             query.club = club;
         }
         
@@ -831,33 +833,35 @@ app.get('/coach-work-hours-stats', validateApiKeys, async (req, res) => {
         const location = req.query.location;
         const club = req.query.club;
         
-        if (!phone || !year || !month) {
-            return res.status(400).json({ success: false, message: '缺少必要參數 phone/year/month' });
+        if (!phone) {
+            return res.status(400).json({ success: false, message: '缺少必要參數 phone' });
         }
         
         console.log(`📊 獲取教練工時統計 - 電話: ${phone}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}`);
         
-        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
-
         const client = new MongoClient(MONGO_URI);
         await client.connect();
         const db = client.db(DB_NAME);
         const collection = db.collection('Coach_work_hours');
 
         // 構建查詢條件
-        const query = {
-            phone,
-            date: { $gte: startDate, $lte: endDate }
-        };
+        const query = { phone };
+        
+        // 新的邏輯：靈活篩選
+        if (year && month) {
+            // 如果提供了年份和月份，添加日期範圍
+            const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+            query.date = { $gte: startDate, $lte: endDate };
+        }
         
         // 添加地點過濾
-        if (location && location !== '全部地點') {
+        if (location && location.trim() && location !== '全部地點') {
             query.location = location;
         }
         
         // 添加泳會過濾
-        if (club && club !== '全部泳會') {
+        if (club && club.trim() && club !== '全部泳會') {
             query.club = club;
         }
         

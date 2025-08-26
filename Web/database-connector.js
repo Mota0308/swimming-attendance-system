@@ -394,10 +394,20 @@ class DatabaseConnector {
             
             const params = new URLSearchParams();
             params.append('phone', coachPhone);
-            params.append('year', year);
-            params.append('month', month);
-            if (location) params.append('location', location);
-            if (club) params.append('club', club);
+            
+            // 新的邏輯：只有當year和month不為0時才添加參數
+            if (year && year !== 0) {
+                params.append('year', year);
+            }
+            if (month && month !== 0) {
+                params.append('month', month);
+            }
+            if (location && location.trim()) {
+                params.append('location', location);
+            }
+            if (club && club.trim()) {
+                params.append('club', club);
+            }
             
             const url = `${this.apiConfig.baseURL}/api/coach-work-hours?${params}`;
             console.log('🔍 请求URL:', url);
@@ -431,10 +441,20 @@ class DatabaseConnector {
             
             const params = new URLSearchParams();
             params.append('phone', coachPhone);
-            params.append('year', year);
-            params.append('month', month);
-            if (location) params.append('location', location);
-            if (club) params.append('club', club);
+            
+            // 新的邏輯：只有當year和month不為0時才添加參數
+            if (year && year !== 0) {
+                params.append('year', year);
+            }
+            if (month && month !== 0) {
+                params.append('month', month);
+            }
+            if (location && location.trim()) {
+                params.append('location', location);
+            }
+            if (club && club.trim()) {
+                params.append('club', club);
+            }
             
             const url = `${this.apiConfig.baseURL}/api/coach-work-hours-stats?${params}`;
             

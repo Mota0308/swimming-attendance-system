@@ -645,12 +645,12 @@ async function loadWorkHoursData() {
 	const selectedLocation = locationEl ? locationEl.value : '';
 	const selectedClub = clubEl ? clubEl.value : '';
 	
-	// 與 Android 相同：需要選擇地點與泳會
-	if (!selectedLocation || !selectedClub) {
+	// 新的邏輯：至少需要選擇一個選項
+	if (!monthEl.value && !selectedLocation && !selectedClub) {
 		showLoading(false);
 		// 清空日曆以提示
 		const cal = document.getElementById('workHoursCalendar');
-		if (cal) cal.innerHTML = '<div style="padding:12px;color:#888;">請先選擇地點與泳會</div>';
+		if (cal) cal.innerHTML = '<div style="padding:12px;color:#888;">請至少選擇一個篩選條件（月份、地點或泳會）</div>';
 		return;
 	}
 	
@@ -672,23 +672,127 @@ async function loadWorkHoursData() {
 			
 			console.log('🔍 獲取教練工時數據:', { coachPhone, year, month, selectedLocation, selectedClub });
 			
-			// 從 Coach_work_hours 表獲取教練工時數據
-			workHoursList = await databaseConnector.fetchCoachWorkHours(
-				coachPhone, 
-				year, 
-				month, 
-				selectedLocation, 
-				selectedClub
-			);
-			
-			// 獲取工時統計信息
-			statsData = await databaseConnector.fetchCoachWorkHoursStats(
-				coachPhone, 
-				year, 
-				month, 
-				selectedLocation, 
-				selectedClub
-			);
+			// 新的邏輯：根據選擇的條件靈活獲取數據
+			if (monthEl.value && selectedLocation && selectedClub) {
+				// 三個條件都選擇：精確篩選
+				console.log('📊 精確篩選：月份 + 地點 + 泳會');
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					year, 
+					month, 
+					selectedLocation, 
+					selectedClub
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					year, 
+					month, 
+					selectedLocation, 
+					selectedClub
+				);
+			} else if (monthEl.value && selectedLocation) {
+				// 選擇月份和地點：顯示該月該地點的所有泳會
+				console.log('📊 遞進篩選：月份 + 地點');
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					year, 
+					month, 
+					selectedLocation, 
+					''  // 不限制泳會
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					year, 
+					month, 
+					selectedLocation, 
+					''  // 不限制泳會
+				);
+			} else if (monthEl.value && selectedClub) {
+				// 選擇月份和泳會：顯示該月該泳會的所有地點
+				console.log('📊 遞進篩選：月份 + 泳會');
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					year, 
+					month, 
+					'',  // 不限制地點
+					selectedClub
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					year, 
+					month, 
+					'',  // 不限制地點
+					selectedClub
+				);
+			} else if (selectedLocation && selectedClub) {
+				// 選擇地點和泳會：顯示所有月份
+				console.log('📊 遞進篩選：地點 + 泳會');
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					0,  // 不限制年份
+					0,  // 不限制月份
+					selectedLocation, 
+					selectedClub
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					0,  // 不限制年份
+					0,  // 不限制月份
+					selectedLocation, 
+					selectedClub
+				);
+			} else if (monthEl.value) {
+				// 只選擇月份：顯示該月所有地點和泳會
+				console.log('📊 月份篩選：只選擇月份');
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					year, 
+					month, 
+					'',  // 不限制地點
+					''   // 不限制泳會
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					year, 
+					month, 
+					'',  // 不限制地點
+					''   // 不限制泳會
+				);
+			} else if (selectedLocation) {
+				// 只選擇地點：顯示所有月份該地點的所有泳會
+				console.log('📊 地點篩選：只選擇地點');
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					0,  // 不限制年份
+					0,  // 不限制月份
+					selectedLocation, 
+					''   // 不限制泳會
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					0,  // 不限制年份
+					0,  // 不限制月份
+					selectedLocation, 
+					''   // 不限制泳會
+				);
+			} else if (selectedClub) {
+				// 只選擇泳會：顯示所有月份該泳會的所有地點
+				console.log('📊 泳會篩選：只選擇泳會');
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					0,  // 不限制年份
+					0,  // 不限制月份
+					'',  // 不限制地點
+					selectedClub
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					0,  // 不限制年份
+					0,  // 不限制月份
+					'',  // 不限制地點
+					selectedClub
+				);
+			}
 			
 			console.log('✅ 工時數據獲取成功:', workHoursList.length, '條記錄');
 			console.log('✅ 統計數據獲取成功:', statsData);
@@ -715,14 +819,31 @@ async function loadWorkHoursData() {
 			const d = new Date(dateStr);
 			const t = d.getTime();
 			
-			if (!Number.isNaN(t) && d.getFullYear() === year && (d.getMonth() + 1) === month) {
-				if (selectedLocation && loc && loc !== selectedLocation) return;
-				if (selectedClub && clb && clb !== selectedClub) return;
+			if (!Number.isNaN(t)) {
+				// 新的邏輯：根據選擇的條件靈活篩選
+				let shouldInclude = true;
 				
-				const day = d.getDate();
-				hoursByDay.set(day, (hoursByDay.get(day) || 0) + hours);
-				totalHours += hours;
-				daysWithHours += hours > 0 ? 1 : 0;
+				// 如果選擇了月份，檢查日期是否匹配
+				if (monthEl.value && (d.getFullYear() !== year || (d.getMonth() + 1) !== month)) {
+					shouldInclude = false;
+				}
+				
+				// 如果選擇了地點，檢查地點是否匹配
+				if (selectedLocation && loc && loc !== selectedLocation) {
+					shouldInclude = false;
+				}
+				
+				// 如果選擇了泳會，檢查泳會是否匹配
+				if (selectedClub && clb && clb !== selectedClub) {
+					shouldInclude = false;
+				}
+				
+				if (shouldInclude) {
+					const day = d.getDate();
+					hoursByDay.set(day, (hoursByDay.get(day) || 0) + hours);
+					totalHours += hours;
+					daysWithHours += hours > 0 ? 1 : 0;
+				}
 			}
 		});
 		
