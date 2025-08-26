@@ -606,10 +606,17 @@ function showStaffRoster() {
         const phone = localStorage.getItem('current_user_phone') || '';
         // 只渲染只讀
         renderCoachRosterReadonly(phone);
+        const saveBtn = document.querySelector('#staffRosterSection .export-btn');
+        if (saveBtn) saveBtn.style.display = 'none';
     } else {
-        // 主管
+        // 主管：可選教練並可編輯
+        const selWrap = document.getElementById('staffCoachSelect');
+        if (selWrap) selWrap.parentElement.style.display = '';
+        const saveBtn = document.querySelector('#staffRosterSection .export-btn');
+        if (saveBtn) saveBtn.style.display = '';
         populateCoachSelect();
-        renderAllCoachesRoster();
+        // 若已選擇教練則載入該教練可編輯界面
+        onChangeStaffCoach();
     }
 }
 
@@ -1662,8 +1669,13 @@ async function populateCoachSelect() {
 
 function onChangeStaffCoach() {
     const phone = (document.getElementById('staffCoachSelect') || {}).value || '';
-    if (phone) {
+    const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+    if (userType === 'supervisor' && phone) {
         renderCoachRoster(phone);
+    } else if (userType === 'supervisor' && !phone) {
+        // 未選擇教練清空
+        const container = document.getElementById('staffRosterCalendars');
+        if (container) container.innerHTML = '';
     } else {
         renderAllCoachesRoster();
     }
@@ -1692,14 +1704,10 @@ async function renderCoachRoster(phone) {
             }
         });
         container.id = 'rosterCalendar';
-        // 使用統一的只讀格式渲染
-        generateRosterCalendar(year, month, rosterByDay);
+        // 主管：使用可編輯樣式
+        generateEditableRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
-        // 保存當前教練電話於容器屬性
         container.setAttribute('data-coach-phone', phone);
-        // 隱藏保存按鈕（此視圖為統一格式展示）
-        const saveBtn = document.querySelector('#staffRosterSection .export-btn');
-        if (saveBtn) saveBtn.style.display = 'none';
     } catch (e) {
         console.warn('載入單一教練更表失敗', e);
     } finally {
@@ -1962,10 +1970,17 @@ function showStaffRoster() {
         const phone = localStorage.getItem('current_user_phone') || '';
         // 只渲染只讀
         renderCoachRosterReadonly(phone);
+        const saveBtn = document.querySelector('#staffRosterSection .export-btn');
+        if (saveBtn) saveBtn.style.display = 'none';
     } else {
-        // 主管
+        // 主管：可選教練並可編輯
+        const selWrap = document.getElementById('staffCoachSelect');
+        if (selWrap) selWrap.parentElement.style.display = '';
+        const saveBtn = document.querySelector('#staffRosterSection .export-btn');
+        if (saveBtn) saveBtn.style.display = '';
         populateCoachSelect();
-        renderAllCoachesRoster();
+        // 若已選擇教練則載入該教練可編輯界面
+        onChangeStaffCoach();
     }
 }
 
