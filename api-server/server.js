@@ -847,17 +847,25 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
             query.date = { $gte: startDate, $lte: endDate };
         }
         
-        // 添加地點過濾
+        // 添加地點/泳會過濾（寬鬆匹配）
         if (location && location.trim() && location !== '全部地點') {
-            query.location = location;
+            try {
+                const pattern = location.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                query.location = { $regex: pattern, $options: 'i' };
+            } catch (_) {
+                query.location = location;
+            }
         }
-        
-        // 添加泳會過濾
         if (club && club.trim() && club !== '全部泳會') {
-            query.club = club;
+            try {
+                const patternClub = club.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                query.club = { $regex: patternClub, $options: 'i' };
+            } catch (_) {
+                query.club = club;
+            }
         }
 
-        // 如果是主管且未指定phone，限制為 staff 類型教練
+        // 如果是主管且未指定phone：先在 Coach_account 找 staff，再以 phone IN 查 Coach_work_hours
         if (isSupervisor && !phone) {
             try {
                 const accounts = db.collection(ACCOUNTS_COLLECTION || 'Coach_account');
@@ -866,7 +874,6 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
                 if (staffPhones.length > 0) {
                     query.phone = { $in: staffPhones };
                 } else {
-                    // 無staff則返回空
                     await client.close();
                     return res.json({ success: true, records: [] });
                 }
