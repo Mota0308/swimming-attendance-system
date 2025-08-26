@@ -579,8 +579,22 @@ function showLocationClub() {
     loadLocationClubData();
 }
 
+function showStaffWorkHours() {
+    hideAllFeatures();
+    const sec = document.getElementById('staffWorkHoursSection');
+    if (sec) sec.classList.remove('hidden');
+    renderAllCoachesWorkHours();
+}
+
+function showStaffRoster() {
+    hideAllFeatures();
+    const sec = document.getElementById('staffRosterSection');
+    if (sec) sec.classList.remove('hidden');
+    renderAllCoachesRoster();
+}
+
 function hideAllFeatures() {
-    const ids = ['attendanceSection','workHoursSection','rosterSection','locationClubSection'];
+    const ids = ['attendanceSection','workHoursSection','rosterSection','locationClubSection','staffWorkHoursSection','staffRosterSection'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
 }
 
@@ -1477,3 +1491,98 @@ window.loadWorkHoursData = loadWorkHoursData;
 window.loadRosterData = loadRosterData;
 window.loadLocationClubData = loadLocationClubData;
 window.editAttendance = editAttendance;
+
+// 渲染所有教練工時日曆
+async function renderAllCoachesWorkHours() {
+    try {
+        showLoading(true);
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        // 主管模式拉取全部工時（空 phone）
+        const list = await databaseConnector.fetchCoachWorkHours('', year, month, '', '');
+        const container = document.getElementById('staffWorkHoursCalendars');
+        if (!container) return;
+        const byCoach = new Map();
+        (list || []).forEach(item => {
+            const phoneVal = item.phone || item.coachPhone || '';
+            const name = item.studentName || item.name || '';
+            const key = phoneVal || name || 'unknown';
+            if (!byCoach.has(key)) byCoach.set(key, { name, phone: phoneVal, list: [] });
+            byCoach.get(key).list.push(item);
+        });
+        let html = '<div class="coach-calendars">';
+        byCoach.forEach((value, key) => {
+            const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
+            html += `<div class="coach-calendar-card">`+
+                `<div class="coach-calendar-title">${label}</div>`+
+                `<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${String(key)}"></div></div>`+
+            `</div>`;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+        byCoach.forEach((value, key) => {
+            const allNodes = container.querySelectorAll('.coach-calendar');
+            let wrap = null;
+            allNodes.forEach(node => { if (node.getAttribute('data-coach') === String(key)) wrap = node; });
+            const hoursByDay = new Map();
+            (value.list || []).forEach(rec => {
+                const dateStr = rec?.date || rec?.workDate || rec?.day || rec?.work_date;
+                if (!dateStr) return;
+                const d = new Date(dateStr);
+                if (!Number.isNaN(d.getTime()) && (d.getFullYear()===year) && ((d.getMonth()+1)===month)) {
+                    const day = d.getDate();
+                    const hRaw = rec?.hours ?? rec?.totalHours ?? rec?.hour ?? rec?.work_hours ?? 0;
+                    const h = Number(hRaw) || 0;
+                    hoursByDay.set(day, (hoursByDay.get(day) || 0) + h);
+                }
+            });
+            if (wrap) {
+                generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
+                if (hoursByDay.size === 0) {
+                    wrap.innerHTML += '<div style="padding:8px;color:#888;">本月沒有工時記錄</div>';
+                }
+            }
+        });
+    } catch (e) {
+        console.warn('載入教練工時失敗', e);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 渲染所有教練更表
+async function renderAllCoachesRoster() {
+    try {
+        showLoading(true);
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        // 空 phone + supervisor 代表全部
+        const list = await databaseConnector.fetchRoster(month, '');
+        const container = document.getElementById('staffRosterCalendars');
+        if (!container) return;
+        // 聚合為單一月曆（需求：顯示所有 staff 的更表），這裡採用合併視圖
+        const rosterByDay = new Map();
+        (list || []).forEach(item => {
+            const dateStr = item?.date || item?.rosterDate || item?.day;
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            if (!Number.isNaN(d.getTime()) && d.getFullYear() === year && (d.getMonth()+1) === month) {
+                const day = d.getDate();
+                const time = item?.time || item?.timeRange || '';
+                const location = item?.location || item?.place || '';
+                const arr = rosterByDay.get(day) || [];
+                arr.push({ time, location });
+                rosterByDay.set(day, arr);
+            }
+        });
+        // 直接渲染到容器（重用 generateRosterCalendar 的 DOM 結構要求）
+        // 暫時複用現有函數，將容器 id 切換為 rosterCalendar 所需結構
+        container.id = 'rosterCalendar';
+        generateRosterCalendar(year, month, rosterByDay);
+        container.id = 'staffRosterCalendars';
+    } catch (e) {
+        console.warn('載入教練更表失敗', e);
+    } finally {
+        showLoading(false);
+    }
+}
