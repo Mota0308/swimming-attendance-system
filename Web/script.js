@@ -1586,3 +1586,11 @@ async function renderAllCoachesRoster() {
         showLoading(false);
     }
 }
+
+// 導出新功能到 window（供 HTML onclick 調用）
+try {
+    window.showStaffWorkHours = showStaffWorkHours;
+    window.showStaffRoster = showStaffRoster;
+    window.renderAllCoachesWorkHours = renderAllCoachesWorkHours;
+    window.renderAllCoachesRoster = renderAllCoachesRoster;
+} catch (_) {}
