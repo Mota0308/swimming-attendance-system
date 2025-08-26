@@ -588,7 +588,8 @@ function showStaffWorkHours() {
         initCoachWorkFilters();
         refreshCoachWorkHours();
     } else {
-        renderAllCoachesWorkHours();
+        initSupervisorWorkFilters();
+        refreshSupervisorWorkHours();
     }
 }
 
@@ -1779,7 +1780,83 @@ function showStaffWorkHours() {
         initCoachWorkFilters();
         refreshCoachWorkHours();
     } else {
-        renderAllCoachesWorkHours();
+        initSupervisorWorkFilters();
+        refreshSupervisorWorkHours();
+    }
+}
+
+async function initSupervisorWorkFilters() {
+    try {
+        const m = document.getElementById('coachWorkMonth');
+        if (m) m.value = String(new Date().getMonth() + 1);
+        const locSel = document.getElementById('coachWorkLocation');
+        const clubSel = document.getElementById('coachWorkClub');
+        const locs = await databaseConnector.fetchWorkHoursLocations();
+        locSel.innerHTML = '<option value="">全部地點</option>' + (locs||[]).map(l=>`<option value="${l}">${l}</option>`).join('');
+        const clubs = await databaseConnector.fetchWorkHoursClubs('');
+        clubSel.innerHTML = '<option value="">全部泳會</option>' + (clubs||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
+        // 聯動：選地點後重載對應泳會
+        locSel.onchange = async ()=>{
+            const c = await databaseConnector.fetchWorkHoursClubs(locSel.value||'');
+            clubSel.innerHTML = '<option value="">全部泳會</option>' + (c||[]).map(x=>`<option value="${x}">${x}</option>`).join('');
+        };
+    } catch (_) {}
+}
+
+async function refreshSupervisorWorkHours() {
+    try {
+        showLoading(true);
+        const month = parseInt((document.getElementById('coachWorkMonth')||{}).value || (new Date().getMonth()+1), 10);
+        const year = new Date().getFullYear();
+        const location = (document.getElementById('coachWorkLocation')||{}).value || '';
+        const club = (document.getElementById('coachWorkClub')||{}).value || '';
+        // 空 phone + supervisor = 全部教練
+        const data = await databaseConnector.fetchCoachWorkHours('', year, month, location, club);
+        // 分組並渲染
+        const calendarContainer = document.getElementById('staffWorkHoursCalendars');
+        if (!calendarContainer) return;
+        const byCoach = new Map();
+        (data||[]).forEach(item => {
+            const phoneVal = item.phone || item.coachPhone || '';
+            const name = item.studentName || item.name || '';
+            if (!phoneVal && !name) return;
+            const key = phoneVal || name;
+            if (!byCoach.has(key)) byCoach.set(key, { name, phone: phoneVal, list: [] });
+            byCoach.get(key).list.push(item);
+        });
+        let html = '<div class="coach-calendars">';
+        byCoach.forEach((value, key) => {
+            const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
+            html += `<div class="coach-calendar-card">`+
+                `<div class="coach-calendar-title">${label}</div>`+
+                `<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${String(key)}"></div></div>`+
+            `</div>`;
+        });
+        html += '</div>';
+        calendarContainer.innerHTML = html;
+        // 逐個渲染內容，隻顯示>0h
+        const todayYear = new Date().getFullYear();
+        const todayMonth = month;
+        byCoach.forEach((value, key) => {
+            const allNodes = calendarContainer.querySelectorAll('.coach-calendar');
+            let wrap = null;
+            allNodes.forEach(node => { if (node.getAttribute('data-coach') === String(key)) wrap = node; });
+            const hoursByDay = new Map();
+            (value.list || []).forEach(rec => {
+                const d = new Date(rec?.date || rec?.workDate || rec?.day || rec?.work_date);
+                if (!Number.isNaN(d.getTime()) && d.getFullYear()===todayYear && (d.getMonth()+1)===todayMonth) {
+                    const day = d.getDate();
+                    const hRaw = rec?.hours ?? rec?.totalHours ?? rec?.hour ?? rec?.work_hours ?? 0;
+                    const h = Number(hRaw) || 0;
+                    if (h > 0) hoursByDay.set(day, (hoursByDay.get(day)||0) + h);
+                }
+            });
+            if (wrap) generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
+        });
+    } catch (e) {
+        console.warn('主管工時刷新失敗', e);
+    } finally {
+        showLoading(false);
     }
 }
 
