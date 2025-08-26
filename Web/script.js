@@ -894,8 +894,19 @@ async function loadWorkHoursData() {
 				let html = '<div class="coach-calendars">';
 				byCoach.forEach((value, key) => {
 					const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
+					// 從該教練的記錄中彙總地點與泳會（縮小範圍後的結果）
+					const locSet = new Set();
+					const clubSet = new Set();
+					(value.list||[]).forEach(rec => {
+						const loc = (rec.location || rec.place || '').toString().trim();
+						const club = (rec.club || rec.work_club || '').toString().trim();
+						if (loc) locSet.add(loc);
+						if (club) clubSet.add(club);
+					});
+					const locLabel = locSet.size === 1 ? Array.from(locSet)[0] : '全部地點';
+					const clubLabel = clubSet.size === 1 ? Array.from(clubSet)[0] : '全部泳會';
 					html += `<div class="coach-calendar-card">`+
-						`<div class="coach-calendar-title">${label}</div>`+
+						`<div class="coach-calendar-title"><span>${label}</span><span style=\"float:right;color:#6b7280;font-weight:500;font-size:12px;\">${locLabel} · ${clubLabel}</span></div>`+
 						`<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${String(key)}"></div></div>`+
 					`</div>`;
 				});
