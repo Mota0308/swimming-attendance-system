@@ -583,14 +583,33 @@ function showStaffWorkHours() {
     hideAllFeatures();
     const sec = document.getElementById('staffWorkHoursSection');
     if (sec) sec.classList.remove('hidden');
-    renderAllCoachesWorkHours();
+    const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+    if (userType === 'coach') {
+        initCoachWorkFilters();
+        refreshCoachWorkHours();
+    } else {
+        renderAllCoachesWorkHours();
+    }
 }
 
 function showStaffRoster() {
     hideAllFeatures();
     const sec = document.getElementById('staffRosterSection');
     if (sec) sec.classList.remove('hidden');
-    renderAllCoachesRoster();
+    const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+    if (userType === 'coach') {
+        // 教練：隱藏教練選擇與保存，僅顯示自己
+        const selWrap = document.getElementById('staffCoachSelect');
+        if (selWrap) selWrap.parentElement.style.display = 'none';
+        const container = document.getElementById('staffRosterCalendars');
+        const phone = localStorage.getItem('current_user_phone') || '';
+        // 只渲染只讀
+        renderCoachRosterReadonly(phone);
+    } else {
+        // 主管
+        populateCoachSelect();
+        renderAllCoachesRoster();
+    }
 }
 
 function hideAllFeatures() {
@@ -1726,3 +1745,113 @@ try {
     window.renderAllCoachesWorkHours = renderAllCoachesWorkHours;
     window.renderAllCoachesRoster = renderAllCoachesRoster;
 } catch (_) {}
+
+function showStaffWorkHours() {
+    hideAllFeatures();
+    const sec = document.getElementById('staffWorkHoursSection');
+    if (sec) sec.classList.remove('hidden');
+    const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+    if (userType === 'coach') {
+        initCoachWorkFilters();
+        refreshCoachWorkHours();
+    } else {
+        renderAllCoachesWorkHours();
+    }
+}
+
+function initCoachWorkFilters() {
+    try {
+        const m = document.getElementById('coachWorkMonth');
+        if (m) m.value = String(new Date().getMonth() + 1);
+        const loc = document.getElementById('coachWorkLocation');
+        const club = document.getElementById('coachWorkClub');
+        // 填充地點/泳會
+        loc.innerHTML = '<option value="">全部地點</option>' + (databaseConnector.cache.locations||[]).map(l=>`<option value="${l}">${l}</option>`).join('');
+        club.innerHTML = '<option value="">全部泳會</option>' + (databaseConnector.cache.clubs||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
+    } catch(_) {}
+}
+
+async function refreshCoachWorkHours() {
+    try {
+        showLoading(true);
+        const month = parseInt((document.getElementById('coachWorkMonth')||{}).value || (new Date().getMonth()+1), 10);
+        const year = new Date().getFullYear();
+        const location = (document.getElementById('coachWorkLocation')||{}).value || '';
+        const club = (document.getElementById('coachWorkClub')||{}).value || '';
+        const phone = localStorage.getItem('current_user_phone') || '';
+        const list = await databaseConnector.fetchCoachWorkHours(phone, year, month, location, club);
+        const container = document.getElementById('staffWorkHoursCalendars');
+        if (!container) return;
+        // 僅顯示「有內容」的日期
+        const hoursByDay = new Map();
+        (list||[]).forEach(rec => {
+            const d = new Date(rec?.date || rec?.workDate || rec?.day || rec?.work_date);
+            if (!Number.isNaN(d.getTime()) && d.getFullYear()===year && (d.getMonth()+1)===month) {
+                const day = d.getDate();
+                const h = Number(rec?.hours ?? rec?.totalHours ?? rec?.hour ?? rec?.work_hours ?? 0) || 0;
+                if (h > 0) hoursByDay.set(day, (hoursByDay.get(day)||0) + h);
+            }
+        });
+        // 生成單一教練日曆，清空月份里沒有內容的格子提示
+        container.innerHTML = '';
+        const wrap = document.createElement('div');
+        container.appendChild(wrap);
+        generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
+    } catch (e) {
+        console.warn('載入教練工時失敗', e);
+    } finally {
+        showLoading(false);
+    }
+}
+
+function showStaffRoster() {
+    hideAllFeatures();
+    const sec = document.getElementById('staffRosterSection');
+    if (sec) sec.classList.remove('hidden');
+    const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+    if (userType === 'coach') {
+        // 教練：隱藏教練選擇與保存，僅顯示自己
+        const selWrap = document.getElementById('staffCoachSelect');
+        if (selWrap) selWrap.parentElement.style.display = 'none';
+        const container = document.getElementById('staffRosterCalendars');
+        const phone = localStorage.getItem('current_user_phone') || '';
+        // 只渲染只讀
+        renderCoachRosterReadonly(phone);
+    } else {
+        // 主管
+        populateCoachSelect();
+        renderAllCoachesRoster();
+    }
+}
+
+async function renderCoachRosterReadonly(phone) {
+    try {
+        showLoading(true);
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        const records = await databaseConnector.fetchRoster(month, phone);
+        const container = document.getElementById('staffRosterCalendars');
+        if (!container) return;
+        const rosterByDay = new Map();
+        (records || []).forEach(item => {
+            const dateStr = item?.date || item?.rosterDate || item?.day;
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            if (!Number.isNaN(d.getTime()) && d.getFullYear() === year && (d.getMonth()+1) === month) {
+                const day = d.getDate();
+                const time = item?.time || item?.timeRange || '';
+                const location = item?.location || item?.place || '';
+                const arr = rosterByDay.get(day) || [];
+                arr.push({ time, location });
+                rosterByDay.set(day, arr);
+            }
+        });
+        container.id = 'rosterCalendar';
+        generateRosterCalendar(year, month, rosterByDay);
+        container.id = 'staffRosterCalendars';
+    } catch (e) {
+        console.warn('載入只讀更表失敗', e);
+    } finally {
+        showLoading(false);
+    }
+}
