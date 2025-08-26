@@ -1587,6 +1587,138 @@ async function renderAllCoachesRoster() {
     }
 }
 
+async function populateCoachSelect() {
+    try {
+        const sel = document.getElementById('staffCoachSelect');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">全部教練</option>';
+        const list = await databaseConnector.fetchCoaches();
+        (list || []).forEach(c => {
+            const phone = c.phone || c.studentPhone || '';
+            const name = c.name || c.studentName || phone;
+            const opt = document.createElement('option');
+            opt.value = phone;
+            opt.textContent = name + (phone ? `（${phone}）` : '');
+            sel.appendChild(opt);
+        });
+    } catch (e) {
+        console.warn('載入教練清單失敗', e);
+    }
+}
+
+function onChangeStaffCoach() {
+    const phone = (document.getElementById('staffCoachSelect') || {}).value || '';
+    if (phone) {
+        renderCoachRoster(phone);
+    } else {
+        renderAllCoachesRoster();
+    }
+}
+
+async function renderCoachRoster(phone) {
+    try {
+        showLoading(true);
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        const records = await databaseConnector.fetchRoster(month, phone);
+        const container = document.getElementById('staffRosterCalendars');
+        if (!container) return;
+        const rosterByDay = new Map();
+        (records || []).forEach(item => {
+            const dateStr = item?.date || item?.rosterDate || item?.day;
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            if (!Number.isNaN(d.getTime()) && d.getFullYear() === year && (d.getMonth()+1) === month) {
+                const day = d.getDate();
+                const time = item?.time || item?.timeRange || '';
+                const location = item?.location || item?.place || '';
+                const arr = rosterByDay.get(day) || [];
+                arr.push({ time, location });
+                rosterByDay.set(day, arr);
+            }
+        });
+        container.id = 'rosterCalendar';
+        generateEditableRosterCalendar(year, month, rosterByDay);
+        container.id = 'staffRosterCalendars';
+        // 保存當前教練電話於容器屬性
+        container.setAttribute('data-coach-phone', phone);
+    } catch (e) {
+        console.warn('載入單一教練更表失敗', e);
+    } finally {
+        showLoading(false);
+    }
+}
+
+function generateEditableRosterCalendar(year, month, rosterByDay) {
+    // 基於現有 generateRosterCalendar，加入可編輯輸入框
+    const container = document.getElementById('rosterCalendar');
+    if (!container) return;
+    let html = '';
+    html += `<div class="cal-title">${year} 年 ${month} 月</div>`;
+    html += '<div class="cal grid-7">';
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day++) {
+        const items = rosterByDay.get(day) || [];
+        const lines = items.map(it => `${it.time} ${it.location}`);
+        html += `<div class="cal-cell">
+            <div class="cal-day">${day}</div>
+            <textarea class="cal-editor" data-day="${day}" placeholder="時間 地點\n例如: 09:00 九龍公園">${lines.join('\n')}</textarea>
+        </div>`;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+async function saveSelectedCoachRoster() {
+    try {
+        const container = document.getElementById('staffRosterCalendars');
+        if (!container) return;
+        const phone = container.getAttribute('data-coach-phone') || '';
+        if (!phone) { alert('請先選擇教練再保存'); return; }
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        const nodes = (document.querySelectorAll('#rosterCalendar .cal-editor') || []);
+        const records = [];
+        nodes.forEach(node => {
+            const day = Number(node.getAttribute('data-day'));
+            const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            const lines = (node.value || '').split('\n').map(s => s.trim()).filter(Boolean);
+            lines.forEach(line => {
+                // 拆成「時間 地點」
+                const firstSpace = line.indexOf(' ');
+                const time = firstSpace > 0 ? line.slice(0, firstSpace) : line;
+                const location = firstSpace > 0 ? line.slice(firstSpace + 1) : '';
+                records.push({ phone, date, time, location });
+            });
+        });
+        if (records.length === 0) { alert('沒有可保存的內容'); return; }
+        showLoading(true);
+        // 通過代理提交
+        const resp = await fetch('/api/coach-roster/batch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Public-Key': 'ttdrcccy',
+                'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
+            },
+            body: JSON.stringify({ records })
+        });
+        const json = await resp.json();
+        if (resp.ok && json?.success) {
+            alert('保存成功');
+            // 重新載入
+            renderCoachRoster(phone);
+        } else {
+            alert('保存失敗：' + (json?.message || resp.status));
+        }
+    } catch (e) {
+        console.warn('保存更表失敗', e);
+        alert('保存更表失敗');
+    } finally {
+        showLoading(false);
+    }
+}
+
 // 導出新功能到 window（供 HTML onclick 調用）
 try {
     window.showStaffWorkHours = showStaffWorkHours;

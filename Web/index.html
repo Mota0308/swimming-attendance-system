@@ -255,6 +255,20 @@
                         <i class="fas fa-arrow-left"></i> 返回
                     </button>
                 </div>
+                <div class="location-club-controls">
+                    <div class="control-group">
+                        <label>選擇教練：</label>
+                        <select id="staffCoachSelect">
+                            <option value="">全部教練</option>
+                        </select>
+                    </div>
+                    <button class="refresh-btn" onclick="onChangeStaffCoach()">
+                        <i class="fas fa-sync-alt"></i> 載入更表
+                    </button>
+                    <button class="export-btn" onclick="saveSelectedCoachRoster()">
+                        <i class="fas fa-save"></i> 保存更表
+                    </button>
+                </div>
                 <div id="staffRosterCalendars" class="roster-calendar"></div>
             </div>
         </div>
