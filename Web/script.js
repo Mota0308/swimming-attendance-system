@@ -1860,11 +1860,23 @@ async function refreshSupervisorWorkHours() {
             byCoach.get(key).list.push(item);
         });
         let html = '<div class="coach-calendars">';
+        // 取用目前篩選器的顯示文字
+        const locSelEl = document.getElementById('coachWorkLocation');
+        const clubSelEl = document.getElementById('coachWorkClub');
+        const locDisplay = (locSelEl && locSelEl.options && locSelEl.selectedIndex>=0)
+            ? (locSelEl.options[locSelEl.selectedIndex].text || '全部地點')
+            : '全部地點';
+        const clubDisplay = (clubSelEl && clubSelEl.options && clubSelEl.selectedIndex>=0)
+            ? (clubSelEl.options[clubSelEl.selectedIndex].text || '全部泳會')
+            : '全部泳會';
         byCoach.forEach((value, key) => {
             const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
-            html += `<div class="coach-calendar-card">`+
-                `<div class="coach-calendar-title">${label}</div>`+
-                `<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${String(key)}"></div></div>`+
+            html += `<div class=\"coach-calendar-card\">`+
+                `<div class=\"coach-calendar-title\" style=\"display:flex;align-items:center;justify-content:space-between;\">`+
+                    `<span>${label}</span>`+
+                    `<span style=\"color:#6b7280;font-weight:500;font-size:12px;\">${locDisplay} · ${clubDisplay}</span>`+
+                `</div>`+
+                `<div class=\"coach-calendar-body\"><div class=\"coach-calendar\" data-coach=\"${String(key)}\"></div></div>`+
             `</div>`;
         });
         html += '</div>';
