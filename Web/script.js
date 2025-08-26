@@ -1677,10 +1677,14 @@ async function renderCoachRoster(phone) {
             }
         });
         container.id = 'rosterCalendar';
-        generateEditableRosterCalendar(year, month, rosterByDay);
+        // 使用統一的只讀格式渲染
+        generateRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
         // 保存當前教練電話於容器屬性
         container.setAttribute('data-coach-phone', phone);
+        // 隱藏保存按鈕（此視圖為統一格式展示）
+        const saveBtn = document.querySelector('#staffRosterSection .export-btn');
+        if (saveBtn) saveBtn.style.display = 'none';
     } catch (e) {
         console.warn('載入單一教練更表失敗', e);
     } finally {
