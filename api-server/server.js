@@ -358,23 +358,60 @@ app.post('/api/auth/login', async (req, res) => {
         const { phone, password, userType } = req.body;
         console.log(`登录参数: 电话=${phone}, 用户类型=${userType}`);
         
-        // 这里可以连接到MongoDB验证用户
-        // 暂时返回模拟登录结果
-        if (phone && password) {
-            res.json({
-                success: true,
-                message: '登录成功',
-                user: {
-                    phone: phone,
-                    userType: userType,
-                    loginTime: new Date().toISOString()
-                },
-                timestamp: new Date().toISOString()
-            });
-        } else {
-            res.status(400).json({
+        if (!phone || !password) {
+            return res.status(400).json({
                 success: false,
                 message: '电话和密码不能为空'
+            });
+        }
+
+        // 连接到MongoDB验证用户
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_account');
+        
+        // 查找用户
+        const user = await collection.findOne({ 
+            phone: phone,
+            password: password
+        });
+        
+        await client.close();
+        
+        if (user) {
+            // 验证用户类型
+            const expectedUserType = user.userType || user.type || 'coach';
+            const requestedUserType = userType || 'coach';
+            
+            console.log(`用户验证成功: ${phone}, 数据库类型: ${expectedUserType}, 请求类型: ${requestedUserType}`);
+            
+            // 支持主管、教练、管理员登录
+            if (['supervisor', 'coach', 'admin'].includes(expectedUserType)) {
+                res.json({
+                    success: true,
+                    message: '登录成功',
+                    user: {
+                        phone: user.phone,
+                        userType: expectedUserType,
+                        name: user.name || '',
+                        email: user.email || '',
+                        role: user.role || expectedUserType,
+                        type: user.type || expectedUserType,
+                        loginTime: new Date().toISOString()
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                res.status(403).json({
+                    success: false,
+                    message: '用户类型不支持'
+                });
+            }
+        } else {
+            res.status(401).json({
+                success: false,
+                message: '用户名或密码错误'
             });
         }
     } catch (error) {
@@ -779,11 +816,15 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         const location = req.query.location;
         const club = req.query.club;
         
-        if (!phone) {
+        // 主管模式：允许不提供phone参数，获取所有教练数据
+        const userType = req.query.userType;
+        const isSupervisor = userType === 'supervisor';
+        
+        if (!phone && !isSupervisor) {
             return res.status(400).json({ success: false, message: '缺少必要參數 phone' });
         }
         
-        console.log(`📊 獲取教練工時 - 電話: ${phone}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}`);
+        console.log(`📊 獲取教練工時 - 電話: ${phone || '所有教練'}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}, 用戶類型: ${userType}`);
         
         const client = new MongoClient(MONGO_URI);
         await client.connect();
@@ -791,7 +832,12 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         const collection = db.collection('Coach_work_hours');
 
         // 構建查詢條件
-        const query = { phone };
+        const query = {};
+        
+        // 主管模式：不限制特定教练
+        if (phone && phone.trim()) {
+            query.phone = phone;
+        }
         
         // 新的邏輯：靈活篩選
         if (year && month) {
@@ -833,11 +879,15 @@ app.get('/coach-work-hours-stats', validateApiKeys, async (req, res) => {
         const location = req.query.location;
         const club = req.query.club;
         
-        if (!phone) {
+        // 主管模式：允许不提供phone参数，获取所有教练数据
+        const userType = req.query.userType;
+        const isSupervisor = userType === 'supervisor';
+        
+        if (!phone && !isSupervisor) {
             return res.status(400).json({ success: false, message: '缺少必要參數 phone' });
         }
         
-        console.log(`📊 獲取教練工時統計 - 電話: ${phone}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}`);
+        console.log(`📊 獲取教練工時統計 - 電話: ${phone || '所有教練'}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}, 用戶類型: ${userType}`);
         
         const client = new MongoClient(MONGO_URI);
         await client.connect();
@@ -845,7 +895,12 @@ app.get('/coach-work-hours-stats', validateApiKeys, async (req, res) => {
         const collection = db.collection('Coach_work_hours');
 
         // 構建查詢條件
-        const query = { phone };
+        const query = {};
+        
+        // 主管模式：不限制特定教练
+        if (phone && phone.trim()) {
+            query.phone = phone;
+        }
         
         // 新的邏輯：靈活篩選
         if (year && month) {

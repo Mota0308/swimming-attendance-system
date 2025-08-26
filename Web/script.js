@@ -181,7 +181,7 @@ async function handleLogin(event) {
                 const apiUserType = (loginResult.user && loginResult.user.userType) ? loginResult.user.userType : null;
                 const finalRole = (apiUserType || role || '').toString().toLowerCase();
                 
-                if (finalRole === 'coach') {
+                if (finalRole === 'coach' || finalRole === 'supervisor') {
                     // 正常切換
                     showCoachSection();
                     updateUserInfo();
@@ -197,7 +197,7 @@ async function handleLogin(event) {
                     // 設置錨點，防止瀏覽器恢復舊視圖
                     try { window.location.hash = '#coach'; } catch (_) {}
                 } else {
-                    showLoginMessage('此版本僅支持教練登入', 'error');
+                    showLoginMessage('此版本僅支持教練和主管登入', 'error');
                 }
             }, 400);
         } else {
@@ -282,6 +282,22 @@ function updateUserInfo() {
         document.getElementById('userPhone').textContent = currentUser;
         document.getElementById('displayUserPhone').textContent = currentUser;
         document.getElementById('loginTime').textContent = new Date().toLocaleString('zh-TW');
+        
+        // 更新用户身份显示
+        const userRole = currentUserType || localStorage.getItem('current_user_type') || '教練';
+        const roleDisplay = userRole === 'supervisor' ? '主管' : 
+                           userRole === 'coach' ? '教練' : 
+                           userRole === 'admin' ? '管理員' : '教練';
+        
+        const displayUserRole = document.getElementById('displayUserRole');
+        const userRoleDisplay = document.getElementById('userRoleDisplay');
+        
+        if (displayUserRole) {
+            displayUserRole.textContent = roleDisplay;
+        }
+        if (userRoleDisplay) {
+            userRoleDisplay.textContent = roleDisplay + '版本';
+        }
     }
     
     // 更新数据库连接状态
@@ -662,12 +678,20 @@ async function loadWorkHoursData() {
 		let coachPhone = '';
 		
 		if (typeof databaseConnector !== 'undefined' && databaseConnector && databaseConnector.connectionStatus.connected) {
-			coachPhone = localStorage.getItem('current_user_phone') || '';
+			const userType = localStorage.getItem('current_user_type') || 'coach';
 			
-			if (!coachPhone) {
-				console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
-				alert('請先登入教練賬號');
-				return;
+			// 主管可以查看所有教练数据，教练只能查看自己的数据
+			if (userType === 'supervisor') {
+				coachPhone = ''; // 空字符串表示获取所有教练数据
+				console.log('🔍 主管模式：獲取所有教練工時數據');
+			} else {
+				coachPhone = localStorage.getItem('current_user_phone') || '';
+				
+				if (!coachPhone) {
+					console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
+					alert('請先登入教練賬號');
+					return;
+				}
 			}
 			
 			console.log('🔍 獲取教練工時數據:', { coachPhone, year, month, selectedLocation, selectedClub });
