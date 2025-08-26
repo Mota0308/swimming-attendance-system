@@ -842,9 +842,10 @@ async function loadWorkHoursData() {
 				// 生成HTML：每位教練一個小卡片包含標題和日曆
 				let html = '<div class="coach-calendars">';
 				byCoach.forEach((value, key) => {
+					const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
 					html += `<div class="coach-calendar-card">`+
-						`<div class="coach-calendar-title">${value.name || '未命名教練'}${value.phone? '（'+value.phone+'）':''}</div>`+
-						`<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${CSS.escape(key)}"></div></div>`+
+						`<div class="coach-calendar-title">${label}</div>`+
+						`<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${String(key)}"></div></div>`+
 					`</div>`;
 				});
 				html += '</div>';
@@ -852,17 +853,30 @@ async function loadWorkHoursData() {
 				
 				// 對每位教練渲染日曆
 				byCoach.forEach((value, key) => {
-					const wrap = calendarContainer.querySelector(`.coach-calendar[data-coach="${CSS.escape(key)}"]`);
+					const allNodes = calendarContainer.querySelectorAll('.coach-calendar');
+					let wrap = null;
+					allNodes.forEach(node => { if (node.getAttribute('data-coach') === String(key)) wrap = node; });
 					const hoursByDay = new Map();
-					value.list.forEach(rec => {
-						const d = new Date(rec.date);
+					let count = 0;
+					(value.list || []).forEach(rec => {
+						const dateStr = rec?.date || rec?.workDate || rec?.day || rec?.work_date;
+						if (!dateStr) return;
+						const d = new Date(dateStr);
 						if (!Number.isNaN(d.getTime()) && (d.getFullYear()===year) && ((d.getMonth()+1)===month)) {
 							const day = d.getDate();
-							const h = Number(rec.hours) || 0;
+							const hRaw = rec?.hours ?? rec?.totalHours ?? rec?.hour ?? rec?.work_hours ?? 0;
+							const h = Number(hRaw) || 0;
 							hoursByDay.set(day, (hoursByDay.get(day) || 0) + h);
+							count += h > 0 ? 1 : 0;
 						}
 					});
-					generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
+					console.log('🧮 教練日曆資料彙總', { coach: value.name || value.phone || key, records: (value.list||[]).length, monthRecords: count });
+					if (wrap) {
+						generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
+						if (hoursByDay.size === 0) {
+							wrap.innerHTML += '<div style="padding:8px;color:#888;">本月沒有工時記錄</div>';
+						}
+					}
 				});
 			}
 		} else {
