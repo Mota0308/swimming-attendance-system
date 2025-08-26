@@ -1849,42 +1849,26 @@ async function refreshSupervisorWorkHours() {
         });
         // 空 phone + supervisor = 全部教練
         const data = await databaseConnector.fetchCoachWorkHours('', year, month, location, club);
-        // 分組並渲染
+        if (!Array.isArray(data)) return;
+        // 以 教練phone + location + club 分組
+        const groups = new Map();
+        data.forEach(item => {
+            const phone = String(item.phone || item.coachPhone || '');
+            const name = phoneToName.get(phone) || item.studentName || item.name || '';
+            const loc = (item.location || item.place || '').toString().trim();
+            const clb = (item.club || item.work_club || '').toString().trim();
+            const key = `${phone}||${loc}||${clb}`;
+            if (!groups.has(key)) groups.set(key, { phone, name, location: loc, club: clb, list: [] });
+            groups.get(key).list.push(item);
+        });
+        // 渲染
         const calendarContainer = document.getElementById('staffWorkHoursCalendars');
         if (!calendarContainer) return;
-        const byCoach = new Map();
-        (data||[]).forEach(item => {
-            const rawPhone = item.phone || item.coachPhone || '';
-            const phoneVal = String(rawPhone || '');
-            const fallbackName = item.studentName || item.name || '';
-            const mappedName = phoneToName.get(phoneVal) || fallbackName;
-            const key = phoneVal || mappedName || Math.random().toString(36).slice(2);
-            if (!byCoach.has(key)) byCoach.set(key, { name: mappedName, phone: phoneVal, list: [] });
-            byCoach.get(key).list.push(item);
-        });
         let html = '<div class="coach-calendars">';
-        // 取用目前篩選器的顯示文字
-        const locSelEl = document.getElementById('coachWorkLocation');
-        const clubSelEl = document.getElementById('coachWorkClub');
-        const locDisplay = (locSelEl && locSelEl.options && locSelEl.selectedIndex>=0)
-            ? (locSelEl.options[locSelEl.selectedIndex].text || '全部地點')
-            : '全部地點';
-        const clubDisplay = (clubSelEl && clubSelEl.options && clubSelEl.selectedIndex>=0)
-            ? (clubSelEl.options[clubSelEl.selectedIndex].text || '全部泳會')
-            : '全部泳會';
-        byCoach.forEach((value, key) => {
-            const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
-            // 依該教練的記錄彙總所屬地點與泳會（此日曆所屬的實際來源）
-            const locSet = new Set();
-            const clubSet = new Set();
-            (value.list||[]).forEach(rec => {
-                const loc = (rec.location || rec.place || '').toString().trim();
-                const club = (rec.club || rec.work_club || '').toString().trim();
-                if (loc) locSet.add(loc);
-                if (club) clubSet.add(club);
-            });
-            const locLabel = locSet.size === 1 ? Array.from(locSet)[0] : (locSet.size === 0 ? '—' : '多地點');
-            const clubLabel = clubSet.size === 1 ? Array.from(clubSet)[0] : (clubSet.size === 0 ? '—' : '多泳會');
+        groups.forEach((grp, key) => {
+            const label = `${grp.name || '未命名教練'}${grp.phone ? '（'+grp.phone+'）' : ''}`;
+            const locLabel = grp.location || '—';
+            const clubLabel = grp.club || '—';
             html += `<div class=\"coach-calendar-card\">`+
                 `<div class=\"coach-calendar-title\" style=\"display:flex;align-items:center;justify-content:space-between;\">`+
                     `<span>${label}</span>`+
@@ -1895,15 +1879,14 @@ async function refreshSupervisorWorkHours() {
         });
         html += '</div>';
         calendarContainer.innerHTML = html;
-        // 逐個渲染內容，隻顯示>0h
         const todayYear = new Date().getFullYear();
         const todayMonth = month;
-        byCoach.forEach((value, key) => {
+        groups.forEach((grp, key) => {
             const allNodes = calendarContainer.querySelectorAll('.coach-calendar');
             let wrap = null;
             allNodes.forEach(node => { if (node.getAttribute('data-coach') === String(key)) wrap = node; });
             const hoursByDay = new Map();
-            (value.list || []).forEach(rec => {
+            (grp.list || []).forEach(rec => {
                 const d = new Date(rec?.date || rec?.workDate || rec?.day || rec?.work_date);
                 if (!Number.isNaN(d.getTime()) && d.getFullYear()===todayYear && (d.getMonth()+1)===todayMonth) {
                     const day = d.getDate();
