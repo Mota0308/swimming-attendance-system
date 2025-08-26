@@ -1197,7 +1197,7 @@ function generateWorkHoursCalendar(year, month, hoursByDay) {
 		const isToday = d === todayDate;
 		html += `<div class="cal-cell ${isToday ? 'is-today' : ''} ${h>0 ? 'has-hours' : ''}">`+
 			`<div class="cal-day">${d}</div>`+
-			`<div class="cal-hours">${h>0 ? (h.toFixed(1)+'h') : ''}</div>`+
+			`<div class="cal-hours">${(Number.isFinite(h)?h:0).toFixed(1)}h</div>`+
 		`</div>`;
 	}
 	
@@ -1237,7 +1237,7 @@ function generateWorkHoursCalendarIn(containerEl, year, month, hoursByDay) {
 		const isToday = d === todayDate;
 		html += `<div class="cal-cell ${isToday ? 'is-today' : ''} ${h>0 ? 'has-hours' : ''}">`+
 			`<div class="cal-day">${d}</div>`+
-			`<div class="cal-hours">${h>0 ? (h.toFixed(1)+'h') : ''}</div>`+
+			`<div class="cal-hours">${(Number.isFinite(h)?h:0).toFixed(1)}h</div>`+
 		`</div>`;
 	}
 	html += '</div>';
