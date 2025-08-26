@@ -459,14 +459,22 @@ class DatabaseConnector {
             console.log('📊 获取教练工时统计:', { coachPhone, year, month, location, club });
             
             const params = new URLSearchParams();
-            params.append('phone', coachPhone);
+            
+            // 主管模式：不限制特定教练
+            if (coachPhone && coachPhone.trim()) {
+                params.append('phone', coachPhone);
+            }
+            
+            // 添加用户类型参数
+            const userType = localStorage.getItem('current_user_type') || 'coach';
+            params.append('userType', userType);
             
             // 新的邏輯：只有當year和month不為0時才添加參數
             if (year && year !== 0) {
-            params.append('year', year);
+                params.append('year', year);
             }
             if (month && month !== 0) {
-            params.append('month', month);
+                params.append('month', month);
             }
             if (location && location.trim()) {
                 params.append('location', location);
