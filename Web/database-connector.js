@@ -396,7 +396,7 @@ class DatabaseConnector {
             
             // 主管模式：不限制特定教练
             if (coachPhone && coachPhone.trim()) {
-                params.append('phone', coachPhone);
+            params.append('phone', coachPhone);
             }
             
             // 添加用户类型参数
@@ -405,10 +405,10 @@ class DatabaseConnector {
             
             // 新的邏輯：只有當year和month不為0時才添加參數
             if (year && year !== 0) {
-                params.append('year', year);
+            params.append('year', year);
             }
             if (month && month !== 0) {
-                params.append('month', month);
+            params.append('month', month);
             }
             if (location && location.trim()) {
                 params.append('location', location);
@@ -452,10 +452,10 @@ class DatabaseConnector {
             
             // 新的邏輯：只有當year和month不為0時才添加參數
             if (year && year !== 0) {
-                params.append('year', year);
+            params.append('year', year);
             }
             if (month && month !== 0) {
-                params.append('month', month);
+            params.append('month', month);
             }
             if (location && location.trim()) {
                 params.append('location', location);

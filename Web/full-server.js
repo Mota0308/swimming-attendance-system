@@ -76,7 +76,13 @@ app.get('/db-status', (req, res) => {
 // API代理 - 转发到后端API服务器
 app.use('/api', async (req, res) => {
     try {
-        const targetUrl = `https://swimming-attendance-system-production.up.railway.app${req.url}`;
+        // 特殊处理登录端点 - 移除 /api 前缀
+        let targetUrl;
+        if (req.url === '/auth/login') {
+            targetUrl = `https://swimming-attendance-system-production.up.railway.app/auth/login`;
+        } else {
+            targetUrl = `https://swimming-attendance-system-production.up.railway.app${req.url}`;
+        }
         console.log(`🔄 API代理: ${req.method} ${req.url} -> ${targetUrl}`);
         
         // 转发请求到API服务器
