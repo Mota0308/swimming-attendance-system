@@ -938,6 +938,23 @@ app.get('/coach-work-hours-stats', validateApiKeys, async (req, res) => {
             query.club = club;
         }
         
+        // 若為主管且未指定 phone，僅統計 staff 類型教練
+        if (isSupervisor && !phone) {
+            try {
+                const accounts = db.collection(ACCOUNTS_COLLECTION || 'Coach_account');
+                const staffDocs = await accounts.find({ $or: [ { type: 'staff' }, { userType: 'coach' } ] }, { projection: { phone: 1, studentPhone: 1 } }).toArray();
+                const staffPhones = Array.from(new Set((staffDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
+                if (staffPhones.length > 0) {
+                    query.phone = { $in: staffPhones };
+                } else {
+                    await client.close();
+                    return res.json({ success: true, stats: { total_days: 0, total_hours: 0, average_hours: 0, total_records: 0 } });
+                }
+            } catch (e) {
+                console.warn('⚠️ 統計獲取staff帳號失敗，放行所有教練', e.message);
+            }
+        }
+        
         console.log(`📊 統計查詢條件:`, query);
 
         const list = await collection.find(query).toArray();
