@@ -894,7 +894,7 @@ async function loadWorkHoursData() {
 				let html = '<div class="coach-calendars">';
 				byCoach.forEach((value, key) => {
 					const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
-					// 從該教練的記錄中彙總地點與泳會（縮小範圍後的結果）
+					// 依該教練的記錄彙總所屬地點與泳會（此日曆所屬的實際來源）
 					const locSet = new Set();
 					const clubSet = new Set();
 					(value.list||[]).forEach(rec => {
@@ -903,11 +903,14 @@ async function loadWorkHoursData() {
 						if (loc) locSet.add(loc);
 						if (club) clubSet.add(club);
 					});
-					const locLabel = locSet.size === 1 ? Array.from(locSet)[0] : '全部地點';
-					const clubLabel = clubSet.size === 1 ? Array.from(clubSet)[0] : '全部泳會';
-					html += `<div class="coach-calendar-card">`+
-						`<div class="coach-calendar-title"><span>${label}</span><span style=\"float:right;color:#6b7280;font-weight:500;font-size:12px;\">${locLabel} · ${clubLabel}</span></div>`+
-						`<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${String(key)}"></div></div>`+
+					const locLabel = locSet.size === 1 ? Array.from(locSet)[0] : (locSet.size === 0 ? '—' : '多地點');
+					const clubLabel = clubSet.size === 1 ? Array.from(clubSet)[0] : (clubSet.size === 0 ? '—' : '多泳會');
+					html += `<div class=\"coach-calendar-card\">`+
+						`<div class=\"coach-calendar-title\" style=\"display:flex;align-items:center;justify-content:space-between;\">`+
+							`<span>${label}</span>`+
+							`<span style=\"color:#6b7280;font-weight:500;font-size:12px;\">${locLabel} · ${clubLabel}</span>`+
+						`</div>`+
+						`<div class=\"coach-calendar-body\"><div class=\"coach-calendar\" data-coach=\"${String(key)}\"></div></div>`+
 					`</div>`;
 				});
 				html += '</div>';
@@ -1871,10 +1874,21 @@ async function refreshSupervisorWorkHours() {
             : '全部泳會';
         byCoach.forEach((value, key) => {
             const label = (value.name || '未命名教練') + (value.phone ? '（' + value.phone + '）' : '');
+            // 依該教練的記錄彙總所屬地點與泳會（此日曆所屬的實際來源）
+            const locSet = new Set();
+            const clubSet = new Set();
+            (value.list||[]).forEach(rec => {
+                const loc = (rec.location || rec.place || '').toString().trim();
+                const club = (rec.club || rec.work_club || '').toString().trim();
+                if (loc) locSet.add(loc);
+                if (club) clubSet.add(club);
+            });
+            const locLabel = locSet.size === 1 ? Array.from(locSet)[0] : (locSet.size === 0 ? '—' : '多地點');
+            const clubLabel = clubSet.size === 1 ? Array.from(clubSet)[0] : (clubSet.size === 0 ? '—' : '多泳會');
             html += `<div class=\"coach-calendar-card\">`+
                 `<div class=\"coach-calendar-title\" style=\"display:flex;align-items:center;justify-content:space-between;\">`+
                     `<span>${label}</span>`+
-                    `<span style=\"color:#6b7280;font-weight:500;font-size:12px;\">${locDisplay} · ${clubDisplay}</span>`+
+                    `<span style=\"color:#6b7280;font-weight:500;font-size:12px;\">${locLabel} · ${clubLabel}</span>`+
                 `</div>`+
                 `<div class=\"coach-calendar-body\"><div class=\"coach-calendar\" data-coach=\"${String(key)}\"></div></div>`+
             `</div>`;
