@@ -676,8 +676,17 @@ function displayAttendanceData(data) {
         row.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
         row.style.borderBottom = '1px solid #e1e5e9';
         
+        const nameHtml = `
+            <div class=\"table-cell\" style=\"display:flex;align-items:center;gap:8px;\">
+                <span>${record.name}</span>
+                <span class=\"badge-wrap\" style=\"display:inline-flex;gap:6px;\">
+                    ${record.hasStar ? '<span title=\"重點學生\">🌟</span>' : ''}
+                    ${record.hasBalloonMark ? '<span title=\"氣球標記\">🎈</span>' : ''}
+                </span>
+            </div>`;
+        
         row.innerHTML = `
-            <div class="table-cell">${record.name}</div>
+            ${nameHtml}
             <div class="table-cell">
                 <span class="status-badge ${record.status === '出席' ? 'present' : 'absent'}">
                     ${record.status}
