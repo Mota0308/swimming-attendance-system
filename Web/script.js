@@ -682,40 +682,40 @@ async function loadWorkHoursData() {
 	try {
 		let workHoursList = [];
 		let statsData = null;
-		let coachPhone = '';
+		let phone = '';
 		
 		if (typeof databaseConnector !== 'undefined' && databaseConnector && databaseConnector.connectionStatus.connected) {
 			const userType = localStorage.getItem('current_user_type') || 'coach';
 			
 			// 主管可以查看所有教练数据，教练只能查看自己的数据
 			if (userType === 'supervisor') {
-				coachPhone = ''; // 空字符串表示获取所有教练数据
+				phone = ''; // 空字符串表示获取所有教练数据
 				console.log('🔍 主管模式：獲取所有教練工時數據');
 			} else {
-				coachPhone = localStorage.getItem('current_user_phone') || '';
+				phone = localStorage.getItem('current_user_phone') || '';
 				
-				if (!coachPhone) {
+				if (!phone) {
 					console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
 					alert('請先登入教練賬號');
 					return;
 				}
 			}
 			
-			console.log('🔍 獲取教練工時數據:', { coachPhone, year, month, selectedLocation, selectedClub });
+			console.log('🔍 獲取教練工時數據:', { phone, year, month, selectedLocation, selectedClub });
 			
 			// 新的邏輯：根據選擇的條件靈活獲取數據
 			if (monthEl.value && selectedLocation && selectedClub) {
 				// 三個條件都選擇：精確篩選
 				console.log('📊 精確篩選：月份 + 地點 + 泳會');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					selectedLocation, 
 					selectedClub
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					selectedLocation, 
@@ -725,14 +725,14 @@ async function loadWorkHoursData() {
 				// 選擇月份和地點：顯示該月該地點的所有泳會
 				console.log('📊 遞進篩選：月份 + 地點');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					selectedLocation, 
 					''  // 不限制泳會
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					selectedLocation, 
@@ -742,14 +742,14 @@ async function loadWorkHoursData() {
 				// 選擇月份和泳會：顯示該月該泳會的所有地點
 				console.log('📊 遞進篩選：月份 + 泳會');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					'',  // 不限制地點
 					selectedClub
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					'',  // 不限制地點
@@ -759,14 +759,14 @@ async function loadWorkHoursData() {
 				// 選擇地點和泳會：顯示所有月份
 				console.log('📊 遞進篩選：地點 + 泳會');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
+					phone, 
 					0, 
 					0, 
 					selectedLocation, 
 					selectedClub
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
+					phone, 
 					0, 
 					0, 
 					selectedLocation, 
@@ -776,14 +776,14 @@ async function loadWorkHoursData() {
 				// 只選擇月份：顯示該月所有地點與泳會
 				console.log('📊 並列篩選：僅月份');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					'', 
 					''
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
+					phone, 
 					year, 
 					month, 
 					'', 
@@ -792,14 +792,14 @@ async function loadWorkHoursData() {
 			} else if (selectedLocation) {
 				console.log('📊 並列篩選：僅地點');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
+					phone, 
 					0, 
 					0, 
 					selectedLocation, 
 					''
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
+					phone, 
 					0, 
 					0, 
 					selectedLocation, 
@@ -808,14 +808,14 @@ async function loadWorkHoursData() {
 			} else if (selectedClub) {
 				console.log('📊 並列篩選：僅泳會');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
+					phone, 
 					0, 
 					0, 
 					'', 
 					selectedClub
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
+					phone, 
 					0, 
 					0, 
 					'', 
@@ -828,7 +828,7 @@ async function loadWorkHoursData() {
 				const totalRecords = statsData?.total_records ?? statsData?.totalRecords ?? 0;
 				if ((Array.isArray(workHoursList) && workHoursList.length === 0) && totalRecords > 0) {
 					console.warn('⚠️ 伺服器篩選過嚴，啟用前端回退過濾');
-					const rawAll = await databaseConnector.fetchCoachWorkHours(coachPhone, year, month, '', '');
+					const rawAll = await databaseConnector.fetchCoachWorkHours(phone, year, month, '', '');
 					const loc = (selectedLocation || '').trim();
 					const clb = (selectedClub || '').trim();
 					const ilike = (a,b)=> String(a||'').toLowerCase().includes(String(b||'').toLowerCase());
@@ -852,11 +852,11 @@ async function loadWorkHoursData() {
 			if (calendarContainer) {
 				const byCoach = new Map(); // key: phone, value: { name, phone, list: [] }
 				(workHoursList || []).forEach(item => {
-					const phone = item.phone || item.coachPhone || '';
+					const phoneVal = item.phone || item.coachPhone || '';
 					const name = item.studentName || item.name || '';
-					if (!phone && !name) return;
-					const key = phone || name;
-					if (!byCoach.has(key)) byCoach.set(key, { name, phone, list: [] });
+					if (!phoneVal && !name) return;
+					const key = phoneVal || name;
+					if (!byCoach.has(key)) byCoach.set(key, { name, phone: phoneVal, list: [] });
 					byCoach.get(key).list.push(item);
 				});
 				
@@ -1308,15 +1308,15 @@ async function loadRosterData() {
 			const userType = localStorage.getItem('current_user_type') || 'coach';
 			
 			// 主管可以查看所有教练数据，教练只能查看自己的数据
-			let coachPhone = '';
+			let phone = '';
 			if (userType === 'supervisor') {
-				coachPhone = ''; // 空字符串表示获取所有教练数据
+				phone = ''; // 空字符串表示获取所有教练数据
 				console.log('🔍 主管模式：獲取所有教練更表數據');
 			} else {
-				coachPhone = localStorage.getItem('current_user_phone') || '';
+				phone = localStorage.getItem('current_user_phone') || '';
 			}
 			
-			rosterList = await databaseConnector.fetchRoster(month, coachPhone);
+			rosterList = await databaseConnector.fetchRoster(month, phone);
 		}
 		// 若後端回傳非陣列，兼容 {roster:[...]} 或 null
 		if (!Array.isArray(rosterList)) {
