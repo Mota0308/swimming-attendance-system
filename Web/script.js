@@ -117,6 +117,13 @@ function setupMonthSelectors() {
         const selector = document.getElementById(id);
         if (selector) {
             selector.value = new Date().getMonth() + 1;
+            
+            // 为更表月份选择器添加事件监听
+            if (id === 'rosterMonth') {
+                selector.addEventListener('change', () => {
+                    loadRosterData();
+                });
+            }
         }
     });
 }
@@ -686,11 +693,11 @@ async function loadWorkHoursData() {
 				console.log('🔍 主管模式：獲取所有教練工時數據');
 			} else {
 				coachPhone = localStorage.getItem('current_user_phone') || '';
-				
-				if (!coachPhone) {
-					console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
-					alert('請先登入教練賬號');
-					return;
+			
+			if (!coachPhone) {
+				console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
+				alert('請先登入教練賬號');
+				return;
 				}
 			}
 			
@@ -700,20 +707,20 @@ async function loadWorkHoursData() {
 			if (monthEl.value && selectedLocation && selectedClub) {
 				// 三個條件都選擇：精確篩選
 				console.log('📊 精確篩選：月份 + 地點 + 泳會');
-				workHoursList = await databaseConnector.fetchCoachWorkHours(
-					coachPhone, 
-					year, 
-					month, 
-					selectedLocation, 
-					selectedClub
-				);
-				statsData = await databaseConnector.fetchCoachWorkHoursStats(
-					coachPhone, 
-					year, 
-					month, 
-					selectedLocation, 
-					selectedClub
-				);
+			workHoursList = await databaseConnector.fetchCoachWorkHours(
+				coachPhone, 
+				year, 
+				month, 
+				selectedLocation, 
+				selectedClub
+			);
+			statsData = await databaseConnector.fetchCoachWorkHoursStats(
+				coachPhone, 
+				year, 
+				month, 
+				selectedLocation, 
+				selectedClub
+			);
 			} else if (monthEl.value && selectedLocation) {
 				// 選擇月份和地點：顯示該月該地點的所有泳會
 				console.log('📊 遞進篩選：月份 + 地點');
@@ -863,10 +870,10 @@ async function loadWorkHoursData() {
 				}
 				
 				if (shouldInclude) {
-					const day = d.getDate();
-					hoursByDay.set(day, (hoursByDay.get(day) || 0) + hours);
-					totalHours += hours;
-					daysWithHours += hours > 0 ? 1 : 0;
+				const day = d.getDate();
+				hoursByDay.set(day, (hoursByDay.get(day) || 0) + hours);
+				totalHours += hours;
+				daysWithHours += hours > 0 ? 1 : 0;
 				}
 			}
 		});
@@ -1272,7 +1279,17 @@ async function loadRosterData() {
 	try {
 		let rosterList = [];
 		if (typeof databaseConnector !== 'undefined' && databaseConnector && databaseConnector.connectionStatus.connected) {
-			const coachPhone = localStorage.getItem('current_user_phone') || '';
+			const userType = localStorage.getItem('current_user_type') || 'coach';
+			
+			// 主管可以查看所有教练数据，教练只能查看自己的数据
+			let coachPhone = '';
+			if (userType === 'supervisor') {
+				coachPhone = ''; // 空字符串表示获取所有教练数据
+				console.log('🔍 主管模式：獲取所有教練更表數據');
+			} else {
+				coachPhone = localStorage.getItem('current_user_phone') || '';
+			}
+			
 			rosterList = await databaseConnector.fetchRoster(month, coachPhone);
 		}
 		// 若後端回傳非陣列，兼容 {roster:[...]} 或 null

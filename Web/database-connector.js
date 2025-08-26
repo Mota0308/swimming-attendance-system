@@ -266,7 +266,11 @@ class DatabaseConnector {
     // 获取更表数据
     async fetchRoster(month, coachPhone = '') {
         try {
-            if (!coachPhone) {
+            const userType = localStorage.getItem('current_user_type') || 'coach';
+            const isSupervisor = userType === 'supervisor';
+            
+            // 主管模式：允许不提供phone参数，获取所有教练数据
+            if (!coachPhone && !isSupervisor) {
                 console.warn('⚠️ 未提供教練電話號碼，無法獲取更表數據');
                 return [];
             }
@@ -293,7 +297,14 @@ class DatabaseConnector {
             }
 
             const params = new URLSearchParams();
-            params.append('phone', coachPhone);
+            
+            // 主管模式：不限制特定教练
+            if (coachPhone && coachPhone.trim()) {
+                params.append('phone', coachPhone);
+            }
+            
+            // 添加用户类型参数
+            params.append('userType', userType);
             params.append('year', year);
             params.append('month', month);
             if (coachName) params.append('name', coachName);

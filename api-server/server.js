@@ -996,8 +996,16 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
     const name = (req.query.name || '').toString();
     const year = parseInt(req.query.year, 10);
     const month = parseInt(req.query.month, 10);
-    if (!phone || !year || !month) {
+    const userType = req.query.userType || 'coach';
+    const isSupervisor = userType === 'supervisor';
+    
+    // 主管模式：允许不提供phone参数，获取所有教练数据
+    if (!phone && !isSupervisor) {
       return res.status(400).json({ success: false, message: '缺少必要參數 phone, year, month（name 選填）' });
+    }
+    
+    if (!year || !month) {
+      return res.status(400).json({ success: false, message: '缺少必要參數 year, month' });
     }
     const client = new MongoClient(MONGO_URI);
     await client.connect();
@@ -1005,8 +1013,16 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
     const col = db.collection('Coach_roster');
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
-    const filter = { phone, date: { $gte: startDate, $lte: endDate } };
-    if (name) filter.name = name;
+    const filter = { date: { $gte: startDate, $lte: endDate } };
+    
+    // 主管模式：不限制特定教练
+    if (phone && phone.trim()) {
+      filter.phone = phone;
+    }
+    
+    if (name && name.trim()) {
+      filter.name = name;
+    }
     const docs = await col.find(filter).sort({ date: 1 }).toArray();
     await client.close();
     const records = (docs || []).map(d => ({ date: d.date, time: d.time || '', location: d.location || '' }));
