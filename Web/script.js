@@ -1791,16 +1791,29 @@ async function initSupervisorWorkFilters() {
         if (m) m.value = String(new Date().getMonth() + 1);
         const locSel = document.getElementById('coachWorkLocation');
         const clubSel = document.getElementById('coachWorkClub');
-        const locs = await databaseConnector.fetchWorkHoursLocations();
-        locSel.innerHTML = '<option value="">全部地點</option>' + (locs||[]).map(l=>`<option value="${l}">${l}</option>`).join('');
-        const clubs = await databaseConnector.fetchWorkHoursClubs('');
-        clubSel.innerHTML = '<option value="">全部泳會</option>' + (clubs||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
-        // 聯動：選地點後重載對應泳會
+        const apiLocs = await databaseConnector.fetchWorkHoursLocations();
+        const fallbackLocs = ['九龍公園','上門'];
+        const locs = Array.from(new Set(['全部地點', ...apiLocs, ...fallbackLocs].filter(Boolean)));
+        locSel.innerHTML = locs.map(l=>`<option value="${l==='全部地點'?'':l}">${l}</option>`).join('');
+        const apiClubs = await databaseConnector.fetchWorkHoursClubs('');
+        const fallbackClubs = ['SH','HPP'];
+        const clubs = Array.from(new Set(['全部泳會', ...apiClubs, ...fallbackClubs].filter(Boolean)));
+        clubSel.innerHTML = clubs.map(c=>`<option value="${c==='全部泳會'?'':c}">${c}</option>`).join('');
         locSel.onchange = async ()=>{
-            const c = await databaseConnector.fetchWorkHoursClubs(locSel.value||'');
-            clubSel.innerHTML = '<option value="">全部泳會</option>' + (c||[]).map(x=>`<option value="${x}">${x}</option>`).join('');
+            const cApi = await databaseConnector.fetchWorkHoursClubs(locSel.value||'');
+            const cMerged = Array.from(new Set(['全部泳會', ...cApi, ...fallbackClubs].filter(Boolean)));
+            clubSel.innerHTML = cMerged.map(c=>`<option value="${c==='全部泳會'?'':c}">${c}</option>`).join('');
         };
     } catch (_) {}
+}
+
+function refreshCurrentWorkHours() {
+    const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+    if (userType === 'coach') {
+        refreshCoachWorkHours();
+    } else {
+        refreshSupervisorWorkHours();
+    }
 }
 
 async function refreshSupervisorWorkHours() {
