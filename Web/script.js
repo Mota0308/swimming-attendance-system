@@ -822,6 +822,27 @@ async function loadWorkHoursData() {
 					selectedClub
 				);
 			}
+
+			// Fallback：若返回0但統計顯示有記錄，退回寬鬆查詢並在前端過濾
+			try {
+				const totalRecords = statsData?.total_records ?? statsData?.totalRecords ?? 0;
+				if ((Array.isArray(workHoursList) && workHoursList.length === 0) && totalRecords > 0) {
+					console.warn('⚠️ 伺服器篩選過嚴，啟用前端回退過濾');
+					const rawAll = await databaseConnector.fetchCoachWorkHours(coachPhone, year, month, '', '');
+					const loc = (selectedLocation || '').trim();
+					const clb = (selectedClub || '').trim();
+					const ilike = (a,b)=> String(a||'').toLowerCase().includes(String(b||'').toLowerCase());
+					workHoursList = (rawAll||[]).filter(r => {
+						const rLoc = r.location || r.place || '';
+						const rClb = r.club || r.work_club || '';
+						let ok = true;
+						if (loc && loc !== '全部地點') ok = ok && ilike(rLoc, loc);
+						if (clb && clb !== '全部泳會') ok = ok && ilike(rClb, clb);
+						return ok;
+					});
+					console.log('✅ 前端回退過濾後記錄數:', workHoursList.length);
+				}
+			} catch(_){ }
 		}
 
 		// 主管模式：按教練分組渲染多個日曆，左上角標註教練姓名
