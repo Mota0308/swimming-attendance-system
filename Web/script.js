@@ -1881,7 +1881,24 @@ async function refreshSupervisorWorkHours() {
             if (!groups.has(key)) groups.set(key, { phone, name, location: loc, club: clb, list: [] });
             groups.get(key).list.push(item);
         });
-        // 渲染
+
+        // 概要：統計每個日期、每個地點的卡片數（人數）
+        const summaryByDateLoc = new Map(); // key: YYYY-MM-DD||location -> count
+        const fmt = (d)=> `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        groups.forEach(grp => {
+            (grp.list||[]).forEach(rec => {
+                const d = new Date(rec?.date || rec?.workDate || rec?.day || rec?.work_date);
+                if (Number.isNaN(d.getTime())) return;
+                if (!(d.getFullYear()===year && (d.getMonth()+1)===month)) return;
+                const dateStr = fmt(d);
+                const loc = grp.location || (rec.location||rec.place||'');
+                const key = `${dateStr}||${loc}`;
+                summaryByDateLoc.set(key, (summaryByDateLoc.get(key)||0) + 1);
+            });
+        });
+        renderWorkHoursSummary(summaryByDateLoc);
+
+        // 渲染卡片
         const calendarContainer = document.getElementById('staffWorkHoursCalendars');
         if (!calendarContainer) return;
         let html = '<div class="coach-calendars">';
@@ -1901,6 +1918,11 @@ async function refreshSupervisorWorkHours() {
         calendarContainer.innerHTML = html;
         const todayYear = new Date().getFullYear();
         const todayMonth = month;
+        // 顯示當前人數（日曆卡片數量）
+        try {
+            const countEl = document.getElementById('workHoursCount');
+            if (countEl) countEl.textContent = `當前人數：${groups.size}`;
+        } catch(_) {}
         groups.forEach((grp, key) => {
             const allNodes = calendarContainer.querySelectorAll('.coach-calendar');
             let wrap = null;
@@ -1917,16 +1939,44 @@ async function refreshSupervisorWorkHours() {
             });
             if (wrap) generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
         });
-        // 顯示當前人數（日曆卡片數量）
-        try {
-            const countEl = document.getElementById('workHoursCount');
-            if (countEl) countEl.textContent = `當前人數：${groups.size}`;
-        } catch(_) {}
+
+        // 綁定日期篩選事件
+        const dateInput = document.getElementById('summaryDate');
+        if (dateInput && !dateInput._bound) {
+            dateInput._bound = true;
+            dateInput.addEventListener('change', () => renderWorkHoursSummary(summaryByDateLoc));
+        }
     } catch (e) {
         console.warn('主管工時刷新失敗', e);
     } finally {
         showLoading(false);
     }
+}
+
+function renderWorkHoursSummary(summaryByDateLoc) {
+    const box = document.getElementById('workHoursSummary');
+    const dateInput = document.getElementById('summaryDate');
+    if (!box) return;
+    const filterDate = (dateInput && dateInput.value) ? dateInput.value : '';
+    // 將 Map 轉為按日期分組，再在每個日期內按地點列出總人數
+    const byDate = new Map();
+    summaryByDateLoc.forEach((count, key) => {
+        const [dateStr, loc] = key.split('||');
+        if (filterDate && dateStr !== filterDate) return;
+        if (!byDate.has(dateStr)) byDate.set(dateStr, new Map());
+        const m = byDate.get(dateStr);
+        m.set(loc || '—', (m.get(loc || '—') || 0) + count);
+    });
+    // 生成 2 列顯示：左列日期，右列地點:人數 列表
+    const items = [];
+    byDate.forEach((mapLoc, dateStr) => {
+        const right = Array.from(mapLoc.entries()).map(([loc, cnt]) => `${loc}: ${cnt}`).join('<br/>');
+        items.push(`<div style=\"padding:8px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;\">`+
+            `<div style=\"font-weight:600;color:#111827;margin-bottom:4px;\">${dateStr}</div>`+
+            `<div style=\"color:#374151;\">${right || '—'}</div>`+
+        `</div>`);
+    });
+    box.innerHTML = items.join('');
 }
 
 function initCoachWorkFilters() {
