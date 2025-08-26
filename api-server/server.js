@@ -856,6 +856,24 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         if (club && club.trim() && club !== '全部泳會') {
             query.club = club;
         }
+
+        // 如果是主管且未指定phone，限制為 staff 類型教練
+        if (isSupervisor && !phone) {
+            try {
+                const accounts = db.collection(ACCOUNTS_COLLECTION || 'Coach_account');
+                const staffDocs = await accounts.find({ $or: [ { type: 'staff' }, { userType: 'coach' } ] }, { projection: { phone: 1, studentPhone: 1 } }).toArray();
+                const staffPhones = Array.from(new Set((staffDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
+                if (staffPhones.length > 0) {
+                    query.phone = { $in: staffPhones };
+                } else {
+                    // 無staff則返回空
+                    await client.close();
+                    return res.json({ success: true, records: [] });
+                }
+            } catch (e) {
+                console.warn('⚠️ 獲取staff帳號失敗，放行所有教練', e.message);
+            }
+        }
         
         console.log(`📊 查詢條件:`, query);
 
@@ -1015,17 +1033,28 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
     const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
     const filter = { date: { $gte: startDate, $lte: endDate } };
     
-    // 主管模式：不限制特定教练
-    if (phone && phone.trim()) {
+    // 主管模式：不限制特定教练，但只顯示 staff
+    if (isSupervisor && !phone) {
+      try {
+        const accounts = db.collection(ACCOUNTS_COLLECTION || 'Coach_account');
+        const staffDocs = await accounts.find({ $or: [ { type: 'staff' }, { userType: 'coach' } ] }, { projection: { phone: 1, studentPhone: 1 } }).toArray();
+        const staffPhones = Array.from(new Set((staffDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
+        if (staffPhones.length > 0) {
+          filter.phone = { $in: staffPhones };
+        } else {
+          await client.close();
+          return res.json({ success: true, records: [] });
+        }
+      } catch (e) {
+        console.warn('⚠️ 獲取staff帳號失敗，放行所有教練', e.message);
+      }
+    } else if (phone) {
       filter.phone = phone;
     }
-    
-    if (name && name.trim()) {
-      filter.name = name;
-    }
+    if (name && name.trim()) filter.name = name;
     const docs = await col.find(filter).sort({ date: 1 }).toArray();
     await client.close();
-    const records = (docs || []).map(d => ({ date: d.date, time: d.time || '', location: d.location || '' }));
+    const records = (docs || []).map(d => ({ date: d.date, time: d.time || '', location: d.location || '', phone: d.phone || '', name: d.name || '' }));
     return res.json({ success: true, records });
   } catch (e) {
     console.error('❌ 讀取更表錯誤:', e);
