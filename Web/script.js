@@ -1823,6 +1823,16 @@ async function refreshSupervisorWorkHours() {
         const year = new Date().getFullYear();
         const location = (document.getElementById('coachWorkLocation')||{}).value || '';
         const club = (document.getElementById('coachWorkClub')||{}).value || '';
+        // 預取教練名單，用於映射電話->姓名
+        let coaches = (databaseConnector.cache && Array.isArray(databaseConnector.cache.coaches) && databaseConnector.cache.coaches.length>0)
+            ? databaseConnector.cache.coaches
+            : await databaseConnector.fetchCoaches();
+        const phoneToName = new Map();
+        (coaches||[]).forEach(c => {
+            const phone = c.phone || c.studentPhone || '';
+            const name = c.name || c.studentName || '';
+            if (phone) phoneToName.set(String(phone), name);
+        });
         // 空 phone + supervisor = 全部教練
         const data = await databaseConnector.fetchCoachWorkHours('', year, month, location, club);
         // 分組並渲染
@@ -1830,11 +1840,12 @@ async function refreshSupervisorWorkHours() {
         if (!calendarContainer) return;
         const byCoach = new Map();
         (data||[]).forEach(item => {
-            const phoneVal = item.phone || item.coachPhone || '';
-            const name = item.studentName || item.name || '';
-            if (!phoneVal && !name) return;
-            const key = phoneVal || name;
-            if (!byCoach.has(key)) byCoach.set(key, { name, phone: phoneVal, list: [] });
+            const rawPhone = item.phone || item.coachPhone || '';
+            const phoneVal = String(rawPhone || '');
+            const fallbackName = item.studentName || item.name || '';
+            const mappedName = phoneToName.get(phoneVal) || fallbackName;
+            const key = phoneVal || mappedName || Math.random().toString(36).slice(2);
+            if (!byCoach.has(key)) byCoach.set(key, { name: mappedName, phone: phoneVal, list: [] });
             byCoach.get(key).list.push(item);
         });
         let html = '<div class="coach-calendars">';
