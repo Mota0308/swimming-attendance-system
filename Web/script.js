@@ -676,29 +676,22 @@ function displayAttendanceData(data) {
         row.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
         row.style.borderBottom = '1px solid #e1e5e9';
         
+        const coerceBool = v => (typeof v === 'string' ? v.toLowerCase() === 'true' : !!v);
+        const hasStar = coerceBool(record.hasStar ?? record.star ?? record.has_star);
+        const hasBalloon = coerceBool(record.hasBalloonMark ?? record.balloonMark ?? record.has_balloon_mark);
+        
         const nameHtml = `
             <div class=\"table-cell\" style=\"display:flex;align-items:center;gap:8px;\">
                 <span>${record.name}</span>
                 <span class=\"badge-wrap\" style=\"display:inline-flex;gap:6px;\">
-                    ${record.hasStar ? '<span title=\"重點學生\">🌟</span>' : ''}
-                    ${record.hasBalloonMark ? '<span title=\"氣球標記\">🎈</span>' : ''}
+                    ${hasStar ? '<span title=\"重點學生\">🌟</span>' : ''}
+                    ${hasBalloon ? '<span title=\"氣球標記\">🎈</span>' : ''}
                 </span>
             </div>`;
         
         row.innerHTML = `
             ${nameHtml}
-            <div class="table-cell">
-                <span class="status-badge ${record.status === '出席' ? 'present' : 'absent'}">
-                    ${record.status}
-                </span>
-            </div>
-            <div class="table-cell">${record.date}</div>
-            <div class="table-cell">
-                <button class="edit-btn" onclick="editAttendance('${record.name}')">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </div>
-        `;
+            <div class=\"table-cell\">\n                <span class=\"status-badge ${record.status === '出席' ? 'present' : 'absent'}\">\n                    ${record.status}\n                </span>\n            </div>\n            <div class=\"table-cell\">${record.date}</div>\n            <div class=\"table-cell\">\n                <button class=\"edit-btn\" onclick=\"editAttendance('${record.name}')\">\n                    <i class=\"fas fa-edit\"></i>\n                </button>\n            </div>\n        `;
         
         tableBody.appendChild(row);
     });
