@@ -593,7 +593,7 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
         // 根據用戶類型選擇不同的集合
         let collection;
         let phoneField;
-        if (userType === 'coach') {
+        if (userType === 'coach' || userType === 'supervisor') {
             collection = db.collection('Coach_account');
             phoneField = 'phone';
         } else if (userType === 'admin') {
@@ -825,7 +825,7 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
         }
         
         console.log(`📊 獲取教練工時 - 電話: ${phone || '所有教練'}, 年份: ${year}, 月份: ${month}, 地點: ${location}, 泳會: ${club}, 用戶類型: ${userType}`);
-        
+
         const client = new MongoClient(MONGO_URI);
         await client.connect();
         const db = client.db(DB_NAME);
