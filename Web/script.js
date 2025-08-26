@@ -1715,29 +1715,39 @@ async function renderCoachRoster(phone) {
     }
 }
 
-function generateEditableRosterCalendar(year, month, rosterByDay) {
-    // 基於現有 generateRosterCalendar，加入可編輯輸入框
+async function generateEditableRosterCalendar(year, month, rosterByDay) {
     const container = document.getElementById('rosterCalendar');
     if (!container) return;
+    // 預備地點列表
+    const locations = (databaseConnector.cache && databaseConnector.cache.locations && databaseConnector.cache.locations.length)
+        ? databaseConnector.cache.locations
+        : await databaseConnector.fetchLocations();
+
+    const weekdays = ['日','一','二','三','四','五','六'];
     let html = '';
     html += `<div class="cal-title">${year} 年 ${month} 月</div>`;
     html += '<div class="cal grid-7">';
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const weekdays = ['日','一','二','三','四','五','六'];
-    // 表頭
     weekdays.forEach(w => { html += `<div class=\"cal-head\">${w}</div>`; });
-    // 起始偏移
+
     const first = new Date(year, month - 1, 1);
     const offset = first.getDay();
     for (let i = 0; i < offset; i++) html += '<div class="cal-cell cal-empty"></div>';
 
+    const daysInMonth = new Date(year, month, 0).getDate();
+
     for (let day = 1; day <= daysInMonth; day++) {
         const items = rosterByDay.get(day) || [];
-        const lines = items.map(it => `${it.time} ${it.location}`);
-        html += `<div class="cal-cell">
-            <div class="cal-day">${day}</div>
-            <textarea class="cal-editor" data-day="${day}" placeholder="時間 地點\n例如: 09:00 九龍公園" rows="2" style="resize:none;width:100%;min-height:48px;">${lines.join('\n')}</textarea>
-        </div>`;
+        const firstItem = items[0] || { time: '', location: '' };
+        const timeVal = firstItem.time || '';
+        const locVal = firstItem.location || '';
+        html += `<div class=\"cal-cell\">`+
+            `<div class=\"cal-day\">${day}</div>`+
+            `<input class=\"roster-time\" data-day=\"${day}\" type=\"text\" placeholder=\"hh:mm-hh:mm\" value=\"${timeVal}\" style=\"width:100%;height:32px;padding:6px;border:1px solid #d1d5db;border-radius:6px;\"/>`+
+            `<select class=\"roster-location\" data-day=\"${day}\" style=\"width:100%;height:32px;margin-top:6px;border:1px solid #d1d5db;border-radius:6px;\">`+
+                `<option value=\"\">選擇地點</option>`+
+                `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===locVal?'selected':''}>${loc}</option>`).join('')}`+
+            `</select>`+
+        `</div>`;
     }
     html += '</div>';
     container.innerHTML = html;
@@ -1751,23 +1761,17 @@ async function saveSelectedCoachRoster() {
         if (!phone) { alert('請先選擇教練再保存'); return; }
         const year = new Date().getFullYear();
         const month = new Date().getMonth() + 1;
-        const nodes = (document.querySelectorAll('#rosterCalendar .cal-editor') || []);
+        const nodes = (document.querySelectorAll('#rosterCalendar .cal-cell') || []);
         const records = [];
-        nodes.forEach(node => {
-            const day = Number(node.getAttribute('data-day'));
+        nodes.forEach(cell => {
+            const day = Number((cell.querySelector('.roster-time')||{}).getAttribute('data-day'));
+            const time = (cell.querySelector('.roster-time')||{}).value || '';
+            const location = (cell.querySelector('.roster-location')||{}).value || '';
+            if (!day || (!time && !location)) return;
             const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-            const lines = (node.value || '').split('\n').map(s => s.trim()).filter(Boolean);
-            lines.forEach(line => {
-                // 拆成「時間 地點」
-                const firstSpace = line.indexOf(' ');
-                const time = firstSpace > 0 ? line.slice(0, firstSpace) : line;
-                const location = firstSpace > 0 ? line.slice(firstSpace + 1) : '';
-                records.push({ phone, date, time, location });
-            });
+            records.push({ phone, date, time, location });
         });
-        if (records.length === 0) { alert('沒有可保存的內容'); return; }
         showLoading(true);
-        // 通過代理提交
         const resp = await fetch('/api/coach-roster/batch', {
             method: 'POST',
             headers: {
@@ -1780,8 +1784,6 @@ async function saveSelectedCoachRoster() {
         const json = await resp.json();
         if (resp.ok && json?.success) {
             alert('保存成功');
-            // 重新載入
-            renderCoachRoster(phone);
         } else {
             alert('保存失敗：' + (json?.message || resp.status));
         }
