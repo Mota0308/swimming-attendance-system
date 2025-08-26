@@ -1917,6 +1917,11 @@ async function refreshSupervisorWorkHours() {
             });
             if (wrap) generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
         });
+        // 顯示當前人數（日曆卡片數量）
+        try {
+            const countEl = document.getElementById('workHoursCount');
+            if (countEl) countEl.textContent = `當前人數：${groups.size}`;
+        } catch(_) {}
     } catch (e) {
         console.warn('主管工時刷新失敗', e);
     } finally {
