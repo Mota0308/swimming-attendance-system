@@ -602,7 +602,7 @@
         location: location || ''
       };
       scheduleData.timeSlots.push(targetSlot);
-      
+
       // 重新排序时段
       scheduleData.timeSlots.sort((a, b) => {
         // 日期排序

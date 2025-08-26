@@ -19,7 +19,8 @@ class DatabaseConnector {
             students: [],
             attendance: [],
             workHours: [],
-            roster: []
+            roster: [],
+            coaches: []
         };
         
         this.init();
@@ -331,6 +332,52 @@ class DatabaseConnector {
         } catch (error) {
             console.error('❌ 获取更表数据失败:', error);
             return [];
+        }
+    }
+
+    // 主管登入後預加載數據（Coach_account / Coach_work_hours / Coach_roster）
+    async preloadSupervisorData() {
+        try {
+            const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+            if (userType !== 'supervisor') {
+                return;
+            }
+            console.log('🗂️ 主管模式：開始預加載 Coach_account / Coach_work_hours / Coach_roster 數據');
+
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+
+            // 並行獲取：教練名單、當月全部工時、當月全部更表
+            const [coaches, workHoursAll, rosterAll] = await Promise.all([
+                this.fetchCoaches(),
+                // 空 phone + supervisor 代表全部
+                this.fetchCoachWorkHours('', year, month, '', ''),
+                this.fetchRoster(month, '')
+            ]);
+
+            // 緩存
+            this.cache.coaches = coaches || [];
+            this.cache.workHours = Array.isArray(workHoursAll) ? workHoursAll : [];
+            this.cache.roster = Array.isArray(rosterAll) ? rosterAll : [];
+
+            // 標記時間
+            try { this.connectionStatus.lastSync = new Date(); } catch(_) {}
+
+            // 發送事件，通知界面可以即時渲染
+            const event = new CustomEvent('supervisorDataReady', {
+                detail: {
+                    year,
+                    month,
+                    coachesCount: (this.cache.coaches || []).length,
+                    workHoursCount: (this.cache.workHours || []).length,
+                    rosterCount: (this.cache.roster || []).length
+                }
+            });
+            document.dispatchEvent(event);
+            console.log('✅ 主管數據預加載完成');
+        } catch (e) {
+            console.warn('⚠️ 主管數據預加載失敗:', e);
         }
     }
 
@@ -692,6 +739,34 @@ class DatabaseConnector {
             console.log('✅ 重新连接成功');
         } catch (error) {
             console.error('❌ 重新连接失败:', error);
+        }
+    }
+
+    // 獲取教練列表（Coach_account）
+    async fetchCoaches(query = {}) {
+        try {
+            const params = new URLSearchParams();
+            const { phone = '', club = '' } = query || {};
+            if (phone) params.append('phone', phone);
+            if (club) params.append('club', club);
+            const url = params.toString()
+                ? `${this.apiConfig.baseURL}/api/coaches?${params}`
+                : `${this.apiConfig.baseURL}/api/coaches`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: this.getStandardHeaders()
+            });
+            if (!response.ok) {
+                console.warn('⚠️ 無法獲取教練列表:', response.status, response.statusText);
+                return [];
+            }
+            const json = await response.json();
+            const coaches = Array.isArray(json?.coaches) ? json.coaches : [];
+            this.cache.coaches = coaches;
+            return coaches;
+        } catch (e) {
+            console.warn('⚠️ 獲取教練列表失敗:', e);
+            return [];
         }
     }
 }

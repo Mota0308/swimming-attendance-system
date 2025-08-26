@@ -203,6 +203,11 @@ async function handleLogin(event) {
                     }
                     // 設置錨點，防止瀏覽器恢復舊視圖
                     try { window.location.hash = '#coach'; } catch (_) {}
+
+                    // 主管：登入後立即預加載數據
+                    if (finalRole === 'supervisor' && window.databaseConnector) {
+                        window.databaseConnector.preloadSupervisorData?.();
+                    }
                 } else {
                     showLoginMessage('此版本僅支持教練和主管登入', 'error');
                 }
@@ -558,34 +563,25 @@ function showAttendanceManagement() {
 }
 
 function showWorkHours() {
-    hideAllFeatures();
-    document.getElementById('workHoursSection').classList.remove('hidden');
-    // 移除自动加载，等用户选择地点和泳会后再加载
+    // 已移除：主管頁面的工時管理 UI
+    console.log('工時管理已從主管頁面移除');
 }
 
 function showRoster() {
-    hideAllFeatures();
-    document.getElementById('rosterSection').classList.remove('hidden');
-    loadRosterData();
+    // 已移除：主管頁面的更表管理 UI
+    console.log('更表管理已從主管頁面移除');
 }
 
 function showLocationClub() {
     hideAllFeatures();
-    document.getElementById('locationClubSection').classList.remove('hidden');
+    const sec = document.getElementById('locationClubSection');
+    if (sec) sec.classList.remove('hidden');
     loadLocationClubData();
 }
 
 function hideAllFeatures() {
-    const featureInterfaces = [
-        'attendanceSection',
-        'workHoursSection',
-        'rosterSection',
-        'locationClubSection'
-    ];
-    
-    featureInterfaces.forEach(id => {
-        document.getElementById(id).classList.add('hidden');
-    });
+    const ids = ['attendanceSection','workHoursSection','rosterSection','locationClubSection'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
 }
 
 // 加载出席记录数据

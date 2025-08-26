@@ -402,13 +402,11 @@ window.showAttendanceManagement = function() {
 };
 
 window.showWorkHours = function() {
-    console.log('⏰ 显示工时管理界面');
-    // 实现工时管理界面显示逻辑
+    console.log('⏰ 工時管理已移除');
 };
 
 window.showRoster = function() {
-    console.log('📅 显示更表管理界面');
-    // 实现更表管理界面显示逻辑
+    console.log('📅 更表管理已移除');
 };
 
 window.showLocationClub = function() {
