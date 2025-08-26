@@ -1292,8 +1292,26 @@ function generateRosterCalendar(year, month, rosterByDay) {
 	const isThisMonth = (today.getFullYear()===year && (today.getMonth()+1)===month);
 	const todayDay = isThisMonth ? today.getDate() : -1;
 	
+	// 小工具：時間正規化並排序
+	const normalizeTime = (t) => {
+		const s = String(t||'').trim();
+		const m = s.match(/^(\d{1,2})(:?)(\d{0,2})(?:\s*-\s*(\d{1,2})(:?)(\d{0,2}))?/);
+		if (!m) return { sortKey: 9999, label: s };
+		const h1 = Number(m[1]); const min1 = m[3] ? Number(m[3]) : 0;
+		const h2 = m[4] ? Number(m[4]) : null; const min2 = m[6] ? Number(m[6]) : 0;
+		const pad = (n)=> String(n).padStart(2,'0');
+		const left = `${pad(h1)}:${pad(min1)}`;
+		const right = (h2!==null) ? `${pad(h2)}:${pad(min2)}` : '';
+		return { sortKey: h1*60+min1, label: right? `${left}-${right}` : left };
+	};
+	
 	for (let d=1; d<=daysInMonth; d++) {
-		const slots = rosterByDay.get(d) || [];
+		const raw = rosterByDay.get(d) || [];
+		// 排序並格式化
+		const slots = raw
+			.map(s=>({ timeObj: normalizeTime(s.time||s.timeRange||''), location: s.location||s.place||'' }))
+			.sort((a,b)=> a.timeObj.sortKey - b.timeObj.sortKey)
+			.map(x=>({ time: x.timeObj.label, location: x.location }));
 		const topClass = d===todayDay ? 'is-today' : '';
 		html += `<div class="cal-cell ${topClass} ${slots.length? 'has-hours':''}">`+
 			`<div class="cal-day">${d}</div>`+
