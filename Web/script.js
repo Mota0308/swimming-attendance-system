@@ -693,11 +693,11 @@ async function loadWorkHoursData() {
 				console.log('🔍 主管模式：獲取所有教練工時數據');
 			} else {
 				coachPhone = localStorage.getItem('current_user_phone') || '';
-			
-			if (!coachPhone) {
-				console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
-				alert('請先登入教練賬號');
-				return;
+				
+				if (!coachPhone) {
+					console.warn('⚠️ 未找到教練電話號碼，無法獲取工時數據');
+					alert('請先登入教練賬號');
+					return;
 				}
 			}
 			
@@ -707,20 +707,20 @@ async function loadWorkHoursData() {
 			if (monthEl.value && selectedLocation && selectedClub) {
 				// 三個條件都選擇：精確篩選
 				console.log('📊 精確篩選：月份 + 地點 + 泳會');
-			workHoursList = await databaseConnector.fetchCoachWorkHours(
-				coachPhone, 
-				year, 
-				month, 
-				selectedLocation, 
-				selectedClub
-			);
-			statsData = await databaseConnector.fetchCoachWorkHoursStats(
-				coachPhone, 
-				year, 
-				month, 
-				selectedLocation, 
-				selectedClub
-			);
+				workHoursList = await databaseConnector.fetchCoachWorkHours(
+					coachPhone, 
+					year, 
+					month, 
+					selectedLocation, 
+					selectedClub
+				);
+				statsData = await databaseConnector.fetchCoachWorkHoursStats(
+					coachPhone, 
+					year, 
+					month, 
+					selectedLocation, 
+					selectedClub
+				);
 			} else if (monthEl.value && selectedLocation) {
 				// 選擇月份和地點：顯示該月該地點的所有泳會
 				console.log('📊 遞進篩選：月份 + 地點');
@@ -760,162 +760,127 @@ async function loadWorkHoursData() {
 				console.log('📊 遞進篩選：地點 + 泳會');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
 					coachPhone, 
-					0,  // 不限制年份
-					0,  // 不限制月份
+					0, 
+					0, 
 					selectedLocation, 
 					selectedClub
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
 					coachPhone, 
-					0,  // 不限制年份
-					0,  // 不限制月份
+					0, 
+					0, 
 					selectedLocation, 
 					selectedClub
 				);
 			} else if (monthEl.value) {
-				// 只選擇月份：顯示該月所有地點和泳會
-				console.log('📊 月份篩選：只選擇月份');
+				// 只選擇月份：顯示該月所有地點與泳會
+				console.log('📊 並列篩選：僅月份');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
 					coachPhone, 
 					year, 
 					month, 
-					'',  // 不限制地點
-					''   // 不限制泳會
+					'', 
+					''
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
 					coachPhone, 
 					year, 
 					month, 
-					'',  // 不限制地點
-					''   // 不限制泳會
+					'', 
+					''
 				);
 			} else if (selectedLocation) {
-				// 只選擇地點：顯示所有月份該地點的所有泳會
-				console.log('📊 地點篩選：只選擇地點');
+				console.log('📊 並列篩選：僅地點');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
 					coachPhone, 
-					0,  // 不限制年份
-					0,  // 不限制月份
+					0, 
+					0, 
 					selectedLocation, 
-					''   // 不限制泳會
+					''
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
 					coachPhone, 
-					0,  // 不限制年份
-					0,  // 不限制月份
+					0, 
+					0, 
 					selectedLocation, 
-					''   // 不限制泳會
+					''
 				);
 			} else if (selectedClub) {
-				// 只選擇泳會：顯示所有月份該泳會的所有地點
-				console.log('📊 泳會篩選：只選擇泳會');
+				console.log('📊 並列篩選：僅泳會');
 				workHoursList = await databaseConnector.fetchCoachWorkHours(
 					coachPhone, 
-					0,  // 不限制年份
-					0,  // 不限制月份
-					'',  // 不限制地點
+					0, 
+					0, 
+					'', 
 					selectedClub
 				);
 				statsData = await databaseConnector.fetchCoachWorkHoursStats(
 					coachPhone, 
-					0,  // 不限制年份
-					0,  // 不限制月份
-					'',  // 不限制地點
+					0, 
+					0, 
+					'', 
 					selectedClub
 				);
 			}
-			
-			console.log('✅ 工時數據獲取成功:', workHoursList.length, '條記錄');
-			console.log('✅ 統計數據獲取成功:', statsData);
 		}
-		
-		// 若後端回傳非陣列，兼容 {workHours:[...]} 或 null
-		if (!Array.isArray(workHoursList)) {
-			workHoursList = (workHoursList && Array.isArray(workHoursList.workHours)) ? workHoursList.workHours : [];
-		}
-		
-		// 兼容數據格式：[{ date: 'YYYY-MM-DD', hours: 8, location, club }, ...]
-		const hoursByDay = new Map();
-		let totalHours = 0;
-		let daysWithHours = 0;
-		
-		(workHoursList || []).forEach(item => {
-			const dateStr = item?.date || item?.workDate || item?.day || item?.work_date;
-			const hours = Number(item?.hours ?? item?.totalHours ?? item?.hour ?? item?.work_hours ?? 0);
-			const loc = item?.location || item?.place || item?.work_location || '';
-			const clb = item?.club || item?.work_club || '';
-			
-			if (!dateStr) return;
-			
-			const d = new Date(dateStr);
-			const t = d.getTime();
-			
-			if (!Number.isNaN(t)) {
-				// 新的邏輯：根據選擇的條件靈活篩選
-				let shouldInclude = true;
+
+		// 主管模式：按教練分組渲染多個日曆，左上角標註教練姓名
+		const userTypeNow = localStorage.getItem('current_user_type') || 'coach';
+		if (userTypeNow === 'supervisor') {
+			const calendarContainer = document.getElementById('workHoursCalendar');
+			if (calendarContainer) {
+				const byCoach = new Map(); // key: phone, value: { name, phone, list: [] }
+				(workHoursList || []).forEach(item => {
+					const phone = item.phone || item.coachPhone || '';
+					const name = item.studentName || item.name || '';
+					if (!phone && !name) return;
+					const key = phone || name;
+					if (!byCoach.has(key)) byCoach.set(key, { name, phone, list: [] });
+					byCoach.get(key).list.push(item);
+				});
 				
-				// 如果選擇了月份，檢查日期是否匹配
-				if (monthEl.value && (d.getFullYear() !== year || (d.getMonth() + 1) !== month)) {
-					shouldInclude = false;
-				}
+				// 生成HTML：每位教練一個小卡片包含標題和日曆
+				let html = '<div class="coach-calendars">';
+				byCoach.forEach((value, key) => {
+					html += `<div class="coach-calendar-card">`+
+						`<div class="coach-calendar-title">${value.name || '未命名教練'}${value.phone? '（'+value.phone+'）':''}</div>`+
+						`<div class="coach-calendar-body"><div class="coach-calendar" data-coach="${CSS.escape(key)}"></div></div>`+
+					`</div>`;
+				});
+				html += '</div>';
+				calendarContainer.innerHTML = html;
 				
-				// 如果選擇了地點，檢查地點是否匹配
-				if (selectedLocation && loc && loc !== selectedLocation) {
-					shouldInclude = false;
-				}
-				
-				// 如果選擇了泳會，檢查泳會是否匹配
-				if (selectedClub && clb && clb !== selectedClub) {
-					shouldInclude = false;
-				}
-				
-				if (shouldInclude) {
-				const day = d.getDate();
-				hoursByDay.set(day, (hoursByDay.get(day) || 0) + hours);
-				totalHours += hours;
-				daysWithHours += hours > 0 ? 1 : 0;
-				}
+				// 對每位教練渲染日曆
+				byCoach.forEach((value, key) => {
+					const wrap = calendarContainer.querySelector(`.coach-calendar[data-coach="${CSS.escape(key)}"]`);
+					const hoursByDay = new Map();
+					value.list.forEach(rec => {
+						const d = new Date(rec.date);
+						if (!Number.isNaN(d.getTime()) && (d.getFullYear()===year) && ((d.getMonth()+1)===month)) {
+							const day = d.getDate();
+							const h = Number(rec.hours) || 0;
+							hoursByDay.set(day, (hoursByDay.get(day) || 0) + h);
+						}
+					});
+					generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
+				});
 			}
-		});
-		
-		// 如果有統計數據，使用統計數據；否則使用計算結果
-		if (statsData) {
-			updateWorkHoursSummary({
-				totalDays: statsData.total_days || statsData.totalDays || daysWithHours,
-				totalHours: statsData.total_hours || statsData.totalHours || totalHours,
-				averageHours: statsData.average_hours || statsData.averageHours || (daysWithHours ? Math.round((totalHours / daysWithHours) * 10) / 10 : 0)
-			});
 		} else {
-			updateWorkHoursSummary({
-				totalDays: daysWithHours,
-				totalHours: totalHours,
-				averageHours: daysWithHours ? Math.round((totalHours / daysWithHours) * 10) / 10 : 0
+			// 教練模式：保持單一日曆
+			const hoursByDay = new Map();
+			(workHoursList || []).forEach(item => {
+				const d = new Date(item.date);
+				if (!Number.isNaN(d.getTime()) && (d.getFullYear()===year) && ((d.getMonth()+1)===month)) {
+					const day = d.getDate();
+					const h = Number(item.hours) || 0;
+					hoursByDay.set(day, (hoursByDay.get(day) || 0) + h);
+				}
 			});
+			generateWorkHoursCalendar(year, month, hoursByDay);
 		}
-		
-		// 獲取全部工時數據並更新全部工時總結
-		if (coachPhone) {
-			await updateAllWorkHoursSummary(coachPhone);
-		}
-		
-		// 只有在沒有數據時才使用默認示例數據
-		if (hoursByDay.size === 0) {
-			console.log('📋 沒有找到工時數據，顯示提示信息');
-			const cal = document.getElementById('workHoursCalendar');
-			if (cal) cal.innerHTML = '<div style="padding:20px;text-align:center;color:#888;"><i class="fas fa-info-circle"></i><br>本月沒有工時記錄<br><small>請檢查選擇的月份、地點和泳會</small></div>';
-			return;
-		}
-		
-		updateWorkHoursSummary({
-			totalDays: daysWithHours,
-			totalHours: totalHours,
-			averageHours: daysWithHours ? Math.round((totalHours / daysWithHours) * 10) / 10 : 0
-		});
-		
-		generateWorkHoursCalendar(year, month, hoursByDay);
-	} catch (error) {
-		console.error('加载工時数据失败:', error);
-		alert('加载数据失败');
+
+	} catch (e) {
+		console.error(e);
 	} finally {
 		showLoading(false);
 	}
@@ -1217,6 +1182,32 @@ function generateWorkHoursCalendar(year, month, hoursByDay) {
 	
 	// 渲染後強制調整單元格高度
 	adjustCalendarSizing(calendar);
+}
+
+// 生成工時日曆（容器版本，用於主管模式多教練）
+function generateWorkHoursCalendarIn(containerEl, year, month, hoursByDay) {
+	if (!containerEl) return;
+	const weekdays = ['日','一','二','三','四','五','六'];
+	let html = '<div class="cal grid-7">';
+	weekdays.forEach(w => { html += `<div class="cal-head">${w}</div>`; });
+	const first = new Date(year, month - 1, 1);
+	const daysInMonth = new Date(year, month, 0).getDate();
+	const offset = first.getDay();
+	for (let i = 0; i < offset; i++) html += '<div class="cal-cell cal-empty"></div>';
+	const today = new Date();
+	const isThisMonth = (today.getFullYear() === year && (today.getMonth()+1) === month);
+	const todayDate = isThisMonth ? today.getDate() : -1;
+	for (let d = 1; d <= daysInMonth; d++) {
+		const h = hoursByDay.get(d) || 0;
+		const isToday = d === todayDate;
+		html += `<div class="cal-cell ${isToday ? 'is-today' : ''} ${h>0 ? 'has-hours' : ''}">`+
+			`<div class="cal-day">${d}</div>`+
+			`<div class="cal-hours">${h>0 ? (h.toFixed(1)+'h') : ''}</div>`+
+		`</div>`;
+	}
+	html += '</div>';
+	containerEl.innerHTML = html;
+	adjustCalendarSizing(containerEl);
 }
 
 // 生成更表日曆
