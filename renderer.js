@@ -569,8 +569,23 @@ function renderCloudStudentsTableFromCache() {
                 const key = `${stu.name}|${stu.Phone_number||stu.phone||''}|${stu['上課日期']}`;
                 const leaveOn = !!leaveMap[key];
                 
+                // 生成符號顯示
+                let symbols = '';
+                if (stu.hasReschedule) {
+                    symbols += '🔁';
+                }
+                if (stu.hasBalloonMark) {
+                    symbols += '🎈';
+                }
+                if (stu.hasStarMark) {
+                    symbols += '🌟';
+                }
+                
                 html += `<tr>
-                    <td style="border:1px solid #ddd;padding:8px;text-align:center;"><input type="checkbox"></td>
+                    <td style="border:1px solid #ddd;padding:8px;text-align:center;">
+                        ${symbols ? `<span style="margin-right:5px;font-size:14px;">${symbols}</span>` : ''}
+                        <input type="checkbox">
+                    </td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="text" value="${stu.name || ''}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'name')" style="width: 80px; border: none; background: transparent;"></td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="text" value="${stu.age || ''}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'age')" style="width: 60px; border: none; background: transparent;"></td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="text" value="${stu.Phone_number || stu.phone || ''}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'phone')" style="width: 100px; border: none; background: transparent;"></td>
@@ -2757,16 +2772,110 @@ window.toggleLeaveForStudent = function(name, phone, date, option3Points, option
     const currentlyOn = !!leaveMap[key];
     leaveMap[key] = !currentlyOn;
     localStorage.setItem('leaveStatusMap', JSON.stringify(leaveMap));
+    
     if (btn) {
         btn.style.background = leaveMap[key] ? '#34495e' : '#e67e22';
         btn.style.color = 'white';
     }
+    
+    // 如果請假狀態為true，創建新的學生記錄
+    if (leaveMap[key]) {
+        createRescheduleStudent(name, phone, date, option3Points, option1Text, option2Text);
+    }
+    
     // 若出席記錄頁面已載入，重新渲染以即時反映
     try {
         if (document.getElementById('attendanceTableArea')) {
             renderAttendanceTable();
         }
     } catch (e) {}
+}
+
+// 創建補/調堂學生記錄
+async function createRescheduleStudent(name, phone, date, option3Points, option1Text, option2Text) {
+    try {
+        console.log(`創建補/調堂學生記錄: ${name} - ${date}`);
+        
+        // 從雲端緩存中找到原始學生資料
+        let originalStudent = null;
+        if (window.cloudStudentsGrouped) {
+            for (let group of window.cloudStudentsGrouped) {
+                for (let stu of group.students) {
+                    if (stu.name === name && stu["上課日期"] === date) {
+                        originalStudent = stu;
+                        break;
+                    }
+                }
+                if (originalStudent) break;
+            }
+        }
+        
+        if (!originalStudent) {
+            console.error('找不到原始學生資料');
+            return;
+        }
+        
+        // 創建新的學生記錄，添加hasReschedule標記
+        let newStudent = {
+            ...originalStudent,
+            "上課日期": date, // 保持原日期
+            hasReschedule: true, // 添加補/調堂標記
+            option1: option1Text || '',
+            option2: option2Text || '',
+            option3: option3Points || ''
+        };
+        
+        // 更新雲端資料庫
+        let groupedUpdate = [{
+            date: date,
+            students: [newStudent]
+        }];
+        
+        const result = await ipcRenderer.invoke('import-students-to-cloud', groupedUpdate, false);
+        if (result.success) {
+            console.log('補/調堂學生記錄創建成功');
+            // 重新載入雲端資料
+            await loadCloudStudents();
+        } else {
+            console.error('創建補/調堂學生記錄失敗:', result.error);
+        }
+    } catch (error) {
+        console.error('創建補/調堂學生記錄失敗:', error);
+    }
+}
+
+// 創建日期變更的新學生記錄
+async function createNewStudentWithDateChange(originalName, originalDate, newDate, newData) {
+    try {
+        console.log(`創建日期變更的新學生記錄: ${originalName} - ${originalDate} -> ${newDate}`);
+        
+        // 創建新的學生記錄
+        let newStudent = {
+            ...newData,
+            "上課日期": newDate,
+            hasReschedule: false, // 新記錄不是補/調堂
+            // 保持原有的hasBalloonMark和hasStarMark標記
+            hasBalloonMark: newData.hasBalloonMark || false,
+            hasStarMark: newData.hasStarMark || false
+        };
+        
+        // 更新雲端資料庫
+        let groupedUpdate = [{
+            date: newDate,
+            students: [newStudent]
+        }];
+        
+        const result = await ipcRenderer.invoke('import-students-to-cloud', groupedUpdate, false);
+        if (result.success) {
+            console.log('日期變更的新學生記錄創建成功');
+            // 重新載入雲端資料
+            await loadCloudStudents();
+        } else {
+            console.error('創建日期變更的新學生記錄失敗:', result.error);
+        }
+    } catch (error) {
+        console.error('創建日期變更的新學生記錄失敗:', error);
+    }
 }
 
 window.toggleSelectAllManageRows = function(checkbox) {
@@ -3775,6 +3884,12 @@ window.onCloudStudentFieldChange = function(input, originalName, originalDate, f
     // 處理日期欄位
     if (field === 'date') {
         newStudentData.date = val;
+        
+        // 如果日期有變更，創建新的學生記錄
+        if (val !== originalDate) {
+            createNewStudentWithDateChange(originalName, originalDate, val, newStudentData);
+            return; // 不執行原有的更新邏輯
+        }
     } else {
         newStudentData.date = tds[11].querySelector('input')?.value || originalDate;
     }
@@ -4073,8 +4188,23 @@ function renderFilteredCloudStudents(filteredGroups) {
                 const key = `${stu.name}|${stu.Phone_number||stu.phone||''}|${stu['上課日期']}`;
                 const leaveOn = !!leaveMap[key];
                 
+                // 生成符號顯示
+                let symbols = '';
+                if (stu.hasReschedule) {
+                    symbols += '🔁';
+                }
+                if (stu.hasBalloonMark) {
+                    symbols += '🎈';
+                }
+                if (stu.hasStarMark) {
+                    symbols += '🌟';
+                }
+                
                 html += `<tr>
-                    <td style="border:1px solid #ddd;padding:8px;text-align:center;"><input type="checkbox"></td>
+                    <td style="border:1px solid #ddd;padding:8px;text-align:center;">
+                        ${symbols ? `<span style="margin-right:5px;font-size:14px;">${symbols}</span>` : ''}
+                        <input type="checkbox">
+                    </td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="text" value="${stu.name || ''}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'name')" style="width: 80px; border: none; background: transparent;"></td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="text" value="${stu.age || ''}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'age')" style="width: 60px; border: none; background: transparent;"></td>
                     <td style="border:1px solid #ddd;padding:8px;"><input type="text" value="${stu.Phone_number || stu.phone || ''}" onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'phone')" style="width: 100px; border: none; background: transparent;"></td>

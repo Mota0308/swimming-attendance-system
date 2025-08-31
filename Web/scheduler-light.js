@@ -426,7 +426,7 @@
     const name = el(`<h4 class="student-name"></h4>`); 
     name.textContent = stu.name || '未命名學生';
     
-    // 在姓名旁顯示特殊標記（🎈/🌟）
+    // 在姓名旁顯示特殊標記（🎈/🌟/🔁）
     const coerceBool = (v) => {
       if (typeof v === 'boolean') return v; if (v == null) return false;
       const s = String(v).trim().toLowerCase();
@@ -434,10 +434,13 @@
     };
     const hasBalloon = coerceBool(stu.hasBalloonMark ?? stu.balloonMark ?? stu.has_balloon_mark ?? stu.hasBalloon ?? stu.balloon);
     const hasStar = coerceBool(stu.hasStarMark ?? stu.star ?? stu.has_star ?? stu.hasStar ?? stu.starMark);
-    if (hasBalloon || hasStar) {
+    const hasReschedule = coerceBool(stu.hasReschedule ?? stu.reschedule ?? stu.has_reschedule ?? stu.rescheduleMark);
+    
+    if (hasBalloon || hasStar || hasReschedule) {
       const marksWrap = el(`<span class="student-marks" style="margin-left:6px; display:inline-flex; gap:4px;"></span>`);
       if (hasStar) marksWrap.append(el(`<span title="重點學生">🌟</span>`));
       if (hasBalloon) marksWrap.append(el(`<span title="氣球標記">🎈</span>`));
+      if (hasReschedule) marksWrap.append(el(`<span title="補/調堂">🔁</span>`));
       const nameWrap = el(`<div style="display:flex;align-items:center;"></div>`);
       nameWrap.append(el(`<span></span>`));
       nameWrap.firstChild.textContent = name.textContent;
@@ -915,9 +918,9 @@
     const today = new Date();
     dateEl.value = today.toISOString().slice(0,10);
 
-    const onFilterChange = async () => { 
+    const onFilterChange = async () => {
       await buildFromStudents({ date: dateEl.value, location: locEl.value }); 
-      renderAll(); 
+        renderAll();
     };
     dateEl.addEventListener('change', onFilterChange);
     locEl.addEventListener('change', onFilterChange);
@@ -1090,28 +1093,28 @@
           console.log(`🔄 尝试同步到: ${endpoint}`);
           
           const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-API-Public-Key': 'ttdrcccy',
-              'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
-            },
-            body: JSON.stringify(syncData)
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-          }
-          
-          const result = await response.json();
-          
-          if (result.success) {
-            console.log('✅ 课程编排数据同步成功:', result);
-            return result;
-          } else {
-            throw new Error(result.message || '同步失败');
-          }
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Public-Key': 'ttdrcccy',
+          'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
+        },
+        body: JSON.stringify(syncData)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ 课程编排数据同步成功:', result);
+        return result;
+      } else {
+        throw new Error(result.message || '同步失败');
+      }
         } catch (error) {
           console.warn(`❌ 同步到 ${endpoint} 失败:`, error);
           lastError = error;
