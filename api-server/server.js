@@ -1098,23 +1098,30 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
     const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
     const filter = { date: { $gte: startDate, $lte: endDate } };
     
-    // 主管模式：不限制特定教练，但只顯示 staff
+    // 主管模式：不限制特定教练，查詢所有教練數據
     if (isSupervisor && !phone) {
       try {
+        // 首先嘗試獲取所有staff帳號
         const accounts = db.collection(ACCOUNTS_COLLECTION || 'Coach_account');
         const staffDocs = await accounts.find({ $or: [ { type: 'staff' }, { userType: 'coach' } ] }, { projection: { phone: 1, studentPhone: 1 } }).toArray();
         const staffPhones = Array.from(new Set((staffDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
+        
         if (staffPhones.length > 0) {
+          // 如果有staff帳號，使用這些帳號查詢
           filter.phone = { $in: staffPhones };
+          console.log(`👑 主管模式：使用 ${staffPhones.length} 個staff帳號查詢更表數據`);
         } else {
-          await client.close();
-          return res.json({ success: true, records: [] });
+          // 如果沒有staff帳號，查詢所有更表數據（不限制phone）
+          console.log('👑 主管模式：沒有找到staff帳號，查詢所有更表數據');
+          // 不添加phone過濾條件，查詢所有數據
         }
       } catch (e) {
-        console.warn('⚠️ 獲取staff帳號失敗，放行所有教練', e.message);
+        console.warn('⚠️ 獲取staff帳號失敗，查詢所有教練數據', e.message);
+        // 錯誤時也不添加phone過濾條件，查詢所有數據
       }
     } else if (phone) {
       filter.phone = phone;
+      console.log(`👤 教練模式：查詢特定教練 ${phone} 的更表數據`);
     }
     if (name && name.trim()) filter.name = name;
     const docs = await col.find(filter).sort({ date: 1 }).toArray();
