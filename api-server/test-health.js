@@ -4,7 +4,7 @@ async function testHealth() {
     try {
         console.log('🔍 測試API服務器健康狀態...');
         
-        const url = 'https://swimming-system-api-production.up.railway.app/health';
+        const url = 'https://swimming-system-api-production.up.railway.app/health/secure';
         
         console.log(`📡 請求URL: ${url}`);
         

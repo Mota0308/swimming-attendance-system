@@ -57,8 +57,8 @@ app.use((req, res, next) => {
     next();
 });
 
-// 健康檢查端點
-app.get('/health', validateApiKeys, async (req, res) => {
+// 健康檢查端點（不需要API密鑰，供Railway健康檢查使用）
+app.get('/health', async (req, res) => {
     try {
         console.log('🧪 健康檢查請求');
         res.json({
@@ -74,6 +74,32 @@ app.get('/health', validateApiKeys, async (req, res) => {
         });
     } catch (error) {
         console.error('❌ 健康檢查錯誤:', error);
+        res.status(500).json({
+            success: false,
+            message: '服務器錯誤',
+            error: error.message
+        });
+    }
+});
+
+// 需要API密鑰的健康檢查端點（供應用程序使用）
+app.get('/health/secure', validateApiKeys, async (req, res) => {
+    try {
+        console.log('🔐 安全健康檢查請求');
+        res.json({
+            success: true,
+            message: 'API 服務器運行正常（已驗證）',
+            timestamp: new Date().toISOString(),
+            server: SERVER_URL,
+            database: 'MongoDB Atlas',
+            version: '1.0.1',
+            clientIP: req.ip,
+            deployment: 'Railway Production',
+            features: ['admin-login', 'coach-management', 'work-hours', 'web-application'],
+            authenticated: true
+        });
+    } catch (error) {
+        console.error('❌ 安全健康檢查錯誤:', error);
         res.status(500).json({
             success: false,
             message: '服務器錯誤',
@@ -731,14 +757,22 @@ app.get('/coaches', validateApiKeys, async (req, res) => {
             console.log(`🔍 查詢教練電話: ${phone}`);
             const coach = await collection.findOne(
                 { phone: phone }, 
-                { projection: { phone: 1, studentName: 1, location: 1, club: 1, _id: 0 } }
+                { projection: { phone: 1, studentName: 1, name: 1, location: 1, club: 1, _id: 0 } }
             );
             console.log(`📋 查詢結果:`, coach);
-            await client.close();
             
             if (coach) {
-                res.json({ success: true, coach });
+                // 確保返回的數據包含name字段，並返回數組格式以保持一致性
+                const result = {
+                    ...coach,
+                    name: coach.name || coach.studentName || `教練_${coach.phone}`
+                };
+                console.log(`✅ 處理後的教練數據:`, result);
+                await client.close();
+                res.json({ success: true, coaches: [result] });
             } else {
+                console.log(`❌ 未找到教練: ${phone}`);
+                await client.close();
                 res.status(404).json({ success: false, message: '教練不存在' });
             }
         } else {
@@ -750,10 +784,17 @@ app.get('/coaches', validateApiKeys, async (req, res) => {
             
             // 獲取教練列表
             const coaches = await collection.find(query, { 
-                projection: { phone: 1, studentName: 1, location: 1, club: 1, _id: 0 } 
+                projection: { phone: 1, studentName: 1, name: 1, location: 1, club: 1, _id: 0 } 
             }).toArray();
+            
+            // 確保每個教練數據都包含name字段
+            const processedCoaches = coaches.map(coach => ({
+                ...coach,
+                name: coach.name || coach.studentName || `教練_${coach.phone}`
+            }));
+            
             await client.close();
-            res.json({ success: true, coaches });
+            res.json({ success: true, coaches: processedCoaches });
         }
     } catch (error) {
         console.error('❌ 獲取教練信息錯誤:', error);
@@ -1622,6 +1663,23 @@ app.post('/students/update-lesson', validateApiKeys, async (req, res) => {
     }
 });
 
+// 課程編排資料同步（供網頁前端使用）
+app.post('/api/schedule/sync', validateApiKeys, async (req, res) => {
+    try {
+        const payload = req.body || {};
+        console.log('🗂️ 收到課程編排同步請求', {
+            coachPhone: payload.coachPhone,
+            timeSlots: Array.isArray(payload.timeSlots) ? payload.timeSlots.length : 0,
+            timestamp: payload.timestamp
+        });
+        // 目前僅回應成功；如需持久化，可寫入 MongoDB.
+        res.json({ success: true, message: '已接收並記錄課程編排資料', echo: { coachPhone: payload.coachPhone, timeSlots: payload.timeSlots } });
+    } catch (e) {
+        console.error('❌ 課程編排同步失敗', e);
+        res.status(500).json({ success: false, message: '課程編排同步失敗', error: e.message });
+    }
+});
+
 // 錯誤處理中間件
 app.use((error, req, res, next) => {
     console.error('❌ 服務器錯誤:', error);
@@ -1638,4 +1696,3 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`📍 本地地址: http://localhost:${PORT}`);
     console.log(`🌐 服務器地址: ${SERVER_URL}`);
     console.log(`🔧 服務器配置完成`);
-});
