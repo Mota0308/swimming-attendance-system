@@ -3893,10 +3893,23 @@ window.onCloudStudentFieldChange = function(input, originalName, originalDate, f
     if (field === 'date') {
         newStudentData.date = val;
         
-        // 如果日期有變更，創建新的學生記錄
+        // 檢查學生是否已經請假
+        let leaveMap = {};
+        try { leaveMap = JSON.parse(localStorage.getItem('leaveStatusMap') || '{}'); } catch(e) {}
+        const key = `${originalName}|${newStudentData.phone || ''}|${originalDate}`;
+        const wasOnLeave = !!leaveMap[key];
+        
+        // 如果日期有變更
         if (val !== originalDate) {
-            createNewStudentWithDateChange(originalName, originalDate, val, newStudentData);
-            return; // 不執行原有的更新邏輯
+            if (wasOnLeave) {
+                // 如果學生已經請假，創建新的學生記錄
+                createNewStudentWithDateChange(originalName, originalDate, val, newStudentData);
+                return; // 不執行原有的更新邏輯
+            } else {
+                // 如果學生沒有請假，直接更新原記錄的日期
+                newStudentData.date = val;
+                // 繼續執行原有的更新邏輯
+            }
         }
     } else {
         newStudentData.date = tds[11].querySelector('input')?.value || originalDate;
