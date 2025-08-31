@@ -1672,8 +1672,40 @@ app.post('/api/schedule/sync', validateApiKeys, async (req, res) => {
             timeSlots: Array.isArray(payload.timeSlots) ? payload.timeSlots.length : 0,
             timestamp: payload.timestamp
         });
-        // 目前僅回應成功；如需持久化，可寫入 MongoDB.
-        res.json({ success: true, message: '已接收並記錄課程編排資料', echo: { coachPhone: payload.coachPhone, timeSlots: payload.timeSlots } });
+
+        // 連接到MongoDB數據庫
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const scheduleCollection = db.collection('schedule_data');
+
+        // 準備要保存的數據
+        const scheduleData = {
+            coachPhone: payload.coachPhone,
+            timeSlots: payload.timeSlots || [],
+            timestamp: payload.timestamp || new Date().toISOString(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            source: 'web-application',
+            endpoint: 'api/schedule/sync'
+        };
+
+        // 保存到數據庫
+        const result = await scheduleCollection.insertOne(scheduleData);
+        await client.close();
+
+        console.log('✅ 課程編排數據已保存到數據庫', {
+            insertedId: result.insertedId,
+            timeSlotsCount: scheduleData.timeSlots.length
+        });
+
+        res.json({ 
+            success: true, 
+            message: '課程編排數據已成功保存到數據庫', 
+            dataId: result.insertedId,
+            timeSlotsCount: scheduleData.timeSlots.length,
+            timestamp: scheduleData.timestamp
+        });
     } catch (e) {
         console.error('❌ 課程編排同步失敗', e);
         res.status(500).json({ success: false, message: '課程編排同步失敗', error: e.message });
@@ -1689,8 +1721,40 @@ app.post('/schedule/sync', validateApiKeys, async (req, res) => {
             timeSlots: Array.isArray(payload.timeSlots) ? payload.timeSlots.length : 0,
             timestamp: payload.timestamp
         });
-        // 目前僅回應成功；如需持久化，可寫入 MongoDB.
-        res.json({ success: true, message: '已接收並記錄課程編排資料（備用端點）', echo: { coachPhone: payload.coachPhone, timeSlots: payload.timeSlots } });
+
+        // 連接到MongoDB數據庫
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const scheduleCollection = db.collection('schedule_data');
+
+        // 準備要保存的數據
+        const scheduleData = {
+            coachPhone: payload.coachPhone,
+            timeSlots: payload.timeSlots || [],
+            timestamp: payload.timestamp || new Date().toISOString(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            source: 'web-application',
+            endpoint: 'schedule/sync'
+        };
+
+        // 保存到數據庫
+        const result = await scheduleCollection.insertOne(scheduleData);
+        await client.close();
+
+        console.log('✅ 課程編排數據已保存到數據庫', {
+            insertedId: result.insertedId,
+            timeSlotsCount: scheduleData.timeSlots.length
+        });
+
+        res.json({ 
+            success: true, 
+            message: '課程編排數據已成功保存到數據庫', 
+            dataId: result.insertedId,
+            timeSlotsCount: scheduleData.timeSlots.length,
+            timestamp: scheduleData.timestamp
+        });
     } catch (e) {
         console.error('❌ 課程編排同步失敗（備用端點）', e);
         res.status(500).json({ success: false, message: '課程編排同步失敗', error: e.message });
@@ -1714,3 +1778,44 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 服務器地址: ${SERVER_URL}`);
     console.log(`🔧 服務器配置完成`);
 });
+
+// 查詢課程編排數據（供驗證使用）
+app.get('/api/schedule/data', validateApiKeys, async (req, res) => {
+    try {
+        const { coachPhone, limit = 10 } = req.query;
+        
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const scheduleCollection = db.collection('schedule_data');
+
+        // 構建查詢條件
+        const filter = {};
+        if (coachPhone) {
+            filter.coachPhone = coachPhone;
+        }
+
+        // 查詢數據，按創建時間倒序排列
+        const data = await scheduleCollection
+            .find(filter)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .toArray();
+
+        await client.close();
+
+        console.log(`✅ 查詢到 ${data.length} 條課程編排數據`);
+
+        res.json({
+            success: true,
+            message: '課程編排數據查詢成功',
+            count: data.length,
+            data: data
+        });
+    } catch (e) {
+        console.error('❌ 查詢課程編排數據失敗', e);
+        res.status(500).json({ success: false, message: '查詢失敗', error: e.message });
+    }
+});
+
+// 錯誤處理中間件
