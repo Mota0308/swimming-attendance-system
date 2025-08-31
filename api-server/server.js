@@ -906,20 +906,48 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
             }
         }
 
-        // 如果是主管且未指定phone：先在 Coach_account 找 staff，再以 phone IN 查 Coach_work_hours
+        // 如果是主管且未指定phone：先在 Coach_account 找所有教練帳號，再以 phone IN 查 Coach_work_hours
         if (isSupervisor && !phone) {
             try {
                 const accounts = db.collection(ACCOUNTS_COLLECTION || 'Coach_account');
-                const staffDocs = await accounts.find({ $or: [ { type: 'staff' }, { userType: 'coach' } ] }, { projection: { phone: 1, studentPhone: 1 } }).toArray();
-                const staffPhones = Array.from(new Set((staffDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
-                if (staffPhones.length > 0) {
-                    query.phone = { $in: staffPhones };
+                
+                // 更寬鬆的查詢條件，包含所有可能的教練帳號類型
+                const coachDocs = await accounts.find({ 
+                    $or: [ 
+                        { type: 'staff' }, 
+                        { type: 'coach' },
+                        { type: 'teacher' },
+                        { userType: 'coach' },
+                        { userType: 'staff' },
+                        { userType: 'teacher' },
+                        // 如果帳號類型字段不存在，但有電話號碼，也認為是教練帳號
+                        { phone: { $exists: true, $ne: '' } },
+                        { studentPhone: { $exists: true, $ne: '' } }
+                    ] 
+                }, { projection: { phone: 1, studentPhone: 1, type: 1, userType: 1, studentName: 1 } }).toArray();
+                
+                const coachPhones = Array.from(new Set((coachDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
+                
+                console.log(`📋 找到 ${coachDocs.length} 個教練帳號文檔`);
+                console.log(`📋 教練帳號詳情:`, coachDocs.map(doc => ({
+                    phone: doc.phone || doc.studentPhone,
+                    type: doc.type,
+                    userType: doc.userType,
+                    name: doc.studentName
+                })));
+                
+                if (coachPhones.length > 0) {
+                    // 使用所有教練帳號查詢
+                    query.phone = { $in: coachPhones };
+                    console.log(`👑 主管模式：使用 ${coachPhones.length} 個教練帳號查詢工時數據`, coachPhones);
                 } else {
-                    await client.close();
-                    return res.json({ success: true, records: [] });
+                    // 如果沒有找到教練帳號，查詢所有工時數據（不限制phone）
+                    console.log('👑 主管模式：沒有找到教練帳號，查詢所有工時數據');
+                    // 不添加phone過濾條件，查詢所有數據
                 }
             } catch (e) {
-                console.warn('⚠️ 獲取staff帳號失敗，放行所有教練', e.message);
+                console.warn('⚠️ 獲取教練帳號失敗，查詢所有教練數據', e.message);
+                // 錯誤時也不添加phone過濾條件，查詢所有數據
             }
         }
         
