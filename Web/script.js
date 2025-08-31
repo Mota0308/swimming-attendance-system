@@ -560,6 +560,23 @@ async function populateLocationSelects() {
 function showAttendanceManagement() {
     hideAllFeatures();
     document.getElementById('attendanceSection').classList.remove('hidden');
+    
+    // 初始化課程編排系統
+    console.log('🔄 初始化課程編排系統...');
+    
+    // 等待課程編排系統模組載入
+    function initSchedulerWhenReady() {
+        if (typeof window.initSchedulerLight === 'function') {
+            window.initSchedulerLight('schedulerContainer');
+            console.log('✅ 課程編排系統已初始化');
+        } else {
+            console.log('⏳ 等待課程編排系統模組載入...');
+            setTimeout(initSchedulerWhenReady, 100);
+        }
+    }
+    
+    // 立即嘗試初始化
+    initSchedulerWhenReady();
 }
 
 function showWorkHours() {
