@@ -1125,14 +1125,16 @@
       
       // 提供用户友好的错误信息
       if (error.message.includes('404') || error.message.includes('Application not found')) {
-        throw new Error('Railway服务暂时不可用，请稍后重试或联系管理员');
+        throw new Error('Railway服務暫時不可用，數據已保存到本地。請稍後重試或聯繫管理員檢查服務狀態。');
       } else if (error.message.includes('500')) {
-        throw new Error('服务器内部错误，请稍后重试');
-      } else if (error.message.includes('Network') || error.message.includes('fetch')) {
-        throw new Error('网络连接失败，请检查网络设置');
+        throw new Error('服務器內部錯誤，數據已保存到本地。請稍後重試。');
+      } else if (error.message.includes('Network') || error.message.includes('fetch') || error.message.includes('CORS')) {
+        throw new Error('網絡連接失敗，數據已保存到本地。請檢查網絡設置或稍後重試。');
+      } else if (error.message.includes('Failed to fetch')) {
+        throw new Error('無法連接到後端服務，數據已保存到本地。請稍後重試。');
       }
       
-      throw error;
+      throw new Error(`同步失敗：${error.message}。數據已保存到本地。`);
     }
   }
 
