@@ -1420,12 +1420,20 @@ async function generateDailyLocationStats() {
         const coachDailyData = new Map(); // 教練每日地點數據
         const dailyStats = new Map(); // 每日統計數據
         
-        (rosterList || []).forEach(item => {
+        console.log('🔍 開始處理更表數據，總條目數:', rosterList.length);
+        
+        (rosterList || []).forEach((item, index) => {
             const dateStr = item?.date || item?.rosterDate || item?.day;
-            if (!dateStr) return;
+            if (!dateStr) {
+                console.log(`⚠️ 條目 ${index}: 缺少日期信息`, item);
+                return;
+            }
             
             const d = new Date(dateStr);
-            if (Number.isNaN(d.getTime()) || d.getFullYear() !== year || (d.getMonth() + 1) !== month) return;
+            if (Number.isNaN(d.getTime()) || d.getFullYear() !== year || (d.getMonth() + 1) !== month) {
+                console.log(`⚠️ 條目 ${index}: 日期不匹配`, { dateStr, year, month, item });
+                return;
+            }
             
             const day = d.getDate();
             const time = item?.time || item?.timeRange || '';
@@ -1433,10 +1441,24 @@ async function generateDailyLocationStats() {
             const coachPhone = item?.phone || item?.coachPhone || '';
             const coachName = item?.name || item?.studentName || item?.coachName || `教練_${coachPhone || '未知'}`;
             
-            if (!location || location.trim() === '') return;
+            console.log(`📋 條目 ${index}:`, {
+                day,
+                time,
+                location,
+                coachPhone,
+                coachName,
+                originalItem: item
+            });
+            
+            if (!location || location.trim() === '') {
+                console.log(`⚠️ 條目 ${index}: 缺少地點信息`);
+                return;
+            }
             
             // 使用實際地點數據提取地點信息
             const locationInfo = extractLocationFromRoster(location, time);
+            console.log(`📍 條目 ${index} 地點提取結果:`, locationInfo);
+            
             if (locationInfo.isValidLocation) {
                 // 收集教練每日地點數據
                 if (!coachDailyData.has(coachName)) {
@@ -1444,17 +1466,24 @@ async function generateDailyLocationStats() {
                         name: coachName,
                         dailyLocations: new Map()
                     });
+                    console.log(`👤 新增教練: ${coachName}`);
                 }
                 const coachData = coachDailyData.get(coachName);
                 coachData.dailyLocations.set(day, locationInfo.location);
+                console.log(`✅ 教練 ${coachName} 第 ${day} 天設置地點: ${locationInfo.location}`);
                 
                 // 收集每日統計數據
                 const dayStats = dailyStats.get(day) || new Map();
                 const count = dayStats.get(locationInfo.location) || 0;
                 dayStats.set(locationInfo.location, count + 1);
                 dailyStats.set(day, dayStats);
+            } else {
+                console.log(`❌ 條目 ${index}: 地點無效 - ${location}`);
             }
         });
+        
+        console.log('📊 處理完成，教練數據:', coachDailyData);
+        console.log('📊 處理完成，每日統計:', dailyStats);
         
         // 轉換為顯示格式
         const statsArray = Array.from(dailyStats.entries()).map(([day, locationCounts]) => {
@@ -1537,7 +1566,26 @@ function extractLocationFromRoster(location, time) {
     }
     
     // 如果沒有匹配到實際地點數據，但看起來像地點，則保留原值
-    if (loc.length > 0 && loc.length <= 20 && !/\d/.test(loc)) {
+    // 放寬條件：只要是有效的字符串且不是純數字，就認為是地點
+    if (loc.length > 0 && loc.length <= 50 && !/^\d+$/.test(loc)) {
+        // 特別處理一些常見的地點名稱
+        const commonLocations = [
+            '九龍公園', '維園', '維多利亞公園', '荔枝角公園', '觀塘', '美孚', '堅尼地城',
+            '上門', '維多利亞公園游泳池', '荔枝角公園游泳池', '觀塘游泳池'
+        ];
+        
+        for (const commonLoc of commonLocations) {
+            if (loc.includes(commonLoc) || commonLoc.includes(loc)) {
+                return { isValidLocation: true, location: commonLoc };
+            }
+        }
+        
+        // 如果包含"公園"、"游泳池"等關鍵詞，也認為是有效地點
+        if (loc.includes('公園') || loc.includes('游泳池') || loc.includes('泳池')) {
+            return { isValidLocation: true, location: loc };
+        }
+        
+        // 最後的兜底：任何看起來像地點的字符串
         return { isValidLocation: true, location: loc };
     }
     
