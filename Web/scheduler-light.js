@@ -1078,7 +1078,6 @@
       // 尝试多个API端点
       const apiEndpoints = [
         `${databaseConnector.apiConfig.baseURL}/api/schedule/sync`,
-        'http://localhost:3001/api/schedule/sync',
         'https://swiming-production.up.railway.app/api/schedule/sync'
       ];
       
