@@ -150,7 +150,7 @@
            data-id="${stu.id}" data-slot="${slotId}">
         <div class="flex items-center">
           <span class="font-medium">${stu.name}</span>
-          ${stu.hasReschedule ? '<span title="補/調堂" style="margin-left: 8px; color: #ff6b6b; font-size: 16px;">🔁</span>' : ''}
+          ${stu.hasReschedule ? '<span title="補/調堂" style="margin-left: 4px; color: #ff6b6b; font-size: 14px; display: inline-block; vertical-align: middle;">🔁</span>' : ''}
           <p class="ml-2 text-sm text-gray-600">${stu.phone ? `電話: ${stu.phone}` : ''}</p>
         </div>
         <div class="flex gap-1">
