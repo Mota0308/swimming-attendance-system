@@ -56,14 +56,6 @@
             <input type="date" id="schDate" class="border rounded px-2 py-1 text-sm"/>
           </div>
           <div class="flex items-center gap-2">
-            <label class="text-sm">星期</label>
-            <select id="schDay" class="border rounded px-2 py-1 text-sm">
-              <option value="">（依日期）</option>
-              <option value="一">星期一</option><option value="二">星期二</option><option value="三">星期三</option>
-              <option value="四">星期四</option><option value="五">星期五</option><option value="六">星期六</option><option value="日">星期日</option>
-            </select>
-          </div>
-          <div class="flex items-center gap-2">
             <label class="text-sm">地點</label>
             <select id="schLoc" class="border rounded px-2 py-1 text-sm"><option value="">（請選擇）</option></select>
           </div>
@@ -207,17 +199,14 @@
       allStudentsCache = raw.map(normalizeStudent);
       populateLocationOptions(allStudentsCache);
     }
-    const { date, day, location } = filters;
-    let wantDay = (day||'').trim();
-    if (date) {
-      try { const d = new Date(date); const map = ['日','一','二','三','四','五','六']; wantDay = wantDay || map[d.getDay()]; } catch(_){}
-    }
+    const { date, location } = filters;
+    
     // 先過濾
     let filtered = allStudentsCache.map(s => {
       // 若 time 字段中帶有星期，抽離覆蓋
       if (s.time && /星期[一二三四五六日]/.test(s.time)) {
         const t = extractDayAndTime(s.time);
-        if (t.day) s.day = t.day; if (t.time) s.time = t.time;
+        if (t.time) s.time = t.time;
       } else {
         // 僅時間段，統一 24h
         s.time = to24hRange(s.time);
@@ -225,13 +214,9 @@
       return s;
     }).filter(s => {
       const okLoc = location ? eqLocation(s.location, location) : true;
-      const okDay = wantDay ? (s.day === wantDay) : true;
-      return okLoc && okDay;
+      return okLoc;
     });
-    if (!filtered.length && location) {
-      filtered = allStudentsCache.filter(s => eqLocation(s.location, location));
-      toast('無符合星期的資料，已忽略星期條件顯示該地點所有時段');
-    }
+    
     // 依「phone+name」在同一日期去重
     const uniq = new Map();
     filtered.forEach(s => {
@@ -384,15 +369,13 @@
 
   function bindHeader(container) {
     const dateEl = container.querySelector('#schDate');
-    const dayEl = container.querySelector('#schDay');
     const locEl = container.querySelector('#schLoc');
 
     const today = new Date();
     dateEl.value = today.toISOString().slice(0,10);
 
-    const onFilterChange = async () => { await buildFromStudents({ date: dateEl.value, day: dayEl.value, location: locEl.value }); renderAll(); };
+    const onFilterChange = async () => { await buildFromStudents({ date: dateEl.value, location: locEl.value }); renderAll(); };
     dateEl.addEventListener('change', onFilterChange);
-    dayEl.addEventListener('change', onFilterChange);
     locEl.addEventListener('change', onFilterChange);
 
     container.querySelector('#schSave').addEventListener('click', async () => {
@@ -427,8 +410,8 @@
 
   async function initData(container) {
     try { const saved = localStorage.getItem('scheduleData'); if (saved) { scheduleData = JSON.parse(saved); } } catch(_) {}
-    const date = container.querySelector('#schDate').value; const day = container.querySelector('#schDay').value; const loc = container.querySelector('#schLoc').value;
-    await buildFromStudents({ date, day, location: loc });
+    const date = container.querySelector('#schDate').value; const loc = container.querySelector('#schLoc').value;
+    await buildFromStudents({ date, location: loc });
   }
 
   // 同步课程编排数据到后端数据库

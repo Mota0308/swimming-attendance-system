@@ -66,20 +66,7 @@
         <div class="scheduler-controls">
           <div class="control-group">
             <label>日期</label>
-            <input type="date" id="schDate" class="control-input"/>
-          </div>
-          <div class="control-group">
-            <label>星期</label>
-            <select id="schDay" class="control-select">
-              <option value="">（依日期）</option>
-              <option value="一">星期一</option>
-              <option value="二">星期二</option>
-              <option value="三">星期三</option>
-              <option value="四">星期四</option>
-              <option value="五">星期五</option>
-              <option value="六">星期六</option>
-              <option value="日">星期日</option>
-            </select>
+            <input type="date" id="schDate" class="control-input">
           </div>
           <div class="control-group">
             <label>地點</label>
@@ -126,7 +113,30 @@
     const low = day.toLowerCase();
     if (dayMap[low]) day = dayMap[low];
     if (/^星期[一二三四五六日]$/.test(day)) day = day.replace('星期','');
-    return { id: generateId('s'), name, phone, location, time, type, day };
+
+    // 優先從多個鍵提取日期
+    const rawDate = (get('date','Student_date','studentDate','上課日期','classDate')).trim();
+    let dateKey = rawDate ? parseDateToKey(rawDate) : '';
+
+    // 可能還有陣列/字串日期集合
+    const originalDates = Array.isArray(row?.originalDates) ? row.originalDates.slice() : [];
+    const datesStr = get('dates');
+    if (!originalDates.length && datesStr) {
+      datesStr.split('、').map(s=>s.trim()).forEach(x => originalDates.push(x));
+    }
+
+    // 特殊標記（從欄位或日期字串推斷）
+    const coerceBool = (v) => {
+      if (typeof v === 'boolean') return v; if (v == null) return false; const s = String(v).trim().toLowerCase();
+      return s === 'true' || s === '1' || s === 'yes' || s === 'y' || s === 'on' || s === 't';
+    };
+    let hasBalloonMark = coerceBool(row?.hasBalloonMark || row?.balloonMark || row?.has_balloon_mark || row?.hasBalloon || row?.balloon);
+    let hasStarMark = coerceBool(row?.hasStarMark || row?.star || row?.has_star || row?.hasStar || row?.starMark);
+    const starRegex = /[\u2B50\u2605\u2606\uD83C\uDF1F]/; // ⭐ ★ ☆ 🌟
+    if (!hasBalloonMark && (rawDate.includes('🎈') || originalDates.some(d => String(d).includes('🎈')))) hasBalloonMark = true;
+    if (!hasStarMark && (starRegex.test(rawDate) || originalDates.some(d => starRegex.test(String(d))))) hasStarMark = true;
+
+    return { id: generateId('s'), name, phone, location, time, type, day, date: rawDate, dateKey, originalDates, hasBalloonMark, hasStarMark };
   }
 
   function parseStartMinutes(timeStr) {
@@ -208,7 +218,9 @@
           status: null, 
           notes: '', 
           phone: x.phone,
-          date: x.date || g.date
+          date: x.date || g.date,
+          hasBalloonMark: x.hasBalloonMark === true,
+          hasStarMark: x.hasStarMark === true
         })) 
       });
     }
@@ -230,87 +242,103 @@
     if (!allStudentsCache.length) {
       const raw = await fetchStudentsRaw();
       allStudentsCache = raw.map(normalizeStudent);
-      populateLocationOptions(allStudentsCache);
-    }
-    const { date, day, location } = filters;
-    let wantDay = (day||'').trim();
-    if (date) {
-      try { const d = new Date(date); const map = ['日','一','二','三','四','五','六']; wantDay = wantDay || map[d.getDay()]; } catch(_){}
+      await populateLocationOptions(allStudentsCache);
     }
     
-    // 🔄 遞進篩選：層層縮小範圍
-    let filtered = allStudentsCache;
-    
-    // 步驟1：數據預處理（標準化時間和星期）
-    filtered = filtered.map(s => {
-      // 若 time 字段中帶有星期，抽離覆蓋
-      if (s.time && /星期[一二三四五六日]/.test(s.time)) {
-        const t = extractDayAndTime(s.time);
-        if (t.day) s.day = t.day; 
-        if (t.time) s.time = t.time;
+    const { date, location } = filters;
+
+    // 1) 標準化來源資料
+    let filtered = allStudentsCache.map(s => {
+      const copy = { ...s };
+      if (copy.time && /星期[一二三四五六日]/.test(copy.time)) {
+        const t = extractDayAndTime(copy.time); if (t.time) copy.time = t.time;
       } else {
-        // 僅時間段，統一 24h
-        s.time = to24hRange(s.time);
+        copy.time = to24hRange(copy.time);
       }
-      return s;
+      copy.dateKey = copy.dateKey || (copy.date ? parseDateToKey(copy.date) : '');
+      return copy;
     });
-    
-    // 步驟2：按地點篩選（第一層縮小）
-    if (location) {
-      const beforeLocation = filtered.length;
+
+    // 2) 嚴格 AND：日期 → 地點
+    if (date && String(date).trim() !== '') {
+      const wantKey = parseDateToKey(date);
+      // 若使用者輸入了無法解析的日期，直接返回空
+      if (!wantKey) {
+        scheduleData.timeSlots = [];
+        return;
+      }
+      filtered = filtered.filter(s => {
+        if (s.dateKey) return s.dateKey === wantKey;
+        if (Array.isArray(s.originalDates) && s.originalDates.length) {
+          return s.originalDates.some(d => {
+            const clean = String(d).replace(/[\u{1F300}-\u{1FAFF}]/gu,'').replace(/\s+/g,'');
+            return parseDateToKey(clean) === wantKey;
+          });
+        }
+        return false;
+      });
+      // 日期後若沒有結果，直接結束（不允許後續條件放寬）
+      if (!filtered.length) { scheduleData.timeSlots = []; return; }
+    }
+
+    if (location && String(location).trim() !== '') {
       filtered = filtered.filter(s => eqLocation(s.location, location));
-      console.log(`📍 地點篩選：${beforeLocation} → ${filtered.length} (縮小範圍)`);
+      if (!filtered.length) { scheduleData.timeSlots = []; return; }
     }
-    
-    // 步驟3：按星期篩選（第二層縮小）
-    if (wantDay) {
-      const beforeDay = filtered.length;
-      filtered = filtered.filter(s => s.day === wantDay);
-      console.log(`📅 星期篩選：${beforeDay} → ${filtered.length} (進一步縮小範圍)`);
-    }
-    
-    // 步驟4：如果沒有結果，提供智能回退
-    if (!filtered.length) {
-      if (location && wantDay) {
-        // 如果同時選擇了地點和星期但沒有結果，先回退到只按地點篩選
-        filtered = allStudentsCache.filter(s => eqLocation(s.location, location));
-        toast(`⚠️ 在${location}的${wantDay}沒有學生，已顯示該地點所有時段的學生`);
-        console.log(`🔄 智能回退：顯示${location}所有時段的學生 (${filtered.length}人)`);
-      } else if (location) {
-        // 如果只選擇了地點但沒有結果，顯示該地點所有學生
-        filtered = allStudentsCache.filter(s => eqLocation(s.location, location));
-        toast(`⚠️ 在${location}沒有找到學生資料`);
-        console.log(`🔄 地點回退：顯示${location}所有學生 (${filtered.length}人)`);
-      } else if (wantDay) {
-        // 如果只選擇了星期但沒有結果，顯示該星期所有學生
-        filtered = allStudentsCache.filter(s => s.day === wantDay);
-        toast(`⚠️ 在${wantDay}沒有找到學生資料`);
-        console.log(`🔄 星期回退：顯示${wantDay}所有學生 (${filtered.length}人)`);
-      }
-    }
-    
-    // 步驟5：數據去重
+
+    // 3) 去重並轉為時段
     const uniq = new Map();
-    filtered.forEach(s => {
-      const key = `${(s.phone||'').trim()}|${s.name}`;
-      if (!uniq.has(key)) uniq.set(key, s);
-    });
+    filtered.forEach(s => { const key = `${(s.phone || '').trim()}|${s.name}`; if (!uniq.has(key)) uniq.set(key, s); });
     filtered = Array.from(uniq.values());
-    
-    console.log(`✅ 最終篩選結果：${filtered.length}名學生`);
-    
-    scheduleData.timeSlots = groupByTimeAndType(filtered, location);
+
+    scheduleData.timeSlots = filtered.length ? groupByTimeAndType(filtered, location) : [];
   }
 
-  function populateLocationOptions(students) {
-    const locSet = new Set(); students.forEach(s => { if (s.location) locSet.add(s.location); });
-    const options = Array.from(locSet).sort();
+  async function populateLocationOptions(students) {
+    const locSet = new Set();
+    try {
+      (students || []).forEach(s => { if (s && s.location) locSet.add((s.location||'').trim()); });
+    } catch(_) {}
+    let options = Array.from(locSet).filter(Boolean).sort();
+
+    // 後備：DatabaseConnector.fetchLocations()
+    const dc = (window && window.databaseConnector) ? window.databaseConnector : (typeof databaseConnector !== 'undefined' ? databaseConnector : null);
+    if (!options.length && dc && typeof dc.fetchLocations === 'function') {
+      try {
+        const apiLocs = await dc.fetchLocations();
+        if (Array.isArray(apiLocs)) {
+          const names = apiLocs.map(l => (l?.name || l?.locationName || l?.title || l?.Location || l?.place || '').trim()).filter(Boolean);
+          options = Array.from(new Set(names)).sort();
+        }
+      } catch(e) {
+        console.warn('取得地點清單失敗，嘗試直接呼叫 API', e);
+      }
+    }
+
+    // 最後後備：直接調用 /api/locations
+    if (!options.length) {
+      try {
+        const base = dc?.apiConfig?.baseURL || window.location.origin;
+        const resp = await fetch(`${base}/api/locations`, { headers: API_HEADERS });
+        if (resp.ok) {
+          const arr = await resp.json();
+          if (Array.isArray(arr)) {
+            const names = arr.map(l => (l?.name || l?.locationName || l?.title || l?.Location || l?.place || '').trim()).filter(Boolean);
+            options = Array.from(new Set(names)).sort();
+          }
+        }
+      } catch (e) {
+        console.warn('直接呼叫 /api/locations 也失敗', e);
+      }
+    }
+
     const sel = document.getElementById('schLoc'); const sel2 = document.getElementById('attendanceLocation');
     const fill = (elSel) => {
       if (!elSel) return;
       const cur = elSel.value;
-      elSel.innerHTML = '<option value="">請選擇地點</option>' + options.map(l => `<option value="${l}">${l}</option>`).join('');
-      if (cur && options.includes(cur)) elSel.value = cur;
+      const opts = options.length ? options : [];
+      elSel.innerHTML = '<option value="">請選擇地點</option>' + opts.map(l => `<option value="${l}">${l}</option>`).join('');
+      if (cur && opts.includes(cur)) elSel.value = cur;
     };
     fill(sel); fill(sel2);
   }
@@ -368,58 +396,116 @@
 
   function createStudentCard(stu, slotId) {
     const card = el(`<div class="student-card" draggable="true"></div>`);
-    card.dataset.id = stu.id; card.dataset.slot = slotId;
-    card.addEventListener('dragstart', (e) => { try { e.dataTransfer.setData('text/plain', stu.id); e.dataTransfer.effectAllowed='move'; } catch(_){} dragging = { student: stu, fromSlotId: slotId }; card.classList.add('dragging'); });
-    card.addEventListener('dragend', () => { card.classList.remove('dragging'); setTimeout(() => { dragging=null; }, 50); });
-
-    const left = el(`<div class="student-left"></div>`);
-    const btn = el(`<button class="status-btn" title="點擊切換出席狀態"></button>`);
+    card.dataset.id = stu.id; 
+    card.dataset.slot = slotId;
     
-    // 設置出席狀態樣式
-    if (stu.status === true) { 
-      btn.classList.add('present'); 
-      btn.textContent='✓'; 
-    }
-    else if (stu.status === false) { 
-      btn.classList.add('absent'); 
-      btn.textContent='✗'; 
-    }
-    else { 
-      btn.classList.add('unknown'); 
-      btn.textContent=''; 
-    }
-    btn.onclick = () => { toggleStudentStatus(stu.id, slotId); };
-
-    const name = el(`<span class="student-name"></span>`); 
-    name.textContent = stu.name; 
+    // 拖拽事件
+    card.addEventListener('dragstart', (e) => { 
+      try { 
+        e.dataTransfer.setData('text/plain', stu.id); 
+        e.dataTransfer.effectAllowed = 'move'; 
+      } catch(_){} 
+      dragging = { student: stu, fromSlotId: slotId }; 
+      card.classList.add('dragging'); 
+    });
     
-    // 隱藏詳細信息，只顯示簡潔的學生卡片
-    // 備註信息只在有內容時顯示
-    if (stu.notes && stu.notes.trim()) {
-      const notes = el(`<span class="student-notes"></span>`); 
-      notes.textContent = stu.notes; 
-      left.append(btn, name, notes);
+    card.addEventListener('dragend', () => { 
+      card.classList.remove('dragging'); 
+      setTimeout(() => { dragging = null; }, 50); 
+    });
+
+    // 學生信息區域
+    const studentInfo = el(`<div class="student-info"></div>`);
+    
+    // 學生頭像（使用姓名首字母）
+    const avatar = el(`<div class="student-avatar"></div>`);
+    avatar.textContent = stu.name ? stu.name.charAt(0) : '?';
+    
+    // 學生詳細信息
+    const studentDetails = el(`<div class="student-details"></div>`);
+    const name = el(`<h4 class="student-name"></h4>`); 
+    name.textContent = stu.name || '未命名學生';
+    
+    // 在姓名旁顯示特殊標記（🎈/🌟）
+    const coerceBool = (v) => {
+      if (typeof v === 'boolean') return v; if (v == null) return false;
+      const s = String(v).trim().toLowerCase();
+      return s === 'true' || s === '1' || s === 'yes' || s === 'y' || s === 'on' || s === 't';
+    };
+    const hasBalloon = coerceBool(stu.hasBalloonMark ?? stu.balloonMark ?? stu.has_balloon_mark ?? stu.hasBalloon ?? stu.balloon);
+    const hasStar = coerceBool(stu.hasStarMark ?? stu.star ?? stu.has_star ?? stu.hasStar ?? stu.starMark);
+    if (hasBalloon || hasStar) {
+      const marksWrap = el(`<span class="student-marks" style="margin-left:6px; display:inline-flex; gap:4px;"></span>`);
+      if (hasStar) marksWrap.append(el(`<span title="重點學生">🌟</span>`));
+      if (hasBalloon) marksWrap.append(el(`<span title="氣球標記">🎈</span>`));
+      const nameWrap = el(`<div style="display:flex;align-items:center;"></div>`);
+      nameWrap.append(el(`<span></span>`));
+      nameWrap.firstChild.textContent = name.textContent;
+      name.textContent = '';
+      name.append(nameWrap);
+      name.append(marksWrap);
+    }
+    
+    // 顯示學生電話或年齡信息
+    let infoText = '';
+    if (stu.phone) {
+      infoText = `電話: ${stu.phone}`;
+    } else if (stu.age) {
+      infoText = `年齡: ${stu.age}歲`;
     } else {
-      left.append(btn, name);
+      infoText = '信息不完整';
     }
-
-    const actions = el(`<div class="student-actions"></div>`);
     
-    // 添加編輯按鈕（顯示學生詳細信息）
-    const edit = el(`<button class="action-btn" title="查看學生詳細信息">
+    const info = el(`<p class="student-info-text"></p>`);
+    info.textContent = infoText;
+    
+    // 出席/補調堂選項
+    const selectsWrap = el(`<div class="student-extra-selects" style="display:flex; gap:8px; margin-top:6px;"></div>`);
+    const option1Sel = el(`<select class="student-select option1" title="出席" style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;">
+      <option value="">--</option>
+      <option value="出席1">出席1</option>
+      <option value="出席1.5">出席1.5</option>
+      <option value="出席2">出席2</option>
+      <option value="出席2.5">出席2.5</option>
+      <option value="出席3">出席3</option>
+      <option value="缺席">缺席</option>
+    </select>`);
+    const option2Sel = el(`<select class="student-select option2" title="補/調堂" style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;">
+      <option value="">--</option>
+      <option value="🌟補0.5堂">🌟補0.5堂</option>
+      <option value="🌟補1堂">🌟補1堂</option>
+      <option value="🌟補1.5堂">🌟補1.5堂</option>
+      <option value="🔁補1堂">🔁補1堂</option>
+      <option value="🔁補1.5堂">🔁補1.5堂</option>
+    </select>`);
+    // 預設值
+    if (stu.option1) option1Sel.value = stu.option1;
+    if (stu.option2) option2Sel.value = stu.option2;
+    option1Sel.addEventListener('change', () => { stu.option1 = option1Sel.value; localStorage.setItem('scheduleData', JSON.stringify(scheduleData)); });
+    option2Sel.addEventListener('change', () => { stu.option2 = option2Sel.value; localStorage.setItem('scheduleData', JSON.stringify(scheduleData)); });
+    selectsWrap.append(option1Sel, option2Sel);
+    
+    studentDetails.append(name, info, selectsWrap);
+    studentInfo.append(avatar, studentDetails);
+
+    // 學生操作按鈕
+    const studentActions = el(`<div class="student-actions"></div>`);
+    
+    // 查看按鈕
+    const viewBtn = el(`<button class="student-btn student-btn-view" title="查看學生詳細信息">
       <i class="fas fa-eye"></i>
     </button>`);
-    edit.onclick = () => showStudentDetails(stu);
-    actions.appendChild(edit);
+    viewBtn.onclick = () => showStudentDetails(stu);
     
     // 刪除按鈕
-    const del = el(`<button class="action-btn" title="刪除學生">
+    const delBtn = el(`<button class="student-btn student-btn-delete" title="從此時段移除學生">
       <i class="fas fa-trash"></i>
     </button>`);
-    del.onclick = () => deleteStudent(stu.id, slotId);
-    actions.appendChild(del);
+    delBtn.onclick = () => deleteStudent(stu.id, slotId);
+    
+    studentActions.append(viewBtn, delBtn);
 
-    card.append(left, actions);
+    card.append(studentInfo, studentActions);
     return card;
   }
 
@@ -702,47 +788,71 @@
       btn.addEventListener('click', () => dialog.remove());
     });
 
-    // 點擊背景關閉對話框
-    dialog.addEventListener('click', (e) => {
-      if (e.target === dialog) dialog.remove();
-    });
-
     document.body.appendChild(dialog);
   }
 
   function renderAll() {
     const wrap = document.getElementById('schedulerContainer');
     const slotsBox = wrap.querySelector('#schSlots');
-    slotsBox.innerHTML='';
+    slotsBox.innerHTML = '';
     
-    (scheduleData.timeSlots||[]).forEach(slot => {
-      const block = el(`<div class="time-slot-block"></div>`);
+    if (!scheduleData.timeSlots || scheduleData.timeSlots.length === 0) {
+      // 顯示空狀態
+      slotsBox.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-calendar-plus"></i>
+          <h3>還沒有時段安排</h3>
+          <p>點擊「新增時段」按鈕開始安排課程</p>
+        </div>
+      `;
+      return;
+    }
+    
+    (scheduleData.timeSlots || []).forEach(slot => {
+      const block = el(`<div class="time-slot"></div>`);
       
       const head = el(`<div class="time-slot-header"></div>`);
-      const timeInfo = el(`<div class="time-info"></div>`);
+      const timeInfo = el(`<div class="time-slot-info"></div>`);
       timeInfo.append(el(`<span class="time-display">${slot.time}</span>`));
-      timeInfo.append(el(`<span class="class-type-badge">${slot.type}</span>`));
+      timeInfo.append(el(`<span class="course-type">${slot.type}</span>`));
       
       const teacherInfo = el(`<div class="teacher-info"></div>`);
       teacherInfo.append(el(`<span class="teacher-label">教師:</span>`));
       const names = el(`<div class="teacher-names"></div>`);
-      (slot.teachers||[]).forEach(t => names.append(el(`<span class="teacher-tag">${t}</span>`)));
+      (slot.teachers || []).forEach(t => names.append(el(`<span class="teacher-tag">${t}</span>`)));
       teacherInfo.append(names);
       
-      head.append(timeInfo, teacherInfo);
+      const actions = el(`<div class="time-slot-actions"></div>`);
+      actions.append(el(`<button class="slot-btn slot-btn-edit" onclick="editTimeSlot('${slot.id}')"><i class="fas fa-edit"></i> 編輯</button>`));
+      actions.append(el(`<button class="slot-btn slot-btn-delete" onclick="deleteTimeSlot('${slot.id}')"><i class="fas fa-trash"></i> 刪除</button>`));
+      
+      head.append(timeInfo, teacherInfo, actions);
 
-      const list = el(`<div class="students-container"></div>`);
+      const list = el(`<div class="students-grid"></div>`);
       list.dataset.slotId = slot.id; 
       list.dataset.time = slot.time; 
       list.dataset.type = slot.type; 
-      list.dataset.location = slot.location||'';
+      list.dataset.location = slot.location || '';
       
       makeDroppable(list, slot);
-      (slot.students||[]).forEach(st => list.append(createStudentCard(st, slot.id)));
+      
+      if (slot.students && slot.students.length > 0) {
+        slot.students.forEach(st => list.append(createStudentCard(st, slot.id)));
+      } else {
+        // 顯示空狀態
+        list.innerHTML = `
+          <div class="empty-state">
+            <i class="fas fa-user-plus"></i>
+            <h3>還沒有學生</h3>
+            <p>點擊「新增學生」按鈕添加學生到此時段</p>
+          </div>
+        `;
+      }
 
       block.append(head, list);
       slotsBox.appendChild(block);
     });
+    
     renderTeacherHours(wrap);
   }
 
@@ -750,13 +860,24 @@
     const box = container.querySelector('#schTeacherHours'); 
     box.innerHTML = '';
     
+    if (!scheduleData.teacherHours || scheduleData.teacherHours.length === 0) {
+      // 顯示空狀態
+      box.innerHTML = `
+        <div class="empty-state">
+          <i class="fas fa-chart-bar"></i>
+          <h3>還沒有教師時數統計</h3>
+          <p>添加時段和學生後將顯示教師時數統計</p>
+        </div>
+      `;
+      return;
+    }
+    
     (scheduleData.teacherHours || []).forEach(t => {
       const card = el(`<div class="teacher-hour-card">
-        <div class="teacher-name">${t.name}</div>
-        <div class="teacher-hours-info">
-          <div class="hours-display">${t.hours}<span class="hours-unit">小時</span></div>
-          <div class="teacher-notes">${t.notes||''}</div>
-        </div>
+        <div class="teacher-name">${t.name || '未命名教師'}</div>
+        <div class="teacher-hours">${t.hours || 0}</div>
+        <div class="teacher-hours-label">小時</div>
+        ${t.notes ? `<div class="teacher-notes">${t.notes}</div>` : ''}
       </div>`);
       box.appendChild(card);
     });
@@ -764,16 +885,20 @@
 
   function bindHeader(container) {
     const dateEl = container.querySelector('#schDate');
-    const dayEl = container.querySelector('#schDay');
     const locEl = container.querySelector('#schLoc');
 
     const today = new Date();
     dateEl.value = today.toISOString().slice(0,10);
 
-    const onFilterChange = async () => { await buildFromStudents({ date: dateEl.value, day: dayEl.value, location: locEl.value }); renderAll(); };
+    const onFilterChange = async () => { 
+      await buildFromStudents({ date: dateEl.value, location: locEl.value }); 
+      renderAll(); 
+    };
     dateEl.addEventListener('change', onFilterChange);
-    dayEl.addEventListener('change', onFilterChange);
     locEl.addEventListener('change', onFilterChange);
+
+    // 添加篩選狀態顯示區域
+    addFilterStatusDisplay(container);
 
     container.querySelector('#schSave').addEventListener('click', async () => {
       try { 
@@ -802,10 +927,86 @@
     });
   }
 
+  // 添加篩選狀態顯示區域
+  function addFilterStatusDisplay(container) {
+    const statusDiv = el(`<div id="filterStatus" class="filter-status-display"></div>`);
+    const ref = container.querySelector('.scheduler-controls');
+    if (ref && ref.parentNode === container) {
+      container.insertBefore(statusDiv, ref);
+    } else {
+      // 如果找不到直接子節點，則將狀態列放在容器開頭
+      if (typeof container.prepend === 'function') {
+        container.prepend(statusDiv);
+      } else {
+        container.appendChild(statusDiv);
+      }
+    }
+  }
+
+  // 顯示篩選狀態
+  function showFilterStatus(filters) {
+    const statusDiv = document.getElementById('filterStatus');
+    if (!statusDiv) return;
+
+    const { date, location } = filters;
+    let statusText = '🔍 篩選條件：';
+    let conditions = [];
+
+    if (date) {
+      const dateObj = new Date(date);
+      const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+      const dayName = dayNames[dateObj.getDay()];
+      conditions.push(`📅 ${date} (星期${dayName})`);
+    }
+    
+    if (location) {
+      conditions.push(`📍 ${location}`);
+    }
+
+    if (conditions.length === 0) {
+      statusText += '無篩選條件';
+    } else {
+      statusText += conditions.join(' | ');
+    }
+
+    statusDiv.innerHTML = `
+      <div class="filter-status-content">
+        <span>${statusText}</span>
+        <span class="filter-status-count" id="filterResultCount"></span>
+      </div>
+    `;
+  }
+
+  // 顯示篩選結果摘要
+  function showFilterSummary() {
+    const countSpan = document.getElementById('filterResultCount');
+    if (!countSpan) return;
+
+    const totalStudents = scheduleData.timeSlots.reduce((total, slot) => total + (slot.students?.length || 0), 0);
+    const totalSlots = scheduleData.timeSlots.length;
+
+    if (totalSlots === 0) {
+      countSpan.innerHTML = '<span class="filter-no-results">❌ 沒有找到匹配的時段</span>';
+    } else {
+      countSpan.innerHTML = `
+        <span class="filter-results">
+          ✅ 找到 ${totalSlots} 個時段，共 ${totalStudents} 名學生
+        </span>
+      `;
+    }
+  }
+
   async function initData(container) {
-    try { const saved = localStorage.getItem('scheduleData'); if (saved) { scheduleData = JSON.parse(saved); } } catch(_) {}
-    const date = container.querySelector('#schDate').value; const day = container.querySelector('#schDay').value; const loc = container.querySelector('#schLoc').value;
-    await buildFromStudents({ date, day, location: loc });
+    try { 
+      const saved = localStorage.getItem('scheduleData'); 
+      if (saved) { 
+        scheduleData = JSON.parse(saved); 
+      } 
+    } catch(_) {}
+    
+    const date = container.querySelector('#schDate').value; 
+    const loc = container.querySelector('#schLoc').value;
+    await buildFromStudents({ date, location: loc });
   }
 
   // 同步课程编排数据到后端数据库
@@ -840,7 +1041,11 @@
             time: student.time,
             location: student.location,
             notes: student.notes,
-            status: student.status
+            status: student.status,
+            option1: student.option1 || '',
+            option2: student.option2 || '',
+            hasBalloonMark: student.hasBalloonMark,
+            hasStarMark: student.hasStarMark
           }))
         }))
       };
@@ -884,5 +1089,184 @@
     bindHeader(container);
     await initData(container);
     renderAll();
+  }
+
+  // 添加缺失的輔助函數
+  function editTimeSlot(slotId) {
+    const slot = scheduleData.timeSlots.find(s => s.id === slotId);
+    if (!slot) return;
+    
+    // 顯示編輯對話框
+    showEditTimeSlotDialog(slot);
+  }
+
+  function deleteTimeSlot(slotId) {
+    if (confirm('確定要刪除這個時段嗎？')) {
+      scheduleData.timeSlots = scheduleData.timeSlots.filter(s => s.id !== slotId);
+      renderAll();
+      toast('時段已刪除');
+    }
+  }
+
+  function showEditTimeSlotDialog(slot) {
+    // 移除現有的對話框
+    const existingDialog = document.querySelector('.edit-timeslot-dialog');
+    if (existingDialog) existingDialog.remove();
+
+    const dialog = el(`
+      <div class="edit-timeslot-dialog fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-gray-800">編輯時段</h3>
+            <button class="close-dialog text-gray-500 hover:text-gray-700 text-xl">&times;</button>
+          </div>
+          
+          <form id="editTimeSlotForm" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">時間 *</label>
+              <input type="text" id="editTime" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" value="${slot.time}" required>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">課程類型 *</label>
+              <input type="text" id="editType" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" value="${slot.type}" required>
+            </div>
+            
+            <div class="flex gap-3 pt-4">
+              <button type="submit" class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
+                保存
+              </button>
+              <button type="button" class="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors close-dialog">
+                取消
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `);
+
+    // 關閉對話框事件
+    dialog.querySelectorAll('.close-dialog').forEach(btn => {
+      btn.addEventListener('click', () => dialog.remove());
+    });
+
+    // 表單提交事件
+    dialog.querySelector('#editTimeSlotForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const newTime = dialog.querySelector('#editTime').value;
+      const newType = dialog.querySelector('#editType').value;
+      
+      if (newTime && newType) {
+        slot.time = newTime;
+        slot.type = newType;
+        renderAll();
+        dialog.remove();
+        toast('時段已更新');
+      }
+    });
+
+    document.body.appendChild(dialog);
+  }
+
+  function showStudentDetails(student) {
+    // 移除現有的對話框
+    const existingDialog = document.querySelector('.student-details-dialog');
+    if (existingDialog) existingDialog.remove();
+
+    const dialog = el(`
+      <div class="student-details-dialog fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-gray-800">學生詳細信息</h3>
+            <button class="close-dialog text-gray-500 hover:text-gray-700 text-xl">&times;</button>
+          </div>
+          
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">姓名</label>
+              <p class="text-gray-900">${student.name || '未提供'}</p>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700">電話</label>
+              <p class="text-gray-900">${student.phone || '未提供'}</p>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700">年齡</label>
+              <p class="text-gray-900">${student.age ? student.age + '歲' : '未提供'}</p>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700">課程類型</label>
+              <p class="text-gray-900">${student.type || '未提供'}</p>
+            </div>
+            
+            ${student.notes ? `
+            <div>
+              <label class="block text-sm font-medium text-gray-700">備註</label>
+              <p class="text-gray-900">${student.notes}</p>
+            </div>
+            ` : ''}
+          </div>
+          
+          <div class="pt-4">
+            <button class="w-full bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors close-dialog">
+              關閉
+            </button>
+          </div>
+        </div>
+      </div>
+    `);
+
+    // 關閉對話框事件
+    dialog.querySelectorAll('.close-dialog').forEach(btn => {
+      btn.addEventListener('click', () => dialog.remove());
+    });
+
+    document.body.appendChild(dialog);
+  }
+
+  // 通用日期解析：輸入可能為 YYYY-MM-DD、DD/MM/YYYY、DD-MM-YYYY、MM/DD/YYYY，輸出標準 YYYY-MM-DD
+  function parseDateToKey(input) {
+    if (!input) return '';
+    const s = String(input).trim();
+    // Already ISO like 2025-08-28
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      return `${m[1]}-${m[2]}-${m[3]}`;
+    }
+    // DD/MM/YYYY
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const d = m[1].padStart(2,'0');
+      const mo = m[2].padStart(2,'0');
+      return `${m[3]}-${mo}-${d}`;
+    }
+    // DD-MM-YYYY
+    m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (m) {
+      const d = m[1].padStart(2,'0');
+      const mo = m[2].padStart(2,'0');
+      return `${m[3]}-${mo}-${d}`;
+    }
+    // MM/DD/YYYY (fallback - ambiguous, assume US if looks like this and first part > 12 not)
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const mo = m[1].padStart(2,'0');
+      const d = m[2].padStart(2,'0');
+      return `${m[3]}-${mo}-${d}`;
+    }
+    try {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        const yyyy = String(d.getFullYear());
+        const mm = String(d.getMonth()+1).padStart(2,'0');
+        const dd = String(d.getDate()).padStart(2,'0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+    } catch(_) {}
+    return '';
   }
 })(); 
