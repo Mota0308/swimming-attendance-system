@@ -463,26 +463,49 @@
     const selectsWrap = el(`<div class="student-extra-selects" style="display:flex; gap:8px; margin-top:6px;"></div>`);
     const option1Sel = el(`<select class="student-select option1" title="出席" style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;">
       <option value="">--</option>
-      <option value="出席1">出席1</option>
-      <option value="出席1.5">出席1.5</option>
-      <option value="出席2">出席2</option>
-      <option value="出席2.5">出席2.5</option>
-      <option value="出席3">出席3</option>
+      <option value="出席1">1</option>
+      <option value="出席1.5">1.5</option>
+      <option value="出席2">2</option>
+      <option value="出席2.5">2.5</option>
+      <option value="出席3">3</option>
       <option value="缺席">缺席</option>
     </select>`);
     const option2Sel = el(`<select class="student-select option2" title="補/調堂" style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;">
       <option value="">--</option>
-      <option value="🌟補0.5堂">🌟補0.5堂</option>
-      <option value="🌟補1堂">🌟補1堂</option>
-      <option value="🌟補1.5堂">🌟補1.5堂</option>
-      <option value="🔁補1堂">🔁補1堂</option>
-      <option value="🔁補1.5堂">🔁補1.5堂</option>
+      <option value="🌟補0.5堂">0.5</option>
+      <option value="🌟補1堂">1</option>
+      <option value="🌟補1.5堂">1.5</option>
+     
     </select>`);
     // 預設值
     if (stu.option1) option1Sel.value = stu.option1;
     if (stu.option2) option2Sel.value = stu.option2;
-    option1Sel.addEventListener('change', () => { stu.option1 = option1Sel.value; localStorage.setItem('scheduleData', JSON.stringify(scheduleData)); });
-    option2Sel.addEventListener('change', () => { stu.option2 = option2Sel.value; localStorage.setItem('scheduleData', JSON.stringify(scheduleData)); });
+    option1Sel.addEventListener('change', async () => { 
+      stu.option1 = option1Sel.value; 
+      localStorage.setItem('scheduleData', JSON.stringify(scheduleData));
+      
+      // 自動同步到後端
+      try {
+        await syncScheduleDataToBackend(scheduleData);
+        toast('出席選項已同步到數據庫');
+      } catch(e) {
+        console.warn('同步出席選項到後端失敗', e);
+        toast('本地已保存，但同步失敗');
+      }
+    });
+    option2Sel.addEventListener('change', async () => { 
+      stu.option2 = option2Sel.value; 
+      localStorage.setItem('scheduleData', JSON.stringify(scheduleData));
+      
+      // 自動同步到後端
+      try {
+        await syncScheduleDataToBackend(scheduleData);
+        toast('補/調堂選項已同步到數據庫');
+      } catch(e) {
+        console.warn('同步補/調堂選項到後端失敗', e);
+        toast('本地已保存，但同步失敗');
+      }
+    });
     selectsWrap.append(option1Sel, option2Sel);
     
     studentDetails.append(name, info, selectsWrap);
