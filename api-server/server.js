@@ -1678,6 +1678,7 @@ app.post('/api/schedule/sync', validateApiKeys, async (req, res) => {
         await client.connect();
         const db = client.db(DB_NAME);
         const scheduleCollection = db.collection('schedule_data');
+        const studentsCollection = db.collection('students');
 
         // 準備要保存的數據
         const scheduleData = {
@@ -1690,20 +1691,58 @@ app.post('/api/schedule/sync', validateApiKeys, async (req, res) => {
             endpoint: 'api/schedule/sync'
         };
 
-        // 保存到數據庫
+        // 保存到schedule_data集合
         const result = await scheduleCollection.insertOne(scheduleData);
+
+        // 更新students集合中的學生記錄
+        let updatedStudentsCount = 0;
+        if (payload.timeSlots && Array.isArray(payload.timeSlots)) {
+            for (const timeSlot of payload.timeSlots) {
+                if (timeSlot.students && Array.isArray(timeSlot.students)) {
+                    for (const student of timeSlot.students) {
+                        if (student.phone && student.name) {
+                            // 更新學生的option1和option2
+                            const updateResult = await studentsCollection.updateOne(
+                                { 
+                                    Phone_number: student.phone, 
+                                    name: student.name 
+                                },
+                                { 
+                                    $set: {
+                                        option1: student.option1 || '',
+                                        option2: student.option2 || '',
+                                        updatedAt: new Date(),
+                                        lastScheduleDate: payload.timestamp || new Date().toISOString()
+                                    }
+                                }
+                            );
+                            
+                            if (updateResult.matchedCount > 0) {
+                                updatedStudentsCount++;
+                                console.log(`✅ 已更新學生: ${student.name} (${student.phone}) - option1: ${student.option1}, option2: ${student.option2}`);
+                            } else {
+                                console.log(`⚠️ 未找到學生: ${student.name} (${student.phone})`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         await client.close();
 
-        console.log('✅ 課程編排數據已保存到數據庫', {
+        console.log('✅ 課程編排數據同步完成', {
             insertedId: result.insertedId,
-            timeSlotsCount: scheduleData.timeSlots.length
+            timeSlotsCount: scheduleData.timeSlots.length,
+            updatedStudentsCount: updatedStudentsCount
         });
 
         res.json({ 
             success: true, 
-            message: '課程編排數據已成功保存到數據庫', 
+            message: '課程編排數據已成功保存並更新學生記錄', 
             dataId: result.insertedId,
             timeSlotsCount: scheduleData.timeSlots.length,
+            updatedStudentsCount: updatedStudentsCount,
             timestamp: scheduleData.timestamp
         });
     } catch (e) {
@@ -1727,6 +1766,7 @@ app.post('/schedule/sync', validateApiKeys, async (req, res) => {
         await client.connect();
         const db = client.db(DB_NAME);
         const scheduleCollection = db.collection('schedule_data');
+        const studentsCollection = db.collection('students');
 
         // 準備要保存的數據
         const scheduleData = {
@@ -1739,20 +1779,58 @@ app.post('/schedule/sync', validateApiKeys, async (req, res) => {
             endpoint: 'schedule/sync'
         };
 
-        // 保存到數據庫
+        // 保存到schedule_data集合
         const result = await scheduleCollection.insertOne(scheduleData);
+
+        // 更新students集合中的學生記錄
+        let updatedStudentsCount = 0;
+        if (payload.timeSlots && Array.isArray(payload.timeSlots)) {
+            for (const timeSlot of payload.timeSlots) {
+                if (timeSlot.students && Array.isArray(timeSlot.students)) {
+                    for (const student of timeSlot.students) {
+                        if (student.phone && student.name) {
+                            // 更新學生的option1和option2
+                            const updateResult = await studentsCollection.updateOne(
+                                { 
+                                    Phone_number: student.phone, 
+                                    name: student.name 
+                                },
+                                { 
+                                    $set: {
+                                        option1: student.option1 || '',
+                                        option2: student.option2 || '',
+                                        updatedAt: new Date(),
+                                        lastScheduleDate: payload.timestamp || new Date().toISOString()
+                                    }
+                                }
+                            );
+                            
+                            if (updateResult.matchedCount > 0) {
+                                updatedStudentsCount++;
+                                console.log(`✅ 已更新學生: ${student.name} (${student.phone}) - option1: ${student.option1}, option2: ${student.option2}`);
+                            } else {
+                                console.log(`⚠️ 未找到學生: ${student.name} (${student.phone})`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         await client.close();
 
-        console.log('✅ 課程編排數據已保存到數據庫', {
+        console.log('✅ 課程編排數據同步完成（備用端點）', {
             insertedId: result.insertedId,
-            timeSlotsCount: scheduleData.timeSlots.length
+            timeSlotsCount: scheduleData.timeSlots.length,
+            updatedStudentsCount: updatedStudentsCount
         });
 
         res.json({ 
             success: true, 
-            message: '課程編排數據已成功保存到數據庫', 
+            message: '課程編排數據已成功保存並更新學生記錄（備用端點）', 
             dataId: result.insertedId,
             timeSlotsCount: scheduleData.timeSlots.length,
+            updatedStudentsCount: updatedStudentsCount,
             timestamp: scheduleData.timestamp
         });
     } catch (e) {
