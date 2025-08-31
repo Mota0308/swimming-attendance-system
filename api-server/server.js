@@ -924,7 +924,7 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
                         { phone: { $exists: true, $ne: '' } },
                         { studentPhone: { $exists: true, $ne: '' } }
                     ] 
-                }, { projection: { phone: 1, studentPhone: 1, type: 1, userType: 1, studentName: 1 } }).toArray();
+                }, { projection: { phone: 1, studentPhone: 1, type: 1, userType: 1, name: 1, studentName: 1 } }).toArray();
                 
                 const coachPhones = Array.from(new Set((coachDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
                 
@@ -933,7 +933,7 @@ app.get('/coach-work-hours', validateApiKeys, async (req, res) => {
                     phone: doc.phone || doc.studentPhone,
                     type: doc.type,
                     userType: doc.userType,
-                    name: doc.studentName
+                    name: doc.name || doc.studentName || '未命名'
                 })));
                 
                 if (coachPhones.length > 0) {
@@ -1145,7 +1145,7 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
             { phone: { $exists: true, $ne: '' } },
             { studentPhone: { $exists: true, $ne: '' } }
           ] 
-        }, { projection: { phone: 1, studentPhone: 1, type: 1, userType: 1, studentName: 1 } }).toArray();
+        }, { projection: { phone: 1, studentPhone: 1, type: 1, userType: 1, name: 1, studentName: 1 } }).toArray();
         
         const coachPhones = Array.from(new Set((coachDocs || []).map(u => (u.phone || u.studentPhone || '').toString()).filter(Boolean)));
         
@@ -1154,7 +1154,7 @@ app.get('/coach-roster', validateApiKeys, async (req, res) => {
           phone: doc.phone || doc.studentPhone,
           type: doc.type,
           userType: doc.userType,
-          name: doc.studentName
+          name: doc.name || doc.studentName || '未命名'
         })));
         
         if (coachPhones.length > 0) {
