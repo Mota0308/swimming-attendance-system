@@ -132,11 +132,12 @@
     };
     let hasBalloonMark = coerceBool(row?.hasBalloonMark || row?.balloonMark || row?.has_balloon_mark || row?.hasBalloon || row?.balloon);
     let hasStarMark = coerceBool(row?.hasStarMark || row?.star || row?.has_star || row?.hasStar || row?.starMark);
+    let hasReschedule = coerceBool(row?.hasReschedule || row?.reschedule || row?.has_reschedule || row?.rescheduleMark);
     const starRegex = /[\u2B50\u2605\u2606\uD83C\uDF1F]/; // ⭐ ★ ☆ 🌟
     if (!hasBalloonMark && (rawDate.includes('🎈') || originalDates.some(d => String(d).includes('🎈')))) hasBalloonMark = true;
     if (!hasStarMark && (starRegex.test(rawDate) || originalDates.some(d => starRegex.test(String(d))))) hasStarMark = true;
 
-    return { id: generateId('s'), name, phone, location, time, type, day, date: rawDate, dateKey, originalDates, hasBalloonMark, hasStarMark };
+    return { id: generateId('s'), name, phone, location, time, type, day, date: rawDate, dateKey, originalDates, hasBalloonMark, hasStarMark, hasReschedule };
   }
 
   function parseStartMinutes(timeStr) {
@@ -220,7 +221,8 @@
           phone: x.phone,
           date: x.date || g.date,
           hasBalloonMark: x.hasBalloonMark === true,
-          hasStarMark: x.hasStarMark === true
+          hasStarMark: x.hasStarMark === true,
+          hasReschedule: x.hasReschedule === true
         })) 
       });
     }
@@ -1073,7 +1075,8 @@
             option1: student.option1 || '',
             option2: student.option2 || '',
             hasBalloonMark: student.hasBalloonMark,
-            hasStarMark: student.hasStarMark
+            hasStarMark: student.hasStarMark,
+            hasReschedule: student.hasReschedule
           }))
         }))
       };
