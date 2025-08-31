@@ -1680,6 +1680,23 @@ app.post('/api/schedule/sync', validateApiKeys, async (req, res) => {
     }
 });
 
+// 備用端點：課程編排資料同步（處理可能的路由問題）
+app.post('/schedule/sync', validateApiKeys, async (req, res) => {
+    try {
+        const payload = req.body || {};
+        console.log('🗂️ 收到課程編排同步請求（備用端點）', {
+            coachPhone: payload.coachPhone,
+            timeSlots: Array.isArray(payload.timeSlots) ? payload.timeSlots.length : 0,
+            timestamp: payload.timestamp
+        });
+        // 目前僅回應成功；如需持久化，可寫入 MongoDB.
+        res.json({ success: true, message: '已接收並記錄課程編排資料（備用端點）', echo: { coachPhone: payload.coachPhone, timeSlots: payload.timeSlots } });
+    } catch (e) {
+        console.error('❌ 課程編排同步失敗（備用端點）', e);
+        res.status(500).json({ success: false, message: '課程編排同步失敗', error: e.message });
+    }
+});
+
 // 錯誤處理中間件
 app.use((error, req, res, next) => {
     console.error('❌ 服務器錯誤:', error);
