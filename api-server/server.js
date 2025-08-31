@@ -1696,3 +1696,4 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`📍 本地地址: http://localhost:${PORT}`);
     console.log(`🌐 服務器地址: ${SERVER_URL}`);
     console.log(`🔧 服務器配置完成`);
+});
