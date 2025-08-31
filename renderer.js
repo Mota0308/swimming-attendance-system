@@ -2822,7 +2822,9 @@ async function createRescheduleStudent(name, phone, date, option3Points, option1
             hasReschedule: true, // 添加補/調堂標記
             option1: option1Text || '',
             option2: option2Text || '',
-            option3: option3Points || ''
+            option3: option3Points || '',
+            // 添加一個唯一標識符，避免與原始記錄混淆
+            _rescheduleId: `reschedule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         };
         
         // 更新雲端資料庫
@@ -2849,11 +2851,17 @@ async function createNewStudentWithDateChange(originalName, originalDate, newDat
     try {
         console.log(`創建日期變更的新學生記錄: ${originalName} - ${originalDate} -> ${newDate}`);
         
+        // 檢查學生是否已經請假
+        let leaveMap = {};
+        try { leaveMap = JSON.parse(localStorage.getItem('leaveStatusMap') || '{}'); } catch(e) {}
+        const key = `${originalName}|${newData.phone || newData.Phone_number || ''}|${originalDate}`;
+        const wasOnLeave = !!leaveMap[key];
+        
         // 創建新的學生記錄
         let newStudent = {
             ...newData,
             "上課日期": newDate,
-            hasReschedule: false, // 新記錄不是補/調堂
+            hasReschedule: wasOnLeave, // 如果之前請假，則設為true
             // 保持原有的hasBalloonMark和hasStarMark標記
             hasBalloonMark: newData.hasBalloonMark || false,
             hasStarMark: newData.hasStarMark || false
