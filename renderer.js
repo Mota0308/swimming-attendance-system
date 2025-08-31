@@ -1320,7 +1320,7 @@ function formatDocumentText() {
                         break;
                     }
                     // 如果遇到下一個時間/上課日期/姓名等區塊，則結束
-                    if (/^\d*\.?\s*(學員姓名|學員年齡|上課地點|報課課程|課程類型|師生比例|課堂收費|上課時間|上課日期|待約課堂)[:：]?/.test(nextLine)) {
+                    if (/^\d*\.?\s*(學員姓名|學員年齡|上課地點|報課課程|課程類型|師生比例|課堂收費|上課時間|上課日期|報名|待約課堂)[:：]?/.test(nextLine)) {
                         break;
                     }
                     j++;
@@ -5358,6 +5358,10 @@ window.exportCloudExcel = async function() {
                     const name = tds[1]?.querySelector('input')?.value?.trim() || tds[1]?.textContent?.trim();
                     const date = tds[11]?.querySelector('input')?.value?.trim() || tds[11]?.textContent?.trim();
                     if (name && date) {
+                        // 從表格中直接讀取當前的option1和option2值
+                        const option1 = tds[7]?.querySelector('select')?.value || '';
+                        const option2 = tds[8]?.querySelector('select')?.value || '';
+                        
                         // 找到對應的學生資料
                         const student = allStudents.find(s => {
                             // 匹配姓名和日期
@@ -5366,7 +5370,13 @@ window.exportCloudExcel = async function() {
                             return studentName === name && studentDate === date;
                         });
                         if (student) {
-                            checkedStudents.push(student);
+                            // 使用表格中的最新值更新學生數據
+                            const updatedStudent = {
+                                ...student,
+                                option1: option1,
+                                option2: option2
+                            };
+                            checkedStudents.push(updatedStudent);
                         }
                     }
                 }
@@ -5376,7 +5386,41 @@ window.exportCloudExcel = async function() {
 
     // 如果沒有勾選學生，導出所有學生
     if (!hasCheckedStudents) {
-        checkedStudents = allStudents;
+        // 從表格中讀取所有學生的最新option1和option2值
+        checkedStudents = [];
+        tables.forEach(table => {
+            const trs = table.querySelectorAll('tr');
+            trs.forEach((tr, idx) => {
+                if (idx === 0) return; // 跳過表頭
+                const tds = tr.querySelectorAll('td');
+                if (tds.length >= 13) {
+                    const name = tds[1]?.querySelector('input')?.value?.trim() || tds[1]?.textContent?.trim();
+                    const date = tds[11]?.querySelector('input')?.value?.trim() || tds[11]?.textContent?.trim();
+                    if (name && date) {
+                        // 從表格中直接讀取當前的option1和option2值
+                        const option1 = tds[7]?.querySelector('select')?.value || '';
+                        const option2 = tds[8]?.querySelector('select')?.value || '';
+                        
+                        // 找到對應的學生資料
+                        const student = allStudents.find(s => {
+                            // 匹配姓名和日期
+                            const studentName = s.name || s.rawName;
+                            const studentDate = s.dateStr || s.dates || s['上課日期'];
+                            return studentName === name && studentDate === date;
+                        });
+                        if (student) {
+                            // 使用表格中的最新值更新學生數據
+                            const updatedStudent = {
+                                ...student,
+                                option1: option1,
+                                option2: option2
+                            };
+                            checkedStudents.push(updatedStudent);
+                        }
+                    }
+                }
+            });
+        });
     }
 
     if (checkedStudents.length === 0) {
