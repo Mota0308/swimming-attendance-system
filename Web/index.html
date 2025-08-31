@@ -9,9 +9,40 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://swiming-production.up.railway.app; img-src 'self' data: https:; object-src 'none'; base-uri 'self'; form-action 'self';">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23667eea'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-size='28' fill='white'%3E%F0%9F%8F%8B%EF%B8%8F%3C/text%3E%3C/svg%3E">
     <title>游泳系統 - 管理平台</title>
+    
+    <!-- 預載入關鍵資源 -->
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" as="style">
+    <link rel="preload" href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" as="style">
+    <link rel="preload" href="styles.css?v=5" as="style">
+    <link rel="preload" href="database-connector.js?v=25" as="script">
+    <link rel="preload" href="script.js?v=25" as="script">
+    
+    <!-- DNS預解析 -->
+    <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="//fonts.googleapis.com">
+    <link rel="dns-prefetch" href="//fonts.gstatic.com">
+    <link rel="dns-prefetch" href="//swiming-production.up.railway.app">
+    
+    <!-- 關鍵CSS內聯，避免阻塞渲染 -->
+    <style>
+        /* 關鍵渲染路徑CSS */
+        body { margin: 0; font-family: 'Inter', sans-serif; }
+        .hidden { display: none !important; }
+        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+        .loading-spinner { color: white; text-align: center; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .login-container { max-width: 400px; margin: 50px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .login-btn { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        
+        /* 優化字體載入 */
+        .font-loading { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .font-loaded { font-family: 'Inter', sans-serif; }
+    </style>
+    
+    <!-- 非關鍵CSS異步載入 -->
     <link rel="stylesheet" href="styles.css?v=5">
-    <link rel="stylesheet" href="scheduler-light-theme.css">
-    <link rel="stylesheet" href="attendance-board-light.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -274,15 +305,17 @@
                             <option value="">全部泳會</option>
                         </select>
                     </div>
+                    <div class="control-group">
+                        <label>教練：</label>
+                        <select id="coachWorkCoach">
+                            <option value="">全部教練</option>
+                        </select>
+                    </div>
                     <button class="refresh-btn" onclick="refreshCurrentWorkHours()">
                         <i class="fas fa-sync-alt"></i> 刷新
                     </button>
                 </div>
-                <div id="workHoursSummaryBar" style="display:flex;align-items:center;gap:12px;margin:8px 0 4px 0;">
-                    <label for="summaryDate">日期篩選：</label>
-                    <input id="summaryDate" type="date" />
-                </div>
-                <div id="workHoursSummary" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px;"></div>
+
                 <div id="staffWorkHoursCalendars" class="work-hours-calendar"></div>
             </div>
 
@@ -294,6 +327,40 @@
                         <i class="fas fa-arrow-left"></i> 返回
                     </button>
                 </div>
+                
+                <!-- 新增：每日上課地點統計 -->
+                <div class="roster-statistics-section">
+                    <h4><i class="fas fa-chart-bar"></i> 每日上課地點統計</h4>
+                    <div class="statistics-controls">
+                        <div class="control-group">
+                            <label>統計月份：</label>
+                            <select id="statsMonth">
+                                <option value="1">1月</option>
+                                <option value="2">2月</option>
+                                <option value="3">3月</option>
+                                <option value="4">4月</option>
+                                <option value="5">5月</option>
+                                <option value="6">6月</option>
+                                <option value="7">7月</option>
+                                <option value="8" selected>8月</option>
+                                <option value="9">9月</option>
+                                <option value="10">10月</option>
+                                <option value="11">11月</option>
+                                <option value="12">12月</option>
+                            </select>
+                        </div>
+                        <button class="refresh-btn" onclick="generateDailyLocationStats()">
+                            <i class="fas fa-calculator"></i> 生成統計
+                        </button>
+                        <button class="export-btn" onclick="exportLocationStats()">
+                            <i class="fas fa-download"></i> 導出統計
+                        </button>
+                    </div>
+                    <div id="dailyLocationStats" class="daily-stats-container">
+                        <!-- 統計結果將在這裡顯示 -->
+                    </div>
+                </div>
+                
                 <div class="location-club-controls">
                     <div class="control-group">
                         <label>選擇教練：</label>
@@ -321,13 +388,52 @@
         </div>
     </div>
 
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-        <script src="security.js?v=3"></script>
-    <script src="database-connector.js?v=25"></script>
-    <script src="script.js?v=25"></script>
-    <script src="scheduler-light.js"></script>
-    <script src="attendance-board-light.js"></script>
+    <!-- 關鍵腳本優先載入 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+    <script src="security.js?v=3" defer></script>
+    <script src="database-connector.js?v=25" defer></script>
+    
+    <!-- 主要腳本使用defer，避免阻塞渲染 -->
+    <script src="script.js?v=25" defer></script>
+    
+    <!-- 非關鍵腳本異步載入 -->
+    <script src="scheduler-light.js?v=2" async></script>
+    <script src="attendance-board-light.js?v=2" async></script>
+    
+    <!-- 字體載入優化 -->
     <script>
+      // 字體載入優化
+      if ('fonts' in document) {
+        document.fonts.ready.then(() => {
+          document.body.classList.add('font-loaded');
+          document.body.classList.remove('font-loading');
+        });
+      } else {
+        // 降級方案
+        setTimeout(() => {
+          document.body.classList.add('font-loaded');
+          document.body.classList.remove('font-loading');
+        }, 1000);
+      }
+      
+      // Service Worker 註冊（提升載入速度）
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          // 使用相對路徑，避免絕對路徑問題
+          navigator.serviceWorker.register('./sw.js')
+            .then(registration => {
+              console.log('✅ Service Worker 註冊成功:', registration.scope);
+            })
+            .catch(error => {
+              console.warn('⚠️ Service Worker 註冊失敗:', error);
+              // 不顯示錯誤給用戶，因為這不是關鍵功能
+            });
+        });
+      }
+    </script>
+    
+    <script>
+      // 優化初始化邏輯
       function initAttendanceUIs(){
         if (window.initSchedulerLight) {
           window.initSchedulerLight('schedulerContainer');
@@ -336,14 +442,22 @@
           window.initAttendanceBoardLight('attendanceBoardContainer');
         }
       }
-      // 首選：等待資料連接器就緒
-      document.addEventListener('databaseConnectorReady', initAttendanceUIs);
-      // 後備：DOM Ready 時若已就緒則立即初始化
-      document.addEventListener('DOMContentLoaded', () => {
+      
+      // 使用更高效的初始化策略
+      function initializeWhenReady() {
         if (window.databaseConnector && typeof window.databaseConnector.fetchStudentsRaw === 'function') {
           initAttendanceUIs();
+        } else {
+          // 如果還沒準備好，等待一小段時間再試
+          setTimeout(initializeWhenReady, 100);
         }
-      });
+      }
+      
+      // 首選：等待資料連接器就緒
+      document.addEventListener('databaseConnectorReady', initAttendanceUIs);
+      
+      // 後備：DOM Ready 時若已就緒則立即初始化
+      document.addEventListener('DOMContentLoaded', initializeWhenReady);
     </script>
-</body>
+  </body>
 </html> 

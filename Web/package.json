@@ -2,10 +2,10 @@
   "name": "swimming-system-web",
   "version": "1.0.0",
   "description": "游泳系統教練版本網頁應用",
-  "main": "full-server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node full-server.js",
-    "dev": "node full-server.js",
+    "start": "node server.js",
+    "dev": "node server.js",
     "build": "echo 'Static site, no build required'",
     "deploy": "railway up",
     "postinstall": "npm install express cors --save"

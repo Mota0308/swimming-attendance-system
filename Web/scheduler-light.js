@@ -463,19 +463,21 @@
     const selectsWrap = el(`<div class="student-extra-selects" style="display:flex; gap:8px; margin-top:6px;"></div>`);
     const option1Sel = el(`<select class="student-select option1" title="出席" style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;">
       <option value="">--</option>
-      <option value="出席1">1</option>
-      <option value="出席1.5">1.5</option>
-      <option value="出席2">2</option>
-      <option value="出席2.5">2.5</option>
-      <option value="出席3">3</option>
+      <option value="1">1</option>
+      <option value="1.5">1.5</option>
+      <option value="2">2</option>
+      <option value="2.5">2.5</option>
+      <option value="3">3</option>
       <option value="缺席">缺席</option>
     </select>`);
     const option2Sel = el(`<select class="student-select option2" title="補/調堂" style="border:1px solid #ddd;border-radius:6px;padding:4px 6px;">
       <option value="">--</option>
-      <option value="🌟補0.5堂">0.5</option>
-      <option value="🌟補1堂">1</option>
-      <option value="🌟補1.5堂">1.5</option>
-     
+      <option value="🌟0.5">🌟0.5</option>
+      <option value="🌟1">🌟1</option>
+      <option value="🌟1.5">🌟1.5</option>
+      <option value="🔁0.5">🔁0.5</option>
+      <option value="🔁1">🔁1</option>
+      <option value="🔁1.5">🔁1.5</option>
     </select>`);
     // 預設值
     if (stu.option1) option1Sel.value = stu.option1;

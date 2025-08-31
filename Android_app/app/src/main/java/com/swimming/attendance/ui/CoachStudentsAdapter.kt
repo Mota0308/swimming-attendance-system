@@ -44,7 +44,7 @@ class CoachStudentsAdapter(
         holder.totalPointsText.text = "💎 ${student.totalPoints ?: "0"} 點"
         
         // 設置option1下拉選單（出席狀況）
-        val option1Items = arrayOf("--", "出席1", "出席1.5", "出席2", "出席2.5", "出席3", "缺席")
+        val option1Items = arrayOf("--", "1", "1.5", "2", "2.5", "3", "缺席")
         val option1Adapter = ArrayAdapter(holder.itemView.context, android.R.layout.simple_spinner_item, option1Items)
         option1Adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         holder.option1Spinner.adapter = option1Adapter
@@ -56,7 +56,7 @@ class CoachStudentsAdapter(
         }
         
         // 設置option2下拉選單（補/調堂）
-        val option2Items = arrayOf("--", "🌟補0.5堂", "🌟補1堂", "🌟補1.5堂", "🔁補1堂", "🔁補1.5堂")
+        val option2Items = arrayOf("--", "🌟0.5", "🌟1", "🌟1.5", "🔁0.5", "🔁1", "🔁1.5")
         val option2Adapter = ArrayAdapter(holder.itemView.context, android.R.layout.simple_spinner_item, option2Items)
         option2Adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         holder.option2Spinner.adapter = option2Adapter

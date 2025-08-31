@@ -2,7 +2,7 @@
 class DatabaseConnector {
     constructor() {
         this.apiConfig = {
-            baseURL: window.location.origin, // 使用当前域名，通过代理访问
+            baseURL: window.location.origin, // 使用當前域名，通過代理訪問
             publicKey: 'ttdrcccy',
             privateKey: '2b207365-cbf0-4e42-a3bf-f932c84557c4'
         };
@@ -23,6 +23,12 @@ class DatabaseConnector {
             coaches: []
         };
         
+        // 添加特殊標記的處理邏輯
+        this.specialMarks = {
+            balloon: '🎈',
+            star: '🌟'
+        };
+        
         this.init();
     }
 
@@ -31,19 +37,51 @@ class DatabaseConnector {
         try {
             console.log('🔄 正在初始化数据库连接...');
             
-            // 测试API连接
-            await this.testConnection();
+            // 並行執行多個初始化任務
+            const initTasks = [
+                this.testConnection(),
+                this.preloadBasicData(),
+                this.setupAutoSync()
+            ];
             
-            // 预加载基础数据
-            await this.preloadBasicData();
+            // 使用 Promise.allSettled 避免單個任務失敗影響整體
+            const results = await Promise.allSettled(initTasks);
             
-            // 设置自动同步
-            this.setupAutoSync();
+            // 檢查結果
+            const connectionSuccess = results[0].status === 'fulfilled' && results[0].value === true;
+            const dataSuccess = results[1].status === 'fulfilled';
+            const syncSuccess = results[2].status === 'fulfilled';
+            
+            if (connectionSuccess) {
+                this.connectionStatus.connected = true;
+                console.log('✅ API连接成功');
+            } else {
+                console.warn('⚠️ API 連接失敗，將使用離線模式');
+                this.connectionStatus.connected = false;
+            }
+            
+            if (dataSuccess) {
+                console.log('✅ 基础数据预加载成功');
+            } else {
+                console.warn('⚠️ 基础数据预加载失败，使用默认数据');
+            }
+            
+            if (syncSuccess) {
+                console.log('✅ 自动同步设置成功');
+            } else {
+                console.warn('⚠️ 自动同步设置失败');
+            }
+            
+            // 觸發就緒事件
+            this.dispatchReadyEvent();
             
             console.log('✅ 数据库连接初始化完成');
         } catch (error) {
             console.error('❌ 数据库连接初始化失败:', error);
             this.connectionStatus.errorCount++;
+            
+            // 即使失敗也要觸發事件，讓UI可以顯示錯誤狀態
+            this.dispatchReadyEvent();
         }
     }
 
@@ -60,22 +98,60 @@ class DatabaseConnector {
     // 测试API连接
     async testConnection() {
         try {
-            const response = await fetch(`${this.apiConfig.baseURL}/api/health`, {
+            console.log('🔄 正在測試 API 連接...');
+            console.log(`📍 API 地址: ${this.apiConfig.baseURL}`);
+            
+            // 嘗試多個端點來測試連接
+            const testEndpoints = [
+                '/api/health',
+                '/api/locations',
+                '/health'
+            ];
+            
+            for (const endpoint of testEndpoints) {
+                try {
+                    const response = await fetch(`${this.apiConfig.baseURL}${endpoint}`, {
                 method: 'GET',
                 headers: this.getStandardHeaders()
             });
             
             if (response.ok) {
+                        console.log(`✅ API 連接測試成功 (${endpoint})`);
                 this.connectionStatus.connected = true;
-                console.log('✅ API连接测试成功');
                 return true;
             } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        console.log(`⚠️ 端點 ${endpoint} 返回 ${response.status}`);
+                    }
+                } catch (endpointError) {
+                    console.log(`⚠️ 端點 ${endpoint} 測試失敗: ${endpointError.message}`);
+                }
             }
-        } catch (error) {
-            console.error('❌ API连接测试失败:', error);
+            
+            // 如果所有端點都失敗，嘗試基本的網絡連接測試
+            try {
+                const testResponse = await fetch(`${this.apiConfig.baseURL}`, {
+                    method: 'HEAD',
+                    headers: this.getStandardHeaders()
+                });
+                
+                if (testResponse.status < 500) { // 任何非 5xx 錯誤都表示服務器可達
+                    console.log('✅ 服務器可達，但 API 端點可能不可用');
+                    this.connectionStatus.connected = true;
+                    return true;
+                }
+            } catch (basicError) {
+                console.log('⚠️ 基本連接測試失敗');
+            }
+            
+            // 如果都失敗，設置為未連接
             this.connectionStatus.connected = false;
-            throw error;
+            console.warn('⚠️ 所有 API 連接測試都失敗，設置為未連接狀態');
+            return false;
+            
+        } catch (error) {
+            console.error('❌ API 連接測試失敗:', error);
+            this.connectionStatus.connected = false;
+            return false;
         }
     }
 
@@ -83,10 +159,13 @@ class DatabaseConnector {
     async preloadBasicData() {
         try {
             console.log('🔄 正在预加载基础数据...');
+            
+            // 使用 Promise.all 並行載入數據
             const [locations, clubs] = await Promise.all([
                 this.fetchLocations(),
                 this.fetchClubs()
             ]);
+            
             // 更新缓存
             this.cache.locations = locations;
             this.cache.clubs = clubs;
@@ -98,19 +177,176 @@ class DatabaseConnector {
             this.updateClubSelects();
             
             // 觸發自定義事件，通知其他組件數據已更新
-            const event = new CustomEvent('basicDataUpdated', { 
-                detail: { 
-                    locations: locations, 
-                    clubs: clubs,
-                    timestamp: new Date().toISOString()
-                } 
-            });
-            document.dispatchEvent(event);
-            console.log('📡 已发送基础数据更新事件');
+            this.dispatchBasicDataUpdated();
             
+            // 預載入其他常用數據（非阻塞）
+            this.preloadOtherData();
+            
+            return { locations, clubs };
         } catch (error) {
-            console.error('❌ 基础数据预加载失败:', error);
+            console.error('❌ 预加载基础数据失败:', error);
+            // 使用緩存數據作為降級方案
+            return this.getFallbackData();
         }
+    }
+
+    // 預載入其他常用數據（非阻塞）
+    async preloadOtherData() {
+        try {
+            // 使用 Promise.allSettled 避免單個失敗影響整體
+            const results = await Promise.allSettled([
+                this.fetchCoaches().catch(() => []),
+                this.fetchStudents().catch(() => [])
+            ]);
+            
+            if (results[0].status === 'fulfilled') {
+                this.cache.coaches = results[0].value;
+            }
+            
+            if (results[1].status === 'fulfilled') {
+                this.cache.students = results[1].value;
+            }
+            
+            console.log('✅ 其他數據預載入完成');
+        } catch (error) {
+            console.warn('⚠️ 其他數據預載入失敗，不影響主要功能:', error);
+        }
+    }
+
+    // 獲取降級數據
+    getFallbackData() {
+        const fallbackLocations = ['全部地點', '維多利亞公園游泳池', '荔枝角公園游泳池', '觀塘游泳池'];
+        const fallbackClubs = ['全部泳會', '維多利亞泳會', '荔枝角泳會', '觀塘泳會'];
+        
+        this.cache.locations = fallbackLocations;
+        this.cache.clubs = fallbackClubs;
+        
+        return { locations: fallbackLocations, clubs: fallbackClubs };
+    }
+
+    // 處理學生數據中的特殊標記
+    processStudentSpecialMarks(studentData) {
+        if (!studentData || !Array.isArray(studentData)) {
+            return studentData;
+        }
+
+        return studentData.map(student => {
+            // 檢查上課日期中是否包含特殊標記
+            const hasBalloonMark = this.checkForSpecialMark(student, this.specialMarks.balloon);
+            const hasStarMark = this.checkForSpecialMark(student, this.specialMarks.star);
+
+            return {
+                ...student,
+                hasBalloonMark: hasBalloonMark,
+                hasStarMark: hasStarMark
+            };
+        });
+    }
+
+    // 檢查學生記錄中是否包含特定標記
+    checkForSpecialMark(student, mark) {
+        // 檢查多個可能包含標記的字段
+        const fieldsToCheck = [
+            '上課日期', '上課', '日期', 'time', 'classDates', 'originalDates'
+        ];
+
+        for (const field of fieldsToCheck) {
+            if (student[field]) {
+                const value = String(student[field]);
+                if (value.includes(mark)) {
+                    return true;
+                }
+            }
+        }
+
+        // 檢查數組字段
+        if (student.originalDates && Array.isArray(student.originalDates)) {
+            for (const date of student.originalDates) {
+                if (String(date).includes(mark)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // 更新學生記錄的特殊標記
+    async updateStudentSpecialMarks(studentId, hasBalloonMark, hasStarMark) {
+        try {
+            const response = await fetch(`${this.apiConfig.baseURL}/api/students/${studentId}/marks`, {
+                method: 'PATCH',
+                headers: this.getStandardHeaders(),
+                body: JSON.stringify({
+                    hasBalloonMark: hasBalloonMark,
+                    hasStarMark: hasStarMark
+                })
+            });
+
+            if (response.ok) {
+                console.log('✅ 學生特殊標記更新成功');
+                return true;
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('❌ 更新學生特殊標記失敗:', error);
+            return false;
+        }
+    }
+
+    // 保存學生數據
+    async saveStudent(studentData) {
+        try {
+            console.log('🔄 正在保存學生數據...');
+            
+            // 處理特殊標記
+            const processedData = this.processStudentSpecialMarks([studentData])[0];
+            
+            // 保存到資料庫
+            const response = await fetch(`${this.apiConfig.baseURL}/api/students`, {
+                method: 'POST',
+                headers: this.getStandardHeaders(),
+                body: JSON.stringify(processedData)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ 學生數據保存成功');
+                
+                // 更新緩存
+                this.updateStudentCache(processedData);
+                
+                return { success: true, data: result };
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('❌ 保存學生數據失敗:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // 更新學生緩存
+    updateStudentCache(studentData) {
+        if (!this.cache.students) {
+            this.cache.students = [];
+        }
+        
+        // 查找是否已存在該學生
+        const existingIndex = this.cache.students.findIndex(s => 
+            s._id === studentData._id || s.Phone_number === studentData.Phone_number
+        );
+        
+        if (existingIndex >= 0) {
+            // 更新現有記錄
+            this.cache.students[existingIndex] = { ...this.cache.students[existingIndex], ...studentData };
+        } else {
+            // 添加新記錄
+            this.cache.students.push(studentData);
+        }
+        
+        console.log('✅ 學生緩存已更新');
     }
 
     // 获取地点数据（匹配手机版逻辑）
@@ -267,41 +503,43 @@ class DatabaseConnector {
     // 获取更表数据
     async fetchRoster(month, coachPhone = '') {
         try {
-            const userType = localStorage.getItem('current_user_type') || 'coach';
-            const isSupervisor = userType === 'supervisor';
-            
-            // 主管模式：允许不提供phone参数，获取所有教练数据
-            if (!coachPhone && !isSupervisor) {
-                console.warn('⚠️ 未提供教練電話號碼，無法獲取更表數據');
-                return [];
-            }
-            
             const year = new Date().getFullYear();
+            const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
 
-            // 優先從 localStorage 讀取教練名字，沒有再調 /coaches 獲取
+            // 修復：優先使用傳入的coachPhone，而不是localStorage中的數據
+            let phone = coachPhone;
             let coachName = '';
-            try { coachName = localStorage.getItem('current_user_name') || ''; } catch (_) {}
-            if (!coachName) {
-                const coachResp = await fetch(`${this.apiConfig.baseURL}/api/coaches?phone=${encodeURIComponent(coachPhone)}`, {
+            
+            // 如果有phone，嘗試獲取對應的教練姓名
+            if (phone && phone.trim()) {
+                try {
+                    const coachResp = await fetch(`${this.apiConfig.baseURL}/api/coaches?phone=${phone}`, {
                     method: 'GET',
                     headers: this.getStandardHeaders()
                 });
+                    
                 if (coachResp.ok) {
                     const coachJson = await coachResp.json();
-                    coachName = coachJson?.coach?.studentName || coachJson?.coach?.name || '';
-                    if (coachName) {
-                        try { localStorage.setItem('current_user_name', coachName); } catch (_) {}
-                    }
+                        // 修復：使用正確的數據結構
+                        if (coachJson?.coaches && coachJson.coaches.length > 0) {
+                            coachName = coachJson.coaches[0].name || coachJson.coaches[0].studentName || '';
+                        } else if (coachJson?.coach) {
+                            coachName = coachJson.coach.name || coachJson.coach.studentName || '';
+                        }
+                        console.log('🔍 獲取到教練姓名:', coachName, '電話:', phone);
                 } else {
                     console.warn('⚠️ 無法獲取教練姓名，狀態:', coachResp.status);
+                    }
+                } catch (e) {
+                    console.warn('⚠️ 獲取教練姓名失敗:', e);
                 }
             }
 
             const params = new URLSearchParams();
             
             // 主管模式：不限制特定教练
-            if (coachPhone && coachPhone.trim()) {
-                params.append('phone', coachPhone);
+            if (phone && phone.trim()) {
+                params.append('phone', phone);
             }
             
             // 添加用户类型参数
@@ -310,7 +548,7 @@ class DatabaseConnector {
             params.append('month', month);
             if (coachName) params.append('name', coachName);
             
-            console.log('🔍 獲取更表數據:', { phone: coachPhone, year, month, name: coachName });
+            console.log('🔍 獲取更表數據:', { phone: phone, year, month, name: coachName });
             
             const response = await fetch(`${this.apiConfig.baseURL}/api/coach-roster?${params}`, {
                 method: 'GET',
@@ -768,6 +1006,30 @@ class DatabaseConnector {
             console.warn('⚠️ 獲取教練列表失敗:', e);
             return [];
         }
+    }
+
+    // 觸發就緒事件
+    dispatchReadyEvent() {
+        const event = new CustomEvent('databaseConnectorReady', {
+            detail: {
+                connected: this.connectionStatus.connected,
+                cache: this.cache
+            }
+        });
+        document.dispatchEvent(event);
+    }
+
+    // 觸發基础数据更新事件
+    dispatchBasicDataUpdated() {
+        const event = new CustomEvent('basicDataUpdated', { 
+            detail: { 
+                locations: this.cache.locations, 
+                clubs: this.cache.clubs,
+                timestamp: new Date().toISOString()
+            } 
+        });
+        document.dispatchEvent(event);
+        console.log('�� 已发送基础数据更新事件');
     }
 }
 

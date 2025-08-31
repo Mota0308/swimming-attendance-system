@@ -580,22 +580,24 @@ function renderCloudStudentsTableFromCache() {
                     <td style="border:1px solid #ddd;padding:8px;">
                         <select onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'option1')" style="width: 80px;">
                             <option value="">--</option>
-                            <option value="出席1" ${stu.option1==="出席1"?"selected":""}>出席1</option>
-                            <option value="出席1.5" ${stu.option1==="出席1.5"?"selected":""}>出席1.5</option>
-                            <option value="出席2" ${stu.option1==="出席2"?"selected":""}>出席2</option>
-                            <option value="出席2.5" ${stu.option1==="出席2.5"?"selected":""}>出席2.5</option>
-                            <option value="出席3" ${stu.option1==="出席3"?"selected":""}>出席3</option>
+                            <option value="1" ${stu.option1==="1"?"selected":""}>1</option>
+                            <option value="1.5" ${stu.option1==="1.5"?"selected":""}>1.5</option>
+                            <option value="2" ${stu.option1==="2"?"selected":""}>2</option>
+                            <option value="2.5" ${stu.option1==="2.5"?"selected":""}>2.5</option>
+                            <option value="3" ${stu.option1==="3"?"selected":""}>3</option>
                             <option value="缺席" ${stu.option1==="缺席"?"selected":""}>缺席</option>
                         </select>
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;">
                         <select onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'option2')" style="width: 100px;">
                             <option value="">--</option>
-                            <option value="🌟補0.5堂" ${stu.option2==="🌟補0.5堂"?"selected":""}>🌟補0.5堂</option>
-                            <option value="🌟補1堂" ${stu.option2==="🌟補1堂"?"selected":""}>🌟補1堂</option>
-                            <option value="🌟補1.5堂" ${stu.option2==="🌟補1.5堂"?"selected":""}>🌟補1.5堂</option>
-                            <option value="🔁補1堂" ${stu.option2==="🔁補1堂"?"selected":""}>🔁補1堂</option>
-                            <option value="🔁補1.5堂" ${stu.option2==="🔁補1.5堂"?"selected":""}>🔁補1.5堂</option>
+                            <option value="🌟0.5" ${stu.option2==="🌟0.5"?"selected":""}>🌟0.5</option>
+                            <option value="🌟1" ${stu.option2==="🌟1"?"selected":""}>🌟1</option>
+                            <option value="🌟1.5" ${stu.option2==="🌟1.5"?"selected":""}>🌟1.5</option>
+                            <option value="🔁0.5" ${stu.option2==="🔁0.5"?"selected":""}>🔁0.5</option>
+                            <option value="🔁1" ${stu.option2==="🔁1"?"selected":""}>🔁1</option>
+                            <option value="🔁1.5" ${stu.option2==="🔁1.5"?"selected":""}>🔁1.5</option>
+                          
                         </select>
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;">
@@ -1277,14 +1279,14 @@ function formatDocumentText() {
                         // 展開如"7月 13/20/27 8月 3/10/17/24"格式，保留🎈符號
                         let expandedDates = [];
                         allDateContent.forEach(block => {
-                            let monthBlockRegex = /([0-9]{1,2})月[ ]*([0-9\/🎈🎁 ]+)/g;
+                            let monthBlockRegex = /([0-9]{1,2})月[ ]*([0-9\/🎈🎁🌟⭐★☆ ]+)/g;
                             let match;
                             while ((match = monthBlockRegex.exec(block)) !== null) {
                                 let month = parseInt(match[1], 10);
                                 let daysPart = match[2];
                                 let daysWithSymbol = daysPart.split('/').map(s => s.trim()).filter(Boolean);
                                 daysWithSymbol.forEach(ds => {
-                                    let mds = ds.match(/^([0-9]{1,2})([🎈🎁]*)$/);
+                                    let mds = ds.match(/^([0-9]{1,2})([🎈🎁🌟⭐★☆]*)$/);
                                     if (mds) {
                                         expandedDates.push(`${month}月${parseInt(mds[1],10)}日${mds[2]||''}`);
                                     }
@@ -1302,7 +1304,7 @@ function formatDocumentText() {
                                         currentMonth = parseInt(mMonth[1], 10);
                                         return;
                                     }
-                                    let mDay = part.match(/^([0-9]{1,2})([🎈🎁]*)$/);
+                                    let mDay = part.match(/^([0-9]{1,2})([🎈🎁🌟⭐★☆]*)$/);
                                     if (mDay && currentMonth) {
                                         expandedDates.push(`${currentMonth}月${parseInt(mDay[1],10)}日${mDay[2]||''}`);
                                     }
@@ -1424,14 +1426,14 @@ function standardizeDates(dateLines) {
     let results = [];
     // 逐行匹配每一行的月塊
     dateLines.forEach(line => {
-        let monthBlockRegex = /([0-9]{1,2})月[ ]*([0-9\/🎈🎁 ]+)/g;
+        let monthBlockRegex = /([0-9]{1,2})月[ ]*([0-9\/🎈🎁🌟⭐★☆ ]+)/g;
         let match;
         while ((match = monthBlockRegex.exec(line)) !== null) {
             let month = parseInt(match[1], 10);
             let daysPart = match[2];
             let daysWithSymbol = daysPart.split('/').map(s => s.trim()).filter(Boolean);
             daysWithSymbol.forEach(ds => {
-                let mds = ds.match(/^([0-9]{1,2})([🎈🎁]*)$/);
+                let mds = ds.match(/^([0-9]{1,2})([🎈🎁🌟⭐★☆]*)$/);
                 if (mds) {
                     results.push(`${month}月${parseInt(mds[1],10)}日${mds[2]||''}`);
                 }
@@ -1449,7 +1451,7 @@ function standardizeDates(dateLines) {
             currentMonth = parseInt(mMonth[1], 10);
             return;
         }
-            let mDay = part.match(/^([0-9]{1,2})([🎈🎁]*)$/);
+            let mDay = part.match(/^([0-9]{1,2})([🎈🎁🌟⭐★☆]*)$/);
             if (mDay && currentMonth) {
                 results.push(`${currentMonth}月${parseInt(mDay[1],10)}日${mDay[2]||''}`);
             }
@@ -1595,22 +1597,23 @@ async function saveSelectedStudents() {
                         dateGroups[standardDate] = [];
                     }
                     
-                    // 🎈 檢查該日期是否包含🎈標記，如果有則在學生姓名前添加🎈
+                    // 🎈/🌟 檢查該日期是否包含特殊標記
                     let studentName = stu.name;
                     let hasBalloonMark = false;
+                    let hasStarMark = false;
                     let remark = '';
                     
-                    // 檢查原始日期數組中是否包含🎈
+                    // 檢查原始日期數組中是否包含🎈或🌟
                     console.log(`🔍 檢查學生 ${stu.name} 的日期: ${date}, 標準格式: ${standardDate}`);
                     console.log(`📋 原始日期數組:`, stu.datesArr);
                     
                     if (stu.datesArr && stu.datesArr.length > 0) {
-                        // 找到對應的原始日期（包含🎈標記的）
+                        // 找到對應的原始日期（可能包含標記）
                         let matchingOriginalDate = null;
                         stu.datesArr.forEach(originalDate => {
                             console.log(`🔍 檢查原始日期: ${originalDate}`);
-                            // 將中文日期轉換為標準格式進行比較
-                            let originalStandardDate = convertChineseDateToStandard(originalDate.replace('🎈', ''));
+                            // 將中文日期轉換為標準格式進行比較（移除標記後比對）
+                            let originalStandardDate = convertChineseDateToStandard(originalDate.replace('🎈', '').replace('🌟',''));
                             console.log(`📅 原始日期標準格式: ${originalStandardDate}, 當前日期: ${standardDate}`);
                             if (originalStandardDate === standardDate) {
                                 matchingOriginalDate = originalDate;
@@ -1618,14 +1621,23 @@ async function saveSelectedStudents() {
                             }
                         });
                         
-                        // 只有當匹配的原始日期包含🎈時才添加🎈標記
-                        if (matchingOriginalDate && matchingOriginalDate.includes('🎈')) {
-                            hasBalloonMark = true;
-                            studentName = '🎈' + stu.name;
-                            remark = '🎈標記學生';
-                            console.log(`🎈 檢測到日期 ${standardDate} 包含🎈標記，學生 ${stu.name} 姓名已標記為: ${studentName}`);
+                        // 依標記設置布林
+                        if (matchingOriginalDate) {
+                            if (matchingOriginalDate.includes('🎈')) {
+                                hasBalloonMark = true;
+                                remark = '🎈標記學生';
+                                console.log(`🎈 檢測到日期 ${standardDate} 包含🎈標記，學生 ${stu.name} 設置 hasBalloonMark=true`);
+                            }
+                            const starRegex = /[\u2B50\u2605\u2606\uD83C\uDF1F]/; // ⭐ ★ ☆ 🌟
+                            if (starRegex.test(matchingOriginalDate)) {
+                                hasStarMark = true;
+                                remark = remark ? `${remark}、🌟重點學生` : '🌟重點學生';
+                                console.log(`🌟 檢測到日期 ${standardDate} 含星號標記，學生 ${stu.name} 設置 hasStarMark=true`);
+                            }
+                            // 姓名保持原樣，不內嵌任何符號
+                            studentName = stu.name;
                         } else {
-                            console.log(`📅 日期 ${standardDate} 不包含🎈標記，學生 ${stu.name} 保持原樣`);
+                            console.log(`📅 日期 ${standardDate} 未檢出🎈/🌟標記，學生 ${stu.name} 保持原樣`);
                         }
                     } else {
                         console.log(`⚠️ 學生 ${stu.name} 沒有datesArr數據`);
@@ -1633,7 +1645,7 @@ async function saveSelectedStudents() {
                     
                     // 構建符合雲端資料庫格式的學生資料
                     let cloudStudent = {
-                        name: studentName,  // 根據🎈標記決定是否添加🎈
+                        name: studentName,
                         age: stu.age,
                         type: stu.type,
                         time: stu.time,
@@ -1644,10 +1656,11 @@ async function saveSelectedStudents() {
                         option1: '',
                         option2: '',
                         option3: stu.option3,
-                        remark: remark,  // 🎈標記備註
+                        remark: remark,
                         "上課日期": standardDate,
-                        hasBalloonMark: hasBalloonMark,  // 記錄是否有🎈標記
-                        originalDates: stu.datesArr || []  // 記錄原始日期數組（包含🎈）
+                        hasBalloonMark: hasBalloonMark,
+                        hasStarMark: hasStarMark,
+                        originalDates: stu.datesArr || []
                     };
                     
                     // 檢查是否已存在相同的學生記錄（避免重複）
@@ -3308,12 +3321,17 @@ function renderStudentsTable(students, loc, onlyFilteredDates) {
     students.forEach(stu => {
         let dates = onlyFilteredDates && stu._filteredDates ? stu._filteredDates.split('、').map(d => d.trim()).filter(Boolean) : (stu.dates || '').split('、').map(d => d.trim()).filter(Boolean);
         dates.forEach(date => {
-            // 確保日期格式統一為標準格式
+            // 統一日期格式為 YYYY-MM-DD（支援：YYYY年M月D日、M月D日）
             let standardDate = date;
-            // 如果是中文格式，轉換為標準格式
-            let chineseMatch = date.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
-            if (chineseMatch) {
-                standardDate = `${chineseMatch[1]}-${String(chineseMatch[2]).padStart(2,'0')}-${String(chineseMatch[3]).padStart(2,'0')}`;
+            const fullMatch = date.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+            if (fullMatch) {
+                standardDate = `${fullMatch[1]}-${String(fullMatch[2]).padStart(2,'0')}-${String(fullMatch[3]).padStart(2,'0')}`;
+            } else {
+                const mdMatch = date.match(/(\d{1,2})月(\d{1,2})日/);
+                if (mdMatch) {
+                    const y = new Date().getFullYear();
+                    standardDate = `${y}-${String(mdMatch[1]).padStart(2,'0')}-${String(mdMatch[2]).padStart(2,'0')}`;
+                }
             }
             if (!dateGroups[standardDate]) dateGroups[standardDate] = [];
             dateGroups[standardDate].push(stu);
@@ -3348,7 +3366,28 @@ function renderStudentsTable(students, loc, onlyFilteredDates) {
             .forEach((stu, idx) => {
                 html += `<tr>
                     <td style="text-align:center;"><input type="checkbox" class="manageRowCheckbox"></td>
-                    <td><input type="text" value="${stu.name}" onchange="onStudentFieldChange(this, '${loc}', '${stu.name}', '${date}', 'name')"></td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="text" value="${stu.name}" onchange="onStudentFieldChange(this, '${loc}', '${stu.name}', '${date}', 'name')">
+                            ${(() => {
+                                try {
+                                    const dateKey = typeof convertChineseDateToStandard === 'function' ? convertChineseDateToStandard((date||'').replace('🎈','').replace('🌟','')) : (date||'');
+                                    const hasByFlag = (stu.hasBalloonMark === true) || (Array.isArray(stu.originalDates) && stu.originalDates.some(d => {
+                                        const clean = (d||'').replace('🎈','').replace('🌟','');
+                                        const std = typeof convertChineseDateToStandard === 'function' ? convertChineseDateToStandard(clean) : clean;
+                                        return std === dateKey && d.includes('🎈');
+                                    }));
+                                    const hasStar = (stu.hasStarMark === true) || (Array.isArray(stu.originalDates) && stu.originalDates.some(d => {
+                                        const clean = (d||'').replace('🎈','').replace('🌟','');
+                                        const std = typeof convertChineseDateToStandard === 'function' ? convertChineseDateToStandard(clean) : clean;
+                                        const starRegex = /[\u2B50\u2605\u2606\uD83C\uDF1F]/; // ⭐ ★ ☆ 🌟
+                                        return std === dateKey && starRegex.test(d);
+                                    }));
+                                    return `${hasByFlag ? '<span title="🎈特別標記">🎈</span>' : ''}${hasStar ? '<span title="🌟特別標記" style="margin-left:2px;">🌟</span>' : ''}`;
+                                } catch(e) { return '' }
+                            })()}
+                        </div>
+                    </td>
                     <td><input type="text" value="${stu.age}" onchange="onStudentFieldChange(this, '${loc}', '${stu.name}', '${date}', 'age')"></td>
                     <td><input type="text" value="${stu.type}" onchange="onStudentFieldChange(this, '${loc}', '${stu.name}', '${date}', 'type')"></td>
                     <td><select onchange="onStudentFieldChange(this, '${loc}', '${stu.name}', '${date}', 'option1')" style="width: 80px;">
@@ -4045,22 +4084,24 @@ function renderFilteredCloudStudents(filteredGroups) {
                     <td style="border:1px solid #ddd;padding:8px;">
                         <select onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'option1')" style="width: 80px;">
                             <option value="">--</option>
-                            <option value="出席1" ${stu.option1==="出席1"?"selected":""}>出席1</option>
-                            <option value="出席1.5" ${stu.option1==="出席1.5"?"selected":""}>出席1.5</option>
-                            <option value="出席2" ${stu.option1==="出席2"?"selected":""}>出席2</option>
-                            <option value="出席2.5" ${stu.option1==="出席2.5"?"selected":""}>出席2.5</option>
-                            <option value="出席3" ${stu.option1==="出席3"?"selected":""}>出席3</option>
+                            <option value="出席1" ${stu.option1==="出席1"?"selected":""}>1</option>
+                            <option value="出席1.5" ${stu.option1==="出席1.5"?"selected":""}>1.5</option>
+                            <option value="出席2" ${stu.option1==="出席2"?"selected":""}>2</option>
+                            <option value="出席2.5" ${stu.option1==="出席2.5"?"selected":""}>2.5</option>
+                            <option value="出席3" ${stu.option1==="出席3"?"selected":""}>3</option>
                             <option value="缺席" ${stu.option1==="缺席"?"selected":""}>缺席</option>
                         </select>
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;">
                         <select onchange="onCloudStudentFieldChange(this, '${stu.name || ''}', '${stu['上課日期'] || ''}', 'option2')" style="width: 100px;">
                             <option value="">--</option>
-                            <option value="🌟補0.5堂" ${stu.option2==="🌟補0.5堂"?"selected":""}>🌟補0.5堂</option>
-                            <option value="🌟補1堂" ${stu.option2==="🌟補1堂"?"selected":""}>🌟補1堂</option>
-                            <option value="🌟補1.5堂" ${stu.option2==="🌟補1.5堂"?"selected":""}>🌟補1.5堂</option>
-                            <option value="🔁補1堂" ${stu.option2==="🔁補1堂"?"selected":""}>🔁補1堂</option>
-                            <option value="🔁補1.5堂" ${stu.option2==="🔁補1.5堂"?"selected":""}>🔁補1.5堂</option>
+                            <option value="🌟補0.5堂" ${stu.option2==="🌟補0.5堂"?"selected":""}>🌟0.5</option>
+                            <option value="🌟補1堂" ${stu.option2==="🌟補1堂"?"selected":""}>🌟1</option>
+                            <option value="🌟補1.5堂" ${stu.option2==="🌟補1.5堂"?"selected":""}>🌟1.5</option>
+                            <option value="🔁補1堂" ${stu.option2==="🔁補1堂"?"selected":""}>🔁1</option>
+                            <option value="🔁補1.5堂" ${stu.option2==="🔁補1.5堂"?"selected":""}>🔁1.5</option>
+                            <option value="🔁補1.5堂" ${stu.option2==="🔁補2堂"?"selected":""}>🔁2</option>
+                            <option value="🔁補1.5堂" ${stu.option2==="🔁補2.5堂"?"selected":""}>🔁2.5</option>
                         </select>
                     </td>
                     <td style="border:1px solid #ddd;padding:8px;">
@@ -6265,3 +6306,5 @@ window.updateTimeFormat = function(index) {
     // 更新顯示框
     document.getElementById(`addStudentTime${index}`).value = finalFormat;
 }
+
+

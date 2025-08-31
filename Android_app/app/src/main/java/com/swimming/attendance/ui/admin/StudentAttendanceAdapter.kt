@@ -36,7 +36,7 @@ class StudentAttendanceAdapter(
         holder.pointsEdit.setText(student.option3 ?: "")
         
         // 設置出席狀況下拉選單
-        val attendanceOptions = arrayOf("--", "出席1", "出席1.5", "出席2", "出席2.5", "出席3", "缺席")
+        val attendanceOptions = arrayOf("--", "1", "1.5", "2", "2.5", "3", "缺席")
         val attendanceAdapter = ArrayAdapter(holder.itemView.context, android.R.layout.simple_spinner_item, attendanceOptions)
         attendanceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         holder.attendanceSpinner.adapter = attendanceAdapter
@@ -50,7 +50,7 @@ class StudentAttendanceAdapter(
         }
         
         // 設置補/調堂下拉選單
-        val makeupOptions = arrayOf("--", "🌟補0.5堂", "🌟補1堂", "🌟補1.5堂", "🌟補2堂", "🔁補1堂", "🔁補1.5堂", "🔁補2堂", "🔁補2.5堂", "🔁補3堂")
+        val makeupOptions = arrayOf("--", "🌟0.5", "🌟1", "🌟1.5", "🔁0.5", "🔁1", "🔁1.5")
         val makeupAdapter = ArrayAdapter(holder.itemView.context, android.R.layout.simple_spinner_item, makeupOptions)
         makeupAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         holder.makeupSpinner.adapter = makeupAdapter

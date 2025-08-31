@@ -1363,6 +1363,359 @@ function adjustCalendarSizing(containerEl) {
 	} catch (_) {}
 }
 
+// 生成每日上課地點統計
+async function generateDailyLocationStats() {
+    try {
+        showLoading(true);
+        const month = parseInt(document.getElementById('statsMonth').value);
+        const year = new Date().getFullYear();
+        const userType = localStorage.getItem('current_user_type') || 'coach';
+        
+        // 確保地點數據已加載
+        if (!locations || locations.length === 0) {
+            console.log('🔄 地點數據未加載，正在重新獲取...');
+            await loadLocationsAndClubs();
+        }
+        
+        // 根據用戶類型獲取數據
+        let rosterList = [];
+        if (userType === 'supervisor') {
+            // 主管：獲取所有教練的更表數據
+            rosterList = await databaseConnector.fetchRoster(month, '');
+        } else {
+            // 教練：僅獲取自己的更表數據
+            const phone = localStorage.getItem('current_user_phone') || '';
+            rosterList = await databaseConnector.fetchRoster(month, phone);
+        }
+        
+        if (!Array.isArray(rosterList)) {
+            const roster = (rosterList && Array.isArray(rosterList.roster)) ? rosterList.roster : [];
+            if (roster.length === 0) {
+                showDailyLocationStats([]);
+                return;
+            }
+        }
+        
+        // 按日期聚合數據
+        const daysInMonth = new Date(year, month, 0).getDate();
+        
+        // 處理更表數據，收集教練和地點信息
+        const coachDailyData = new Map(); // 教練每日地點數據
+        const dailyStats = new Map(); // 每日統計數據
+        
+        (rosterList || []).forEach(item => {
+            const dateStr = item?.date || item?.rosterDate || item?.day;
+            if (!dateStr) return;
+            
+            const d = new Date(dateStr);
+            if (Number.isNaN(d.getTime()) || d.getFullYear() !== year || (d.getMonth() + 1) !== month) return;
+            
+            const day = d.getDate();
+            const time = item?.time || item?.timeRange || '';
+            const location = item?.location || item?.place || '';
+            const coachPhone = item?.phone || item?.coachPhone || '';
+            const coachName = item?.name || item?.studentName || item?.coachName || `教練_${coachPhone || '未知'}`;
+            
+            if (!location || location.trim() === '') return;
+            
+            // 使用實際地點數據提取地點信息
+            const locationInfo = extractLocationFromRoster(location, time);
+            if (locationInfo.isValidLocation) {
+                // 收集教練每日地點數據
+                if (!coachDailyData.has(coachName)) {
+                    coachDailyData.set(coachName, {
+                        name: coachName,
+                        dailyLocations: new Map()
+                    });
+                }
+                const coachData = coachDailyData.get(coachName);
+                coachData.dailyLocations.set(day, locationInfo.location);
+                
+                // 收集每日統計數據
+                const dayStats = dailyStats.get(day) || new Map();
+                const count = dayStats.get(locationInfo.location) || 0;
+                dayStats.set(locationInfo.location, count + 1);
+                dailyStats.set(day, dayStats);
+            }
+        });
+        
+        // 轉換為顯示格式
+        const statsArray = Array.from(dailyStats.entries()).map(([day, locationCounts]) => {
+            const locations = Array.from(locationCounts.entries()).map(([loc, count]) => ({
+                location: loc,
+                count: count
+            })).sort((a, b) => b.count - a.count); // 按數量降序排列
+            
+            return {
+                day: day,
+                locations: locations,
+                totalCount: locations.reduce((sum, loc) => sum + loc.count, 0)
+            };
+        });
+        
+        // 將教練數據添加到統計結果中
+        statsArray.coachData = coachDailyData;
+        
+        // 添加調試日誌
+        console.log('教練數據結構:', coachDailyData);
+        console.log('統計數組:', statsArray);
+        
+        showDailyLocationStats(statsArray);
+        
+    } catch (error) {
+        console.error('生成每日地點統計失敗:', error);
+        alert('生成統計失敗: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 從更表條目中提取地點信息（使用實際的地點數據）
+function extractLocationFromRoster(location, time) {
+    if (!location || typeof location !== 'string') {
+        return { isValidLocation: false, location: '' };
+    }
+    
+    const loc = location.trim();
+    
+    // 排除非地點條目（常見的假期和休息狀態）
+    const nonLocationPatterns = [
+        /^DO\s*$/i,           // 例假
+        /^OFF\s*$/i,          // 無薪假
+        /^PH\s*$/i,           // 勞假
+        /^AL\s*$/i,           // 年假
+        /^BO\s*$/i,           // 生日假
+        /^休息\s*$/i,         // 休息
+        /^放假\s*$/i,         // 放假
+        /^病假\s*$/i,         // 病假
+        /^事假\s*$/i,         // 事假
+        /^請假\s*$/i,         // 請假
+        /^曠工\s*$/i,         // 曠工
+        /^出差\s*$/i,         // 出差
+        /^培訓\s*$/i,         // 培訓
+        /^會議\s*$/i          // 會議
+    ];
+    
+    for (const pattern of nonLocationPatterns) {
+        if (pattern.test(loc)) {
+            return { isValidLocation: false, location: '' };
+        }
+    }
+    
+    // 檢查是否匹配實際的地點數據
+    if (typeof locations !== 'undefined' && Array.isArray(locations)) {
+        // 直接匹配完整地點名稱
+        for (const validLocation of locations) {
+            if (validLocation && loc === validLocation) {
+                return { isValidLocation: true, location: validLocation };
+            }
+        }
+        
+        // 模糊匹配（包含關係）
+        for (const validLocation of locations) {
+            if (validLocation && (loc.includes(validLocation) || validLocation.includes(loc))) {
+                return { isValidLocation: true, location: validLocation };
+            }
+        }
+    }
+    
+    // 如果沒有匹配到實際地點數據，但看起來像地點，則保留原值
+    if (loc.length > 0 && loc.length <= 20 && !/\d/.test(loc)) {
+        return { isValidLocation: true, location: loc };
+    }
+    
+    return { isValidLocation: false, location: '' };
+}
+
+// 顯示每日地點統計結果（橫向表格格式）
+function showDailyLocationStats(statsArray) {
+    const container = document.getElementById('dailyLocationStats');
+    if (!container) return;
+    
+    if (!statsArray || statsArray.length === 0) {
+        container.innerHTML = '<div class="empty">本月沒有更表數據</div>';
+        container.className = 'daily-stats-container empty';
+        return;
+    }
+    
+    container.className = 'daily-stats-container';
+    
+    // 獲取月份信息
+    const month = parseInt(document.getElementById('statsMonth').value);
+    const year = new Date().getFullYear();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    // 創建橫向表格
+    let html = '<div class="stats-table-container">';
+    html += '<table class="daily-stats-table horizontal">';
+    
+    // 表頭：第一列為教練名稱，後面的列為日期
+    html += '<thead><tr>';
+    html += '<th class="coach-header">教練名稱</th>';
+    
+    // 添加日期列標題
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        const dayOfWeek = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+        const isToday = new Date().getDate() === day && new Date().getMonth() === month - 1;
+        const todayClass = isToday ? ' today-header' : '';
+        
+        html += `<th class="date-header${todayClass}">`;
+        html += `<div class="date-number">${day}</div>`;
+        html += `<div class="date-weekday">${dayOfWeek}</div>`;
+        html += '</th>';
+    }
+    html += '</tr></thead>';
+    
+    // 表格主體：每行代表一個教練
+    html += '<tbody>';
+    
+    // 從統計數據中提取教練信息
+    const coachData = statsArray.coachData || new Map();
+    
+    // 如果沒有教練數據，嘗試從統計數據中構建
+    if (coachData.size === 0) {
+        statsArray.forEach(stat => {
+            if (stat.locations && stat.locations.length > 0) {
+                stat.locations.forEach(loc => {
+                    // 使用地點作為教練標識（當沒有具體教練信息時）
+                    const coachKey = `教練_${loc.location}`;
+                    if (!coachData.has(coachKey)) {
+                        coachData.set(coachKey, {
+                            name: `教練_${loc.location}`,
+                            dailyLocations: new Map()
+                        });
+                    }
+                    const coach = coachData.get(coachKey);
+                    coach.dailyLocations.set(stat.day, loc.location);
+                });
+            }
+        });
+    }
+    
+    // 如果沒有教練數據，顯示提示信息
+    if (coachData.size === 0) {
+        html += '<tr><td colspan="' + (daysInMonth + 1) + '" class="no-data">本月沒有教練更表數據</td></tr>';
+    } else {
+        // 顯示每個教練的行
+        coachData.forEach((coach, coachKey) => {
+            // 檢查教練數據結構
+            if (!coach || typeof coach !== 'object') {
+                console.warn('教練數據結構異常:', coach);
+                return;
+            }
+            
+            const coachName = coach.name || coachKey || '未知教練';
+            const dailyLocations = coach.dailyLocations || new Map();
+            
+            html += '<tr>';
+            html += `<td class="coach-name">${coachName}</td>`;
+            
+            // 為每一天添加地點信息
+            for (let day = 1; day <= daysInMonth; day++) {
+                const location = dailyLocations.get ? dailyLocations.get(day) : null;
+                const isToday = new Date().getDate() === day && new Date().getMonth() === month - 1;
+                const todayClass = isToday ? ' today-cell' : '';
+                
+                if (location) {
+                    html += `<td class="location-cell${todayClass}" title="${location}">${location}</td>`;
+                } else {
+                    html += `<td class="empty-cell${todayClass}">-</td>`;
+                }
+            }
+            html += '</tr>';
+        });
+    }
+    
+    html += '</tbody></table>';
+    html += '</div>';
+    
+    // 添加月度總結
+    const totalDays = statsArray.length;
+    const totalLocations = statsArray.reduce((sum, stat) => sum + stat.locations.length, 0);
+    const totalCoaches = statsArray.reduce((sum, stat) => sum + stat.totalCount, 0);
+    const avgCoachesPerDay = totalDays > 0 ? (totalCoaches / totalDays).toFixed(1) : 0;
+    
+    html += '<div style="margin-top: 20px; padding: 16px; background: #f3f4f6; border-radius: 8px;">';
+    html += '<h5 style="margin: 0 0 12px 0; color: #374151;">月度統計總結</h5>';
+    html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">';
+    html += `<div><strong>總天數：</strong>${totalDays}天</div>`;
+    html += `<div><strong>總地點數：</strong>${totalLocations}個</div>`;
+    html += `<div><strong>總教練數：</strong>${totalCoaches}人次</div>`;
+    html += `<div><strong>日均教練數：</strong>${avgCoachesPerDay}人</div>`;
+    html += '</div>';
+    
+    // 添加地點數據來源信息
+    if (locations && locations.length > 0) {
+        html += '<div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #d1d5db;">';
+        html += '<h6 style="margin: 0 0 8px 0; color: #6b7280; font-size: 14px;">地點數據來源</h6>';
+        html += '<div style="font-size: 12px; color: #6b7280; line-height: 1.4;">';
+        html += `<strong>可用地點：</strong>${locations.length}個<br>`;
+        html += `<strong>地點列表：</strong>${locations.join('、')}`;
+        html += '</div></div>';
+    }
+    
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// 導出地點統計數據
+function exportLocationStats() {
+    try {
+        const month = parseInt(document.getElementById('statsMonth').value);
+        const year = new Date().getFullYear();
+        const monthName = document.getElementById('statsMonth').options[document.getElementById('statsMonth').selectedIndex].text;
+        
+        // 獲取當前顯示的統計數據
+        const container = document.getElementById('dailyLocationStats');
+        if (!container || container.classList.contains('empty')) {
+            alert('請先生成統計數據');
+            return;
+        }
+        
+        // 創建Excel數據
+        const data = [];
+        data.push([`${year}年${monthName}教練更表每日上課地點統計`]);
+        data.push([]);
+        data.push(['日期', '上課地點數量', '總教練數', '各地點詳情']);
+        
+        const rows = container.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 4) {
+                const date = cells[0].textContent;
+                const locationCount = cells[1].textContent;
+                const totalCoaches = cells[2].textContent;
+                const locationDetails = cells[3].textContent;
+                
+                data.push([date, locationCount, totalCoaches, locationDetails]);
+            }
+        });
+        
+        // 添加月度總結
+        data.push([]);
+        const summaryDiv = container.querySelector('div[style*="background: #f3f4f6"]');
+        if (summaryDiv) {
+            const summaryText = summaryDiv.textContent;
+            data.push(['月度統計總結']);
+            data.push([summaryText]);
+        }
+        
+        // 創建並下載Excel文件
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '地點統計');
+        
+        const fileName = `${year}年${monthName}教練更表地點統計_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        
+    } catch (error) {
+        console.error('導出統計失敗:', error);
+        alert('導出失敗: ' + error.message);
+    }
+}
+
 // 視窗尺寸變更時，重新調整兩個日曆尺寸
 window.addEventListener('resize', () => {
 	adjustCalendarSizing(document.getElementById('workHoursCalendar'));
@@ -1710,6 +2063,20 @@ async function renderCoachRoster(phone) {
         generateEditableRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
         container.setAttribute('data-coach-phone', phone);
+        
+        // 獲取並設置教練姓名
+        try {
+            const coachInfo = await databaseConnector.fetchCoaches({ phone: phone });
+            if (coachInfo && coachInfo.length > 0) {
+                const coachName = coachInfo[0].name || coachInfo[0].studentName || `教練_${phone}`;
+                container.setAttribute('data-coach-name', coachName);
+            } else {
+                container.setAttribute('data-coach-name', `教練_${phone}`);
+            }
+        } catch (e) {
+            console.warn('無法獲取教練姓名，使用默認名稱:', e);
+            container.setAttribute('data-coach-name', `教練_${phone}`);
+        }
     } catch (e) {
         console.warn('載入單一教練更表失敗', e);
     } finally {
@@ -1763,35 +2130,100 @@ async function saveSelectedCoachRoster() {
         if (!phone) { alert('請先選擇教練再保存'); return; }
         const year = new Date().getFullYear();
         const month = new Date().getMonth() + 1;
-        const nodes = (document.querySelectorAll('#rosterCalendar .cal-cell') || []);
-        const records = [];
+        const nodes = (document.querySelectorAll('#staffRosterCalendars .cal-cell') || []);
+        const entries = [];
         nodes.forEach(cell => {
-            const day = Number((cell.querySelector('.roster-time')||{}).getAttribute('data-day'));
-            const time = (cell.querySelector('.roster-time')||{}).value || '';
-            const location = (cell.querySelector('.roster-location')||{}).value || '';
-            if (!day || (!time && !location)) return;
+            const timeElement = cell.querySelector('.roster-time');
+            const locationElement = cell.querySelector('.roster-location');
+            
+            if (!timeElement || !locationElement) {
+                console.log(`跳過：缺少必要的DOM元素`);
+                return;
+            }
+            
+            const day = Number(timeElement.getAttribute('data-day'));
+            const time = timeElement.value || '';
+            const location = locationElement.value || '';
+            
+            console.log(`檢查日期 ${day}: 時間="${time}", 地點="${location}"`);
+            
+            // 只要有日期和地點或時間，就認為是有效條目
+            if (!day) {
+                console.log(`跳過：無效日期 ${day}`);
+                return;
+            }
+            if (!time && !location) {
+                console.log(`跳過：日期 ${day} 既無時間也無地點`);
+                return;
+            }
+            
             const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-            records.push({ phone, date, time, location });
+            entries.push({ date, time, location });
+            console.log(`添加條目：${date} - 時間:${time}, 地點:${location}`);
         });
+        
+        // 獲取教練姓名
+        const coachName = container.getAttribute('data-coach-name') || `教練_${phone}`;
+        
         showLoading(true);
-        const resp = await fetch('/api/coach-roster/batch', {
+        
+        // 使用正確的API基礎URL
+        const apiBaseURL = databaseConnector?.apiConfig?.baseURL || 'https://swiming-production.up.railway.app';
+        const apiURL = `${apiBaseURL}/api/coach-roster/batch`;
+        
+        // 檢查是否有有效的條目
+        if (entries.length === 0) {
+            alert('沒有找到有效的更表數據，請檢查時間和地點是否已填寫');
+            return;
+        }
+        
+        // 按照後端API期望的格式構建請求數據
+        const requestData = {
+            phone: phone,
+            name: coachName,
+            entries: entries
+        };
+        
+        console.log('保存更表API請求:', { apiURL, requestData });
+        console.log('條目數量:', entries.length);
+        console.log('教練電話:', phone);
+        console.log('教練姓名:', coachName);
+        
+        const resp = await fetch(apiURL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-API-Public-Key': 'ttdrcccy',
                 'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
             },
-            body: JSON.stringify({ records })
+            body: JSON.stringify(requestData)
         });
         const json = await resp.json();
+        console.log('API響應:', { status: resp.status, json });
+        
         if (resp.ok && json?.success) {
-            alert('保存成功');
+            alert(`保存成功！共保存了 ${json.count || entries.length} 條記錄\n\n統計數據已自動更新，如需查看最新更表數據請點擊"載入更表"按鈕`);
+            
+            // 保存成功後只刷新統計數據，不刷新更表顯示（避免覆蓋編輯內容）
+            console.log('🔄 保存成功，自動刷新統計數據...');
+            try {
+                // 只刷新統計數據
+                await generateDailyLocationStats();
+                console.log('✅ 統計數據刷新完成');
+                
+                // 不刷新教練更表顯示，保持用戶的編輯狀態
+                console.log('ℹ️ 保持更表編輯狀態，不自動刷新顯示');
+            } catch (refreshError) {
+                console.warn('⚠️ 自動刷新統計數據失敗:', refreshError);
+            }
         } else {
-            alert('保存失敗：' + (json?.message || resp.status));
+            const errorMessage = json?.message || `HTTP ${resp.status}`;
+            console.error('保存更表失敗:', { status: resp.status, message: errorMessage, json });
+            alert(`保存失敗：${errorMessage}`);
         }
     } catch (e) {
-        console.warn('保存更表失敗', e);
-        alert('保存更表失敗');
+        console.error('保存更表失敗:', e);
+        alert(`保存更表失敗：${e.message}`);
     } finally {
         showLoading(false);
     }
@@ -1896,7 +2328,6 @@ async function refreshSupervisorWorkHours() {
                 summaryByDateLoc.set(key, (summaryByDateLoc.get(key)||0) + 1);
             });
         });
-        renderWorkHoursSummary(summaryByDateLoc);
 
         // 渲染卡片
         const calendarContainer = document.getElementById('staffWorkHoursCalendars');
@@ -1940,12 +2371,7 @@ async function refreshSupervisorWorkHours() {
             if (wrap) generateWorkHoursCalendarIn(wrap, year, month, hoursByDay);
         });
 
-        // 綁定日期篩選事件
-        const dateInput = document.getElementById('summaryDate');
-        if (dateInput && !dateInput._bound) {
-            dateInput._bound = true;
-            dateInput.addEventListener('change', () => renderWorkHoursSummary(summaryByDateLoc));
-        }
+
     } catch (e) {
         console.warn('主管工時刷新失敗', e);
     } finally {
@@ -1953,31 +2379,7 @@ async function refreshSupervisorWorkHours() {
     }
 }
 
-function renderWorkHoursSummary(summaryByDateLoc) {
-    const box = document.getElementById('workHoursSummary');
-    const dateInput = document.getElementById('summaryDate');
-    if (!box) return;
-    const filterDate = (dateInput && dateInput.value) ? dateInput.value : '';
-    // 將 Map 轉為按日期分組，再在每個日期內按地點列出總人數
-    const byDate = new Map();
-    summaryByDateLoc.forEach((count, key) => {
-        const [dateStr, loc] = key.split('||');
-        if (filterDate && dateStr !== filterDate) return;
-        if (!byDate.has(dateStr)) byDate.set(dateStr, new Map());
-        const m = byDate.get(dateStr);
-        m.set(loc || '—', (m.get(loc || '—') || 0) + count);
-    });
-    // 生成 2 列顯示：左列日期，右列地點:人數 列表
-    const items = [];
-    byDate.forEach((mapLoc, dateStr) => {
-        const right = Array.from(mapLoc.entries()).map(([loc, cnt]) => `${loc}: ${cnt}`).join('<br/>');
-        items.push(`<div style=\"padding:8px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;\">`+
-            `<div style=\"font-weight:600;color:#111827;margin-bottom:4px;\">${dateStr}</div>`+
-            `<div style=\"color:#374151;\">${right || '—'}</div>`+
-        `</div>`);
-    });
-    box.innerHTML = items.join('');
-}
+
 
 function initCoachWorkFilters() {
     try {
@@ -2029,6 +2431,20 @@ function showStaffRoster() {
     const sec = document.getElementById('staffRosterSection');
     if (sec) sec.classList.remove('hidden');
     const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+    
+            // 初始化統計功能（主管和教練都可以使用）
+        initializeRosterStatistics();
+        
+        // 綁定月份選擇器變化事件，自動刷新統計
+        const statsMonthSelect = document.getElementById('statsMonth');
+        if (statsMonthSelect && !statsMonthSelect._bound) {
+            statsMonthSelect._bound = true;
+            statsMonthSelect.addEventListener('change', () => {
+                console.log('📅 月份選擇變化，自動刷新統計...');
+                generateDailyLocationStats();
+            });
+        }
+    
     if (userType === 'coach') {
         // 教練：隱藏教練選擇與保存，僅顯示自己
         const selWrap = document.getElementById('staffCoachSelect');
@@ -2039,6 +2455,15 @@ function showStaffRoster() {
         renderCoachRosterReadonly(phone);
         const saveBtn = document.querySelector('#staffRosterSection .export-btn');
         if (saveBtn) saveBtn.style.display = 'none';
+        
+        // 教練模式：統計功能僅顯示自己的數據
+        const statsSection = document.querySelector('.roster-statistics-section');
+        if (statsSection) {
+            const statsTitle = statsSection.querySelector('h4');
+            if (statsTitle) {
+                statsTitle.innerHTML = '<i class="fas fa-chart-bar"></i> 我的上課地點統計';
+            }
+        }
     } else {
         // 主管：可選教練並可編輯
         const selWrap = document.getElementById('staffCoachSelect');
@@ -2048,6 +2473,47 @@ function showStaffRoster() {
         populateCoachSelect();
         // 若已選擇教練則載入該教練可編輯界面
         onChangeStaffCoach();
+        
+        // 主管模式：統計功能顯示所有教練數據
+        const statsSection = document.querySelector('.roster-statistics-section');
+        if (statsSection) {
+            const statsTitle = statsSection.querySelector('h4');
+            if (statsTitle) {
+                statsTitle.innerHTML = '<i class="fas fa-chart-bar"></i> 每日上課地點統計';
+            }
+        }
+    }
+}
+
+// 初始化教練更表統計功能
+function initializeRosterStatistics() {
+    try {
+        // 設置當前月份為8月（根據PDF文件名）
+        const currentMonth = new Date().getMonth() + 1;
+        const statsMonthSelect = document.getElementById('statsMonth');
+        if (statsMonthSelect) {
+            statsMonthSelect.value = currentMonth;
+        }
+        
+        // 清空統計顯示區域
+        const statsContainer = document.getElementById('dailyLocationStats');
+        if (statsContainer) {
+            // 顯示當前可用的地點數據信息
+            let infoText = '點擊「生成統計」按鈕開始統計';
+            if (locations && locations.length > 0) {
+                infoText += `<br><br><strong>當前可用地點：</strong>${locations.length}個<br>`;
+                infoText += `<small style="color: #6b7280;">${locations.join('、')}</small>`;
+            } else {
+                infoText += '<br><br><small style="color: #9ca3af;">地點數據正在加載中...</small>';
+            }
+            
+            statsContainer.innerHTML = `<div class="empty">${infoText}</div>`;
+            statsContainer.className = 'daily-stats-container empty';
+        }
+        
+        console.log('✅ 教練更表統計功能初始化完成');
+    } catch (error) {
+        console.error('初始化教練更表統計功能失敗:', error);
     }
 }
 

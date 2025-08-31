@@ -1364,8 +1364,8 @@ class AdminMainActivity : AppCompatActivity() {
         return listOf(
             Student(
                 name = "甄文彥",
-                option1 = "出席1",
-                option2 = "🌟補1堂",
+                option1 = "1",
+                option2 = "🌟1",
                 option3 = "1.5",
                 time = "01:50-02:50",
                 date = "2025-08-07",
@@ -1373,8 +1373,8 @@ class AdminMainActivity : AppCompatActivity() {
             ),
             Student(
                 name = "張小明",
-                option1 = "出席2",
-                option2 = "🌟補2堂",
+                option1 = "2",
+                option2 = "🌟1.5",
                 option3 = "2.0",
                 time = "02:00-03:00",
                 date = "2025-08-07",
@@ -1391,8 +1391,8 @@ class AdminMainActivity : AppCompatActivity() {
             ),
             Student(
                 name = "王大明",
-                option1 = "出席1.5",
-                option2 = "🌟補0.5堂",
+                option1 = "1.5",
+                option2 = "🌟0.5",
                 option3 = "1.0",
                 time = "04:00-05:00",
                 date = "2025-08-08",
@@ -1400,8 +1400,8 @@ class AdminMainActivity : AppCompatActivity() {
             ),
             Student(
                 name = "陳小美",
-                option1 = "出席2.5",
-                option2 = "🔁補1堂",
+                option1 = "2.5",
+                option2 = "🔁1",
                 option3 = "2.5",
                 time = "05:00-06:00",
                 date = "2025-08-08",
@@ -1409,7 +1409,7 @@ class AdminMainActivity : AppCompatActivity() {
             ),
             Student(
                 name = "劉志強",
-                option1 = "出席3",
+                option1 = "3",
                 option2 = "--",
                 option3 = "3.0",
                 time = "06:00-07:00",

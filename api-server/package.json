@@ -19,13 +19,14 @@
   "author": "Swimming Attendance Team",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.2",
     "mongodb": "^5.7.0",
-    "cors": "^2.8.5"
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "axios": "^1.5.0"
+    "axios": "^1.5.0",
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -35,4 +36,4 @@
     "type": "git",
     "url": "https://github.com/your-username/swimming-attendance-api.git"
   }
-} 
+}

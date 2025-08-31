@@ -220,7 +220,7 @@ class CloudMongoDBManager {
                 pending = "",
                 pendingMonth = "",
                 attendance = "出席",
-                option1 = "出席1",
+                option1 = "1",
                 option2 = "--",
                 option3 = "1.0"
             ),
@@ -236,8 +236,8 @@ class CloudMongoDBManager {
                 pending = "",
                 pendingMonth = "",
                 attendance = "出席",
-                option1 = "出席2",
-                option2 = "🌟補1堂",
+                option1 = "2",
+                option2 = "🌟1",
                 option3 = "2.0"
             ),
             Student(
