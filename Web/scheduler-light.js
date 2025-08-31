@@ -91,9 +91,20 @@
   // 取得學生名單
   async function fetchStudentsRaw() {
     try {
+      // 優先使用 databaseConnector
+      if (window.databaseConnector && typeof window.databaseConnector.fetchStudents === 'function') {
+        console.log('🔄 使用 databaseConnector.fetchStudents 獲取學生數據');
+        const students = await window.databaseConnector.fetchStudents();
+        console.log('📋 從 databaseConnector 獲取的學生數據:', students);
+        return Array.isArray(students) ? students : [];
+      }
+      
+      // 後備方案：直接調用 API
+      console.log('🔄 直接調用 API 獲取學生數據');
       const resp = await fetch(`${databaseConnector.apiConfig.baseURL}/api/students`, { headers: API_HEADERS });
       if (!resp.ok) return [];
       const arr = await resp.json();
+      console.log('📋 從 API 獲取的學生數據:', arr);
       return Array.isArray(arr) ? arr : [];
     } catch (e) {
       console.warn('無法取得學生名單', e);
@@ -133,6 +144,15 @@
     let hasBalloonMark = coerceBool(row?.hasBalloonMark || row?.balloonMark || row?.has_balloon_mark || row?.hasBalloon || row?.balloon);
     let hasStarMark = coerceBool(row?.hasStarMark || row?.star || row?.has_star || row?.hasStar || row?.starMark);
     let hasReschedule = coerceBool(row?.hasReschedule || row?.reschedule || row?.has_reschedule || row?.rescheduleMark);
+    
+    // 調試日誌
+    console.log(`normalizeStudent ${name}:`, {
+      originalHasReschedule: row?.hasReschedule,
+      originalHasBalloonMark: row?.hasBalloonMark,
+      originalHasStarMark: row?.hasStarMark,
+      processed: { hasReschedule, hasBalloonMark, hasStarMark }
+    });
+    
     const starRegex = /[\u2B50\u2605\u2606\uD83C\uDF1F]/; // ⭐ ★ ☆ 🌟
     if (!hasBalloonMark && (rawDate.includes('🎈') || originalDates.some(d => String(d).includes('🎈')))) hasBalloonMark = true;
     if (!hasStarMark && (starRegex.test(rawDate) || originalDates.some(d => starRegex.test(String(d))))) hasStarMark = true;
@@ -220,9 +240,18 @@
           notes: '', 
           phone: x.phone,
           date: x.date || g.date,
-          hasBalloonMark: x.hasBalloonMark === true,
-          hasStarMark: x.hasStarMark === true,
-          hasReschedule: x.hasReschedule === true
+          // 保留所有原始標記字段
+          hasBalloonMark: x.hasBalloonMark,
+          hasStarMark: x.hasStarMark,
+          hasReschedule: x.hasReschedule,
+          // 保留其他可能需要的字段
+          age: x.age,
+          type: x.type,
+          time: x.time,
+          location: x.location,
+          option1: x.option1,
+          option2: x.option2,
+          option3: x.option3
         })) 
       });
     }
@@ -437,6 +466,14 @@
     const hasBalloon = coerceBool(stu.hasBalloonMark ?? stu.balloonMark ?? stu.has_balloon_mark ?? stu.hasBalloon ?? stu.balloon);
     const hasStar = coerceBool(stu.hasStarMark ?? stu.star ?? stu.has_star ?? stu.hasStar ?? stu.starMark);
     const hasReschedule = coerceBool(stu.hasReschedule ?? stu.reschedule ?? stu.has_reschedule ?? stu.rescheduleMark);
+    
+    // 調試日誌
+    console.log(`學生 ${stu.name} 的標記狀態:`, {
+      hasReschedule: stu.hasReschedule,
+      hasBalloonMark: stu.hasBalloonMark,
+      hasStarMark: stu.hasStarMark,
+      coerceResult: { hasReschedule, hasBalloon, hasStar }
+    });
     
     if (hasBalloon || hasStar || hasReschedule) {
       const marksWrap = el(`<span class="student-marks" style="margin-left:6px; display:inline-flex; gap:4px;"></span>`);
