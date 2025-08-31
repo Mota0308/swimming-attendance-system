@@ -453,33 +453,64 @@
       
       console.log('📋 准备同步的数据:', syncData);
       
-      // 调用后端API保存数据
-      const response = await fetch(`${databaseConnector.apiConfig.baseURL}/api/schedule/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Public-Key': 'ttdrcccy',
-          'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
-        },
-        body: JSON.stringify(syncData)
-      });
+      // 尝试多个API端点
+      const apiEndpoints = [
+        `${databaseConnector.apiConfig.baseURL}/api/schedule/sync`,
+        'http://localhost:3001/api/schedule/sync',
+        'https://swiming-production.up.railway.app/api/schedule/sync'
+      ];
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      let lastError = null;
+      
+      for (const endpoint of apiEndpoints) {
+        try {
+          console.log(`🔄 尝试同步到: ${endpoint}`);
+          
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Public-Key': 'ttdrcccy',
+              'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
+            },
+            body: JSON.stringify(syncData)
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+          
+          const result = await response.json();
+          
+          if (result.success) {
+            console.log('✅ 课程编排数据同步成功:', result);
+            return result;
+          } else {
+            throw new Error(result.message || '同步失败');
+          }
+        } catch (error) {
+          console.warn(`❌ 同步到 ${endpoint} 失败:`, error);
+          lastError = error;
+          continue; // 尝试下一个端点
+        }
       }
       
-      const result = await response.json();
-      
-      if (result.success) {
-        console.log('✅ 课程编排数据同步成功:', result);
-        return result;
-      } else {
-        throw new Error(result.message || '同步失败');
-      }
+      // 所有端点都失败了，抛出最后一个错误
+      throw lastError || new Error('所有API端点都不可用');
       
     } catch (error) {
       console.error('❌ 同步课程编排数据失败:', error);
+      
+      // 提供用户友好的错误信息
+      if (error.message.includes('404') || error.message.includes('Application not found')) {
+        throw new Error('Railway服务暂时不可用，请稍后重试或联系管理员');
+      } else if (error.message.includes('500')) {
+        throw new Error('服务器内部错误，请稍后重试');
+      } else if (error.message.includes('Network') || error.message.includes('fetch')) {
+        throw new Error('网络连接失败，请检查网络设置');
+      }
+      
       throw error;
     }
   }
