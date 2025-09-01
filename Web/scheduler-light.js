@@ -146,15 +146,15 @@
   // 創建學生卡片
   function createStudentCard(stu, slotId) {
     const card = el(`
-      <div class="student-card bg-white border rounded-md p-3 flex items-center justify-between shadow-sm" 
+      <div class="student-card student-card-style" 
            data-id="${stu.id}" data-slot="${slotId}">
-        <div class="flex items-center">
-          <span class="font-medium">${stu.name}</span>
-          ${stu.hasReschedule ? '<span title="補/調堂" style="margin-left: 4px; color: #ff6b6b; font-size: 14px; display: inline-block; vertical-align: middle;">🔁</span>' : ''}
-          <p class="ml-2 text-sm text-gray-600">${stu.phone ? `電話: ${stu.phone}` : ''}</p>
+        <div class="student-card-content">
+          <span class="student-name">${stu.name}</span>
+          ${stu.hasReschedule ? '<span title="補/調堂" class="reschedule-symbol">🔁</span>' : ''}
+          <p class="student-phone">${stu.phone ? `電話: ${stu.phone}` : ''}</p>
         </div>
-        <div class="flex gap-1">
-          <button class="text-gray-500 hover:text-red-500" title="刪除">🗑️</button>
+        <div class="student-card-actions">
+          <button class="delete-btn" title="刪除">🗑️</button>
         </div>
       </div>
     `);
@@ -182,21 +182,21 @@
 
     scheduleData.timeSlots.forEach(slot => {
       const slotElement = el(`
-        <div class="time-slot border rounded-lg overflow-hidden mb-4" data-slot-id="${slot.id}">
-          <div class="bg-gray-100 px-4 py-3 flex flex-wrap items-center justify-between">
-            <div class="flex items-center">
-              <span class="font-semibold">${slot.time}</span>
-              <span class="ml-3 text-sm px-2 py-0.5 bg-blue-500 bg-opacity-20 text-blue-500 rounded">${slot.type}</span>
+        <div class="time-slot time-slot-style" data-slot-id="${slot.id}">
+          <div class="time-slot-header">
+            <div class="time-slot-info">
+              <span class="time-slot-time">${slot.time}</span>
+              <span class="time-slot-type">${slot.type}</span>
             </div>
-            <div class="flex gap-2">
-              <button class="text-blue-600 hover:text-blue-800" title="編輯" onclick="editTimeSlot('${slot.id}')">✏️</button>
-              <button class="text-red-600 hover:text-red-800" title="刪除" onclick="deleteTimeSlot('${slot.id}')">🗑️</button>
+            <div class="time-slot-actions">
+              <button class="edit-btn" title="編輯" onclick="editTimeSlot('${slot.id}')">✏️</button>
+              <button class="delete-slot-btn" title="刪除" onclick="deleteTimeSlot('${slot.id}')">🗑️</button>
             </div>
           </div>
-          <div class="students-container p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          </div>
+          <div class="students-container p-4 students-grid">
         </div>
-      `);
+      </div>
+    `);
 
       const studentsContainer = slotElement.querySelector('.students-container');
       
@@ -216,16 +216,16 @@
   function makeDroppable(container, slotId) {
     container.addEventListener('dragover', (e) => {
       e.preventDefault();
-      container.classList.add('bg-blue-50');
+      container.classList.add('drag-over');
     });
 
     container.addEventListener('dragleave', () => {
-      container.classList.remove('bg-blue-50');
+      container.classList.remove('drag-over');
     });
 
     container.addEventListener('drop', (e) => {
       e.preventDefault();
-      container.classList.remove('bg-blue-50');
+      container.classList.remove('drag-over');
       
       if (dragging) {
         const student = dragging.student;
@@ -363,8 +363,8 @@
         const slot = scheduleData.timeSlots.find(s => s.id === slotId);
         if (slot) {
           slot.students.push(newStudent);
-          renderAll();
-          dialog.remove();
+        renderAll();
+        dialog.remove();
           toast('學生已新增');
         }
       }

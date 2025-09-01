@@ -953,3 +953,194 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ===== Scheduler Light 樣式 ===== */
+
+/* 學生卡片樣式 */
+.student-card-style {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    margin-bottom: 8px;
+}
+
+.student-card-content {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.student-name {
+    font-weight: 600;
+    color: #111827;
+    font-size: 14px;
+}
+
+.reschedule-symbol {
+    margin-left: 4px;
+    color: #ff6b6b;
+    font-size: 14px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.student-phone {
+    margin-left: 8px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.student-card-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.delete-btn {
+    background: none;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.delete-btn:hover {
+    color: #ef4444;
+    background: #fef2f2;
+}
+
+/* 時段樣式 */
+.time-slot-style {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    background: #ffffff;
+}
+
+.time-slot-header {
+    background: #f8fafc;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.time-slot-info {
+    display: flex;
+    align-items: center;
+}
+
+.time-slot-time {
+    font-weight: 600;
+    color: #111827;
+    font-size: 16px;
+}
+
+.time-slot-type {
+    margin-left: 12px;
+    font-size: 12px;
+    padding: 4px 8px;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+    border-radius: 4px;
+}
+
+.time-slot-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.edit-btn, .delete-slot-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.edit-btn {
+    color: #3b82f6;
+}
+
+.edit-btn:hover {
+    color: #1d4ed8;
+    background: #eff6ff;
+}
+
+.delete-slot-btn {
+    color: #ef4444;
+}
+
+.delete-slot-btn:hover {
+    color: #dc2626;
+    background: #fef2f2;
+}
+
+/* 拖放樣式 */
+.drag-over {
+    background: #eff6ff;
+    outline: 2px dashed #60a5fa;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    .student-card-style {
+        padding: 10px;
+        margin-bottom: 6px;
+    }
+    
+    .student-name {
+        font-size: 13px;
+    }
+    
+    .reschedule-symbol {
+        font-size: 13px;
+    }
+    
+    .student-phone {
+        font-size: 11px;
+    }
+    
+    .time-slot-header {
+        padding: 10px 12px;
+    }
+    
+    .time-slot-time {
+        font-size: 14px;
+    }
+    
+    .time-slot-type {
+        font-size: 11px;
+        padding: 3px 6px;
+    }
+    
+    .students-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+}
+
+@media (max-width: 480px) {
+    .student-card-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .student-phone {
+        margin-left: 0;
+    }
+    
+    .time-slot-actions {
+        gap: 4px;
+    }
+}
