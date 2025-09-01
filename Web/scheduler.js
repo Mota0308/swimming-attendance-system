@@ -466,28 +466,28 @@
           console.log(`🔄 尝试同步到: ${endpoint}`);
           
           const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-API-Public-Key': 'ttdrcccy',
-              'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
-            },
-            body: JSON.stringify(syncData)
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-          }
-          
-          const result = await response.json();
-          
-          if (result.success) {
-            console.log('✅ 课程编排数据同步成功:', result);
-            return result;
-          } else {
-            throw new Error(result.message || '同步失败');
-          }
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Public-Key': 'ttdrcccy',
+          'X-API-Private-Key': '2b207365-cbf0-4e42-a3bf-f932c84557c4'
+        },
+        body: JSON.stringify(syncData)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ 课程编排数据同步成功:', result);
+        return result;
+      } else {
+        throw new Error(result.message || '同步失败');
+      }
         } catch (error) {
           console.warn(`❌ 同步到 ${endpoint} 失败:`, error);
           lastError = error;

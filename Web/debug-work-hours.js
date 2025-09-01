@@ -117,6 +117,47 @@ async function debugWorkHoursData() {
             console.error('❌ 獲取教練帳號數據失敗:', error);
         }
         
+        console.log('🔄 步驟7: 直接查詢後端API');
+        try {
+            const apiBaseURL = window.databaseConnector?.apiConfig?.baseURL || window.location.origin;
+            const userType = localStorage.getItem('current_user_type') || 'coach';
+            
+            // 直接查詢工時API
+            const workHoursURL = `${apiBaseURL}/api/coach-work-hours?userType=${userType}&year=${year}&month=${month}`;
+            console.log('🔍 直接查詢工時API:', workHoursURL);
+            
+            const workHoursResponse = await fetch(workHoursURL, {
+                headers: window.databaseConnector.getStandardHeaders()
+            });
+            
+            if (workHoursResponse.ok) {
+                const workHoursData = await workHoursResponse.json();
+                console.log('✅ 直接查詢工時API成功:', workHoursData);
+                console.log('📊 工時記錄數量:', workHoursData.records ? workHoursData.records.length : 0);
+            } else {
+                console.error('❌ 直接查詢工時API失敗:', workHoursResponse.status, workHoursResponse.statusText);
+            }
+            
+            // 直接查詢更表API（對比）
+            const rosterURL = `${apiBaseURL}/api/coach-roster?userType=${userType}&year=${year}&month=${month}`;
+            console.log('🔍 直接查詢更表API:', rosterURL);
+            
+            const rosterResponse = await fetch(rosterURL, {
+                headers: window.databaseConnector.getStandardHeaders()
+            });
+            
+            if (rosterResponse.ok) {
+                const rosterData = await rosterResponse.json();
+                console.log('✅ 直接查詢更表API成功:', rosterData);
+                console.log('📊 更表記錄數量:', rosterData.records ? rosterData.records.length : 0);
+            } else {
+                console.error('❌ 直接查詢更表API失敗:', rosterResponse.status, rosterResponse.statusText);
+            }
+            
+        } catch (error) {
+            console.error('❌ 直接查詢API失敗:', error);
+        }
+        
     } catch (error) {
         console.error('❌ 調試失敗:', error);
     }
