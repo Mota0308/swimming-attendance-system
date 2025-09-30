@@ -2070,10 +2070,10 @@ async function renderAllCoachesRoster(targetYear = null, targetMonth = null) {
                 rosterByDay.set(day, arr);
             }
         });
-        // 直接渲染到容器（重用 generateRosterCalendar 的 DOM 結構要求）
-        // 暫時複用現有函數，將容器 id 切換為 rosterCalendar 所需結構
+        // 直接渲染到容器（使用可編輯版本以支持月份選擇）
+        // 將容器 id 切換為 rosterCalendar 所需結構
         container.id = 'rosterCalendar';
-        generateRosterCalendar(year, month, rosterByDay);
+        generateEditableRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
     } catch (e) {
         console.warn('載入教練更表失敗', e);
