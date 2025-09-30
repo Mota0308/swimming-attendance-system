@@ -2683,8 +2683,8 @@ async function renderCoachRosterReadonly(phone) {
             }
         });
         container.id = 'rosterCalendar';
-        // 使用可编辑版本以支持月份选择（即使是只读模式）
-        generateEditableRosterCalendar(year, month, rosterByDay);
+        // 使用只讀版本以支持月份選擇但內容只讀
+        generateReadonlyRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
     } catch (e) {
         console.warn('載入只讀更表失敗', e);
@@ -2829,3 +2829,116 @@ async function generateWorkHoursSummaryTable() {
 function refreshWorkHoursSummary() {
     generateWorkHoursSummaryTable();
 }
+
+// 生成只讀版本的更表日曆（支持月份選擇但內容只讀）
+async function generateReadonlyRosterCalendar(year, month, rosterByDay) {
+    const container = document.getElementById('rosterCalendar');
+    if (!container) return;
+
+    const weekdays = ['日','一','二','三','四','五','六'];
+    let html = '';
+    
+    // 生成月份选择选项
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    let monthOptions = '';
+    
+    // 生成過去12個月、當月、未來3個月的選項
+    for (let i = -12; i <= 3; i++) {
+        const date = new Date(currentYear, currentMonth - 1 + i, 1);
+        const optionYear = date.getFullYear();
+        const optionMonth = date.getMonth() + 1;
+        const selected = (optionYear === year && optionMonth === month) ? 'selected' : '';
+        monthOptions += `<option value="${optionYear}-${optionMonth.toString().padStart(2, '0')}" ${selected}>${optionYear}年${optionMonth}月</option>`;
+    }
+    
+    html += `<div class="cal-title-container" style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px; gap: 10px;">`;
+    html += `<label style="font-weight: bold; color: #333;">選擇月份：</label>`;
+    html += `<select id="rosterMonthSelector" onchange="onCoachRosterMonthChange()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">`;
+    html += monthOptions;
+    html += `</select>`;
+    html += `</div>`;
+    
+    // 生成只讀日曆內容
+    html += '<div class="cal grid-7">';
+    weekdays.forEach(w => { html += `<div class="cal-head">${w}</div>`; });
+    
+    const cal = new Date(year, month - 1, 1);
+    const firstDow = cal.getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let i=0;i<firstDow;i++) html += '<div class="cal-cell cal-empty"></div>';
+    
+    const today = new Date();
+    const isThisMonth = (today.getFullYear()===year && (today.getMonth()+1)===month);
+    const todayDay = isThisMonth ? today.getDate() : -1;
+    
+    // 小工具：時間正規化並排序
+    const normalizeTime = (t) => {
+        const s = String(t||'').trim();
+        const m = s.match(/^(\d{1,2})(:?)(\d{0,2})(?:\s*-\s*(\d{1,2})(:?)(\d{0,2}))?/);
+        if (!m) return { sortKey: 9999, label: s };
+        const h1 = Number(m[1]); const min1 = m[3] ? Number(m[3]) : 0;
+        const h2 = m[4] ? Number(m[4]) : null; const min2 = m[6] ? Number(m[6]) : 0;
+        const pad = (n)=> String(n).padStart(2,'0');
+        const left = `${pad(h1)}:${pad(min1)}`;
+        const right = (h2!==null) ? `${pad(h2)}:${pad(min2)}` : '';
+        return { sortKey: h1*60+min1, label: right? `${left}-${right}` : left };
+    };
+    
+    for (let d=1; d<=daysInMonth; d++) {
+        const raw = rosterByDay.get(d) || [];
+        // 排序並格式化
+        const slots = raw
+            .map(s=>({ timeObj: normalizeTime(s.time||s.timeRange||''), location: s.location||s.place||'' }))
+            .sort((a,b)=> a.timeObj.sortKey - b.timeObj.sortKey)
+            .map(x=>({ time: x.timeObj.label, location: x.location }));
+        const topClass = d===todayDay ? 'is-today' : '';
+        html += `<div class="cal-cell ${topClass} ${slots.length? 'has-hours':''}">`+
+            `<div class="cal-day">${d}</div>`+
+            `<div class="cal-roster">${slots.map(s => `<div class="slot"><div class="cal-roster-time">${s.time||''}</div><div class="cal-roster-loc">${s.location||''}</div></div>`).join('')}</div>`+
+        `</div>`;
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+    adjustCalendarSizing(container);
+}
+
+// 教練更表月份變更處理函數
+window.onCoachRosterMonthChange = async function() {
+    const selector = document.getElementById('rosterMonthSelector');
+    if (!selector || !selector.value) return;
+    
+    const [year, month] = selector.value.split('-');
+    const phone = localStorage.getItem('current_user_phone') || '';
+    
+    try {
+        showLoading(true);
+        const records = await databaseConnector.fetchRoster(parseInt(month), phone);
+        const container = document.getElementById('staffRosterCalendars');
+        if (!container) return;
+        
+        const rosterByDay = new Map();
+        (records || []).forEach(item => {
+            const dateStr = item?.date || item?.rosterDate || item?.day;
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            if (!Number.isNaN(d.getTime()) && d.getFullYear() === parseInt(year) && (d.getMonth()+1) === parseInt(month)) {
+                const day = d.getDate();
+                const time = item?.time || item?.timeRange || '';
+                const location = item?.location || item?.place || '';
+                const arr = rosterByDay.get(day) || [];
+                arr.push({ time, location });
+                rosterByDay.set(day, arr);
+            }
+        });
+        
+        container.id = 'rosterCalendar';
+        generateReadonlyRosterCalendar(parseInt(year), parseInt(month), rosterByDay);
+        container.id = 'staffRosterCalendars';
+    } catch (e) {
+        console.warn('載入教練更表失敗', e);
+    } finally {
+        showLoading(false);
+    }
+};
