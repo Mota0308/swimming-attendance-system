@@ -2032,11 +2032,25 @@ async function renderAllCoachesWorkHours() {
 }
 
 // 渲染所有教練更表
-async function renderAllCoachesRoster() {
+async function renderAllCoachesRoster(targetYear = null, targetMonth = null) {
     try {
         showLoading(true);
-        const year = new Date().getFullYear();
-        const month = new Date().getMonth() + 1;
+        
+        // 如果没有指定年月，尝试从选择器获取，否则使用当前年月
+        let year = targetYear;
+        let month = targetMonth;
+        
+        if (!year || !month) {
+            const rosterMonthSelector = document.getElementById('rosterMonthSelector');
+            if (rosterMonthSelector && rosterMonthSelector.value) {
+                const [selectedYear, selectedMonth] = rosterMonthSelector.value.split('-');
+                year = parseInt(selectedYear);
+                month = parseInt(selectedMonth);
+            } else {
+                year = new Date().getFullYear();
+                month = new Date().getMonth() + 1;
+            }
+        }
         // 空 phone + supervisor 代表全部
         const list = await databaseConnector.fetchRoster(month, '');
         const container = document.getElementById('staffRosterCalendars');
@@ -2101,11 +2115,25 @@ function onChangeStaffCoach() {
     }
 }
 
-async function renderCoachRoster(phone) {
+async function renderCoachRoster(phone, targetYear = null, targetMonth = null) {
     try {
         showLoading(true);
-        const year = new Date().getFullYear();
-        const month = new Date().getMonth() + 1;
+        
+        // 如果没有指定年月，尝试从选择器获取，否则使用当前年月
+        let year = targetYear;
+        let month = targetMonth;
+        
+        if (!year || !month) {
+            const rosterMonthSelector = document.getElementById('rosterMonthSelector');
+            if (rosterMonthSelector && rosterMonthSelector.value) {
+                const [selectedYear, selectedMonth] = rosterMonthSelector.value.split('-');
+                year = parseInt(selectedYear);
+                month = parseInt(selectedMonth);
+            } else {
+                year = new Date().getFullYear();
+                month = new Date().getMonth() + 1;
+            }
+        }
         const records = await databaseConnector.fetchRoster(month, phone);
         const container = document.getElementById('staffRosterCalendars');
         if (!container) return;
@@ -2159,7 +2187,27 @@ async function generateEditableRosterCalendar(year, month, rosterByDay) {
 
     const weekdays = ['日','一','二','三','四','五','六'];
     let html = '';
-    html += `<div class="cal-title">${year} 年 ${month} 月</div>`;
+    
+    // 生成月份选择选项
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    let monthOptions = '';
+    
+    // 生成過去12個月、當月、未來3個月的選項
+    for (let i = -12; i <= 3; i++) {
+        const date = new Date(currentYear, currentMonth - 1 + i, 1);
+        const optionYear = date.getFullYear();
+        const optionMonth = date.getMonth() + 1;
+        const selected = (optionYear === year && optionMonth === month) ? 'selected' : '';
+        monthOptions += `<option value="${optionYear}-${optionMonth.toString().padStart(2, '0')}" ${selected}>${optionYear}年${optionMonth}月</option>`;
+    }
+    
+    html += `<div class="cal-title-container" style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px; gap: 10px;">`;
+    html += `<label style="font-weight: bold; color: #333;">選擇月份：</label>`;
+    html += `<select id="rosterMonthSelector" onchange="onRosterMonthChange()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">`;
+    html += monthOptions;
+    html += `</select>`;
+    html += `</div>`;
     html += '<div class="cal grid-7">';
     weekdays.forEach(w => { html += `<div class=\"cal-head\">${w}</div>`; });
 
@@ -2611,5 +2659,38 @@ async function renderCoachRosterReadonly(phone) {
         console.warn('載入只讀更表失敗', e);
     } finally {
         showLoading(false);
+    }
+}
+
+// 处理更表月份变更
+window.onRosterMonthChange = function() {
+    const rosterMonthSelector = document.getElementById('rosterMonthSelector');
+    if (!rosterMonthSelector || !rosterMonthSelector.value) return;
+    
+    const [year, month] = rosterMonthSelector.value.split('-');
+    const numYear = parseInt(year);
+    const numMonth = parseInt(month);
+    
+    console.log('📅 更表月份变更:', { year: numYear, month: numMonth });
+    
+    // 重新加载选定月份的数据
+    const userType = localStorage.getItem('current_user_type');
+    const staffCoachSelect = document.getElementById('staffCoachSelect');
+    const selectedCoachPhone = staffCoachSelect ? staffCoachSelect.value : '';
+    
+    if (userType === 'supervisor') {
+        if (selectedCoachPhone) {
+            // 主管模式：重新加载选定教练的更表
+            renderCoachRoster(selectedCoachPhone, numYear, numMonth);
+        } else {
+            // 主管模式：重新加载所有教练的更表
+            renderAllCoachesRoster(numYear, numMonth);
+        }
+    } else {
+        // 教练模式：重新加载个人更表
+        const phone = localStorage.getItem('current_user_phone');
+        if (phone) {
+            renderCoachRoster(phone, numYear, numMonth);
+        }
     }
 }
