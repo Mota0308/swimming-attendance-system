@@ -1144,3 +1144,105 @@ body {
         gap: 4px;
     }
 }
+
+/* 教練工時汇总表格样式 */
+.work-hours-summary-section {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.work-hours-summary-section h4 {
+    margin: 0 0 15px 0;
+    color: #1f2937;
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.work-hours-summary-section h4 i {
+    color: #3b82f6;
+}
+
+.summary-table-container {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.work-hours-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    font-size: 14px;
+}
+
+.work-hours-summary-table thead {
+    background: #f9fafb;
+}
+
+.work-hours-summary-table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.work-hours-summary-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #6b7280;
+}
+
+.work-hours-summary-table tbody tr:hover {
+    background: #f9fafb;
+}
+
+.work-hours-summary-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.loading-message {
+    text-align: center;
+    padding: 20px;
+    color: #6b7280;
+    font-style: italic;
+}
+
+.total-hours {
+    font-weight: 600;
+    color: #059669;
+}
+
+.coach-name {
+    font-weight: 500;
+    color: #1f2937;
+}
+
+.month-label {
+    font-weight: 500;
+    color: #4b5563;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .work-hours-summary-section {
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .work-hours-summary-table th,
+    .work-hours-summary-table td {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    
+    .work-hours-summary-section h4 {
+        font-size: 15px;
+    }
+}

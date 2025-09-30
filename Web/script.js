@@ -2366,6 +2366,9 @@ function showStaffWorkHours() {
         initSupervisorWorkFilters();
         refreshSupervisorWorkHours();
     }
+    
+    // 生成工时汇总表格
+    generateWorkHoursSummaryTable();
 }
 
 async function initSupervisorWorkFilters() {
@@ -2397,6 +2400,9 @@ function refreshCurrentWorkHours() {
     } else {
         refreshSupervisorWorkHours();
     }
+    
+    // 同时刷新工时汇总表格
+    generateWorkHoursSummaryTable();
 }
 
 async function refreshSupervisorWorkHours() {
@@ -2698,4 +2704,108 @@ window.onRosterMonthChange = function() {
             renderCoachRoster(phone, numYear, numMonth);
         }
     }
+}
+
+// 生成教练工时汇总表格
+async function generateWorkHoursSummaryTable() {
+    try {
+        const tbody = document.getElementById('workHoursSummaryBody');
+        if (!tbody) return;
+        
+        // 显示加载状态
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="3" class="loading-message">
+                    <i class="fas fa-spinner fa-spin"></i> 載入工時數據中...
+                </td>
+            </tr>
+        `;
+        
+        // 获取当前选择的月份
+        const monthSelector = document.getElementById('coachWorkMonth');
+        const currentMonth = monthSelector ? parseInt(monthSelector.value) : new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        
+        // 获取所有教练的工时数据
+        const workHoursData = await databaseConnector.fetchWorkHours(currentMonth, ''); // 空字符串表示获取所有教练
+        
+        if (!workHoursData || !Array.isArray(workHoursData)) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="loading-message">
+                        <i class="fas fa-exclamation-circle"></i> 暂无工时数据
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        // 按教练分组并计算总工时
+        const coachSummary = new Map();
+        
+        workHoursData.forEach(record => {
+            const phone = record.phone || record.coachPhone || '';
+            const coachName = record.name || record.studentName || record.coachName || `教练_${phone}`;
+            const hours = parseFloat(record.hours || record.workHours || 0);
+            
+            if (!coachSummary.has(phone)) {
+                coachSummary.set(phone, {
+                    name: coachName,
+                    totalHours: 0
+                });
+            }
+            
+            coachSummary.get(phone).totalHours += hours;
+        });
+        
+        // 生成表格行
+        let tableRows = '';
+        const monthLabel = `${currentYear}年${currentMonth}月`;
+        
+        if (coachSummary.size === 0) {
+            tableRows = `
+                <tr>
+                    <td colspan="3" class="loading-message">
+                        <i class="fas fa-info-circle"></i> 本月暂无工时记录
+                    </td>
+                </tr>
+            `;
+        } else {
+            // 按总工时降序排序
+            const sortedCoaches = Array.from(coachSummary.entries()).sort((a, b) => b[1].totalHours - a[1].totalHours);
+            
+            sortedCoaches.forEach(([phone, data]) => {
+                const formattedHours = data.totalHours > 0 ? data.totalHours.toFixed(1) : '0.0';
+                tableRows += `
+                    <tr>
+                        <td class="month-label">${monthLabel}</td>
+                        <td class="coach-name">${data.name}</td>
+                        <td class="total-hours">${formattedHours}小時</td>
+                    </tr>
+                `;
+            });
+        }
+        
+        tbody.innerHTML = tableRows;
+        
+        console.log('✅ 工时汇总表格生成完成', { month: currentMonth, coachCount: coachSummary.size });
+        
+    } catch (error) {
+        console.error('生成工时汇总表格失败:', error);
+        const tbody = document.getElementById('workHoursSummaryBody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="loading-message">
+                        <i class="fas fa-exclamation-triangle"></i> 载入失败，请重试
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+// 刷新工时汇总表格
+function refreshWorkHoursSummary() {
+    generateWorkHoursSummaryTable();
 }

@@ -316,6 +316,29 @@
                     </button>
                 </div>
 
+                <!-- 教練工時汇总表格 -->
+                <div class="work-hours-summary-section">
+                    <h4><i class="fas fa-table"></i> 教練工時汇总</h4>
+                    <div class="summary-table-container">
+                        <table id="workHoursSummaryTable" class="work-hours-summary-table">
+                            <thead>
+                                <tr>
+                                    <th>月份</th>
+                                    <th>教練名稱</th>
+                                    <th>總工時</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workHoursSummaryBody">
+                                <tr>
+                                    <td colspan="3" class="loading-message">
+                                        <i class="fas fa-spinner fa-spin"></i> 載入中...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div id="staffWorkHoursCalendars" class="work-hours-calendar"></div>
             </div>
 
