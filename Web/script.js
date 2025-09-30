@@ -40,6 +40,26 @@ document.addEventListener('DOMContentLoaded', function() {
             populateLocationSelects();
             console.log('✅ UI已更新，地点数量:', locations.length, '泳会数量:', clubs.length);
         });
+        
+        // 监听主管数据预加载完成事件
+        document.addEventListener('supervisorDataReady', function(event) {
+            console.log('🎉 主管数据预加载完成:', event.detail);
+            const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
+            
+            if (userType === 'supervisor') {
+                // 预初始化教练更表，确保月份下拉选项可用
+                console.log('🔧 预初始化教练更表月份下拉选项...');
+                
+                // 如果当前在教练更表页面，立即刷新以显示下拉选项
+                const staffRosterSection = document.getElementById('staffRosterSection');
+                if (staffRosterSection && !staffRosterSection.classList.contains('hidden')) {
+                    console.log('🔄 当前在教练更表页面，立即刷新...');
+                    setTimeout(() => {
+                        onChangeStaffCoach();
+                    }, 100);
+                }
+            }
+        });
     });
     
     // 如果数据库连接器已经可用，立即初始化
