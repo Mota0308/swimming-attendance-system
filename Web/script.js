@@ -1829,7 +1829,11 @@ async function loadRosterData() {
 				rosterByDay.set(day, arr);
 			}
 		});
-		generateRosterCalendar(year, month, rosterByDay);
+		// 使用可编辑版本以支持月份选择
+		const container = document.getElementById('rosterCalendar');
+		if (container) {
+			generateEditableRosterCalendar(year, month, rosterByDay);
+		}
 	} catch (error) {
 		console.error('加载更表数据失败:', error);
 		alert('加载数据失败');
@@ -2653,7 +2657,8 @@ async function renderCoachRosterReadonly(phone) {
             }
         });
         container.id = 'rosterCalendar';
-        generateRosterCalendar(year, month, rosterByDay);
+        // 使用可编辑版本以支持月份选择（即使是只读模式）
+        generateEditableRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
     } catch (e) {
         console.warn('載入只讀更表失敗', e);
