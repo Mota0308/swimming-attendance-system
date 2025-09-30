@@ -560,6 +560,7 @@ ipcMain.handle('create-coach', async (event, { name, phone, password }) => {
             password: password,
             location: '',
             club: '',
+            type: 'staff',
             createdAt: new Date()
         };
         
