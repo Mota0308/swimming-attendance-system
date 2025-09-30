@@ -4751,8 +4751,8 @@ function initializeMonthSelector() {
     
     monthSelect.innerHTML = '<option value="">選擇月份</option>';
     
-    // 生成過去4個月、當月、未來4個月的選項
-    for (let i = -4; i <= 4; i++) {
+    // 生成過去12個月、當月、未來3個月的選項（与日历选择器保持一致）
+    for (let i = -12; i <= 3; i++) {
         const date = new Date(currentYear, currentMonth - 1 + i, 1);
         const year = date.getFullYear();
         const month = date.getMonth() + 1;
@@ -4975,7 +4975,31 @@ function renderCoachCalendar(workHours, year, month) {
     const startDate = new Date(firstDay);
     startDate.setDate(startDate.getDate() - firstDay.getDay());
     
+    // 生成月份选择选项
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    let monthOptions = '';
+    
+    // 生成過去12個月、當月、未來3個月的選項
+    for (let i = -12; i <= 3; i++) {
+        const date = new Date(currentYear, currentMonth - 1 + i, 1);
+        const optionYear = date.getFullYear();
+        const optionMonth = date.getMonth() + 1;
+        const selected = (optionYear === year && optionMonth === month) ? 'selected' : '';
+        monthOptions += `<option value="${optionYear}-${optionMonth.toString().padStart(2, '0')}" ${selected}>${optionYear}年${optionMonth}月</option>`;
+    }
+    
     let calendarHTML = `
+        <div style="margin-bottom: 15px; text-align: center;">
+            <label style="font-weight: bold; color: #333; margin-right: 10px;">選擇教練：</label>
+            <select id="calendarCoachSelector" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; margin-right: 20px; font-size: 14px;">
+                <option value="">請選擇教練</option>
+            </select>
+            <label style="font-weight: bold; color: #333; margin-right: 10px;">選擇月份：</label>
+            <select id="calendarMonthSelector" onchange="onCalendarMonthChange()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                ${monthOptions}
+            </select>
+        </div>
         <div style="display: flex; gap: 20px;">
             <div style="flex: 1;">
                 <div class="coach-calendar">
@@ -5063,6 +5087,9 @@ function renderCoachCalendar(workHours, year, month) {
     
     calendarHTML += '</div>';
     calendarContainer.innerHTML = calendarHTML;
+    
+    // 初始化日历中的教练选择器
+    initializeCalendarCoachSelector();
 }
 
 // 驗證數字輸入（只允許小數或整數）
@@ -6502,4 +6529,58 @@ window.updateTimeFormat = function(index) {
     document.getElementById(`addStudentTime${index}`).value = finalFormat;
 }
 
+// 初始化日历中的教练选择器
+async function initializeCalendarCoachSelector() {
+    try {
+        const coaches = await ipcRenderer.invoke('fetch-all-coaches');
+        const calendarCoachSelector = document.getElementById('calendarCoachSelector');
+        const mainCoachSelector = document.getElementById('coachSelector');
+        
+        if (calendarCoachSelector) {
+            calendarCoachSelector.innerHTML = '<option value="">請選擇教練</option>';
+            
+            coaches.forEach(coach => {
+                const option = document.createElement('option');
+                option.value = coach.phone;
+                option.textContent = coach.studentName || coach.name;
+                
+                // 如果主选择器有选中的教练，同步选中状态
+                if (mainCoachSelector && mainCoachSelector.value === coach.phone) {
+                    option.selected = true;
+                }
+                
+                calendarCoachSelector.appendChild(option);
+            });
+            
+            // 添加change事件监听器
+            calendarCoachSelector.addEventListener('change', function() {
+                // 同步主选择器
+                if (mainCoachSelector) {
+                    mainCoachSelector.value = this.value;
+                    // 触发主选择器的change事件
+                    mainCoachSelector.dispatchEvent(new Event('change'));
+                }
+            });
+        }
+    } catch (error) {
+        console.error('載入日历教練列表失敗:', error);
+    }
+}
+
+// 处理日历月份变更
+window.onCalendarMonthChange = function() {
+    const calendarMonthSelector = document.getElementById('calendarMonthSelector');
+    const mainMonthSelector = document.getElementById('coachMonthSelect');
+    const calendarCoachSelector = document.getElementById('calendarCoachSelector');
+    
+    if (calendarMonthSelector && mainMonthSelector) {
+        // 同步主月份选择器
+        mainMonthSelector.value = calendarMonthSelector.value;
+        
+        // 如果有选中的教练，自动加载工时
+        if (calendarCoachSelector && calendarCoachSelector.value && calendarMonthSelector.value) {
+            loadCoachWorkHours();
+        }
+    }
+}
 
