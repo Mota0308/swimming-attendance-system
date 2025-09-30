@@ -13,9 +13,9 @@
     <!-- 預載入關鍵資源 -->
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" as="style">
     <link rel="preload" href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" as="style">
-    <link rel="preload" href="styles.css?v=5" as="style">
-    <link rel="preload" href="database-connector.js?v=25" as="script">
-    <link rel="preload" href="script.js?v=27" as="script">
+    <link rel="preload" href="styles.css?v=6" as="style">
+    <link rel="preload" href="database-connector.js?v=26" as="script">
+    <link rel="preload" href="script.js?v=28" as="script">
     
     <!-- DNS預解析 -->
     <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
@@ -42,7 +42,7 @@
     </style>
     
     <!-- 非關鍵CSS異步載入 -->
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=6">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -413,22 +413,47 @@
 
     <!-- 關鍵腳本優先載入 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-    <script src="security.js?v=3" defer></script>
-    <script src="database-connector.js?v=25" defer></script>
+    <script src="security.js?v=4" defer></script>
+    <script src="database-connector.js?v=26" defer></script>
     
     <!-- 主要腳本使用defer，避免阻塞渲染 -->
-    <script src="script.js?v=27" defer></script>
+    <script src="script.js?v=28" defer></script>
     
     <!-- 非關鍵腳本異步載入 -->
-    <script src="scheduler-light.js?v=3" async></script>
-    <script src="attendance-board-light.js?v=2" async></script>
+    <script src="scheduler-light.js?v=4" async></script>
+    <script src="attendance-board-light.js?v=3" async></script>
     <script src="test-hasReschedule.js" defer></script>
     <script src="debug-hasReschedule-flow.js" defer></script>
     <script src="debug-roster-data.js" defer></script>
     <script src="debug-work-hours.js" defer></script>
     
-    <!-- 字體載入優化 -->
+    <!-- 緩存清除和字體載入優化 -->
     <script>
+      // 強制清除緩存並重新加載關鍵腳本
+      function forceClearCache() {
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (let name of names) caches.delete(name);
+          });
+        }
+        
+        // 清除 localStorage 中的緩存標記
+        if (localStorage.getItem('cache_version') !== '28') {
+          localStorage.clear();
+          localStorage.setItem('cache_version', '28');
+          
+          // 如果不是首次加載，強制刷新
+          if (sessionStorage.getItem('page_loaded')) {
+            window.location.reload(true);
+            return;
+          }
+          sessionStorage.setItem('page_loaded', 'true');
+        }
+      }
+      
+      // 立即執行緩存清除
+      forceClearCache();
+      
       // 字體載入優化
       if ('fonts' in document) {
         document.fonts.ready.then(() => {
