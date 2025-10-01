@@ -1501,8 +1501,14 @@ async function generateDailyLocationStats() {
                 }
                 const coachData = coachDailyData.get(coachName);
                 
-                // 設置地點（保持兼容性）
-                coachData.dailyLocations.set(day, locationInfo.location);
+                // 設置地點（保持兼容性） - 修改為支持多時段
+                if (!coachData.dailyLocations.has(day)) {
+                    coachData.dailyLocations.set(day, []);
+                }
+                const dayLocations = coachData.dailyLocations.get(day);
+                if (!dayLocations.includes(locationInfo.location)) {
+                    dayLocations.push(locationInfo.location);
+                }
                 
                 // 設置詳細時段安排
                 if (!coachData.dailySchedule.has(day)) {
@@ -1699,30 +1705,35 @@ function showDailyLocationStats(statsArray) {
              });
          } else if (coach.dailyLocations) {
              // 兼容舊格式：如果沒有詳細時段數據，使用dailyLocations
-             coach.dailyLocations.forEach((location, day) => {
-                 if (location) {
-                     allLocations.add(location);
-                     
-                     // 初始化地點數據結構
-                     if (!locationCoachSchedule.has(location)) {
-                         locationCoachSchedule.set(location, new Map());
+             coach.dailyLocations.forEach((locationData, day) => {
+                 // 處理新的數組格式或舊的字符串格式
+                 const locations = Array.isArray(locationData) ? locationData : [locationData];
+                 
+                 locations.forEach(location => {
+                     if (location) {
+                         allLocations.add(location);
+                         
+                         // 初始化地點數據結構
+                         if (!locationCoachSchedule.has(location)) {
+                             locationCoachSchedule.set(location, new Map());
+                         }
+                         const locationSchedule = locationCoachSchedule.get(location);
+                         
+                         if (!locationSchedule.has(day)) {
+                             locationSchedule.set(day, {
+                                 morning: [],
+                                 afternoon: [],
+                                 evening: []
+                             });
+                         }
+                         
+                         // 默認放到上午時段
+                         const dayScheduleForLocation = locationSchedule.get(day);
+                         if (!dayScheduleForLocation.morning.includes(coachName)) {
+                             dayScheduleForLocation.morning.push(coachName);
+                         }
                      }
-                     const locationSchedule = locationCoachSchedule.get(location);
-                     
-                     if (!locationSchedule.has(day)) {
-                         locationSchedule.set(day, {
-                             morning: [],
-                             afternoon: [],
-                             evening: []
-                         });
-                     }
-                     
-                     // 默認放到上午時段
-                     const dayScheduleForLocation = locationSchedule.get(day);
-                     if (!dayScheduleForLocation.morning.includes(coachName)) {
-                         dayScheduleForLocation.morning.push(coachName);
-                     }
-                 }
+                 });
              });
          }
      });
