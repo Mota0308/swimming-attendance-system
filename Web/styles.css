@@ -51,7 +51,7 @@ body {
 /* calendar grid and cells (light) */
 .cal.grid-7 { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; width: 100%; }
 .cal-head { background: #E3F2FD; color: #1976D2; font-weight: 700; text-align: center; padding: 10px 0; border: 1px solid #cfe8ff; border-radius: 8px; }
-.cal-cell { background: #ffffff; border: 1px solid #eeeeee; padding: 10px; border-radius: 8px; min-height: 80px; display: flex; flex-direction: column; justify-content: flex-start; }
+.cal-cell { background: #ffffff; border: 1px solid #eeeeee; padding: 10px; border-radius: 8px; min-height: 160px; display: flex; flex-direction: column; justify-content: flex-start; }
 .cal-cell.is-today { outline: 2px solid #FFCA28; }
 .cal-cell.has-hours .cal-day { color: #2E7D32; }
 .cal-day { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
@@ -394,7 +394,7 @@ body {
     font-size: 11px;
 }
 
-@media (min-width: 1200px) { .cal-cell { min-height: 100px; } } 
+@media (min-width: 1200px) { .cal-cell { min-height: 160px; } } 
 
 @media (max-width: 768px) {
   .top-nav { flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -409,7 +409,7 @@ body {
   .work-hours-calendar, .roster-calendar { overflow-x: auto; }
   .work-hours-calendar .cal.grid-7, .roster-calendar .cal.grid-7 { min-width: 660px; gap: 6px; }
   .cal-head { font-size: 12px; padding: 6px 0; white-space: nowrap; }
-  .cal-cell { min-height: 64px; padding: 8px; }
+  .cal-cell { min-height: 160px; padding: 8px; }
   .cal-day { font-size: 12px; }
   .cal-hours { font-size: 12px; }
 } 
