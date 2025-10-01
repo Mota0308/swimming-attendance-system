@@ -342,10 +342,10 @@
                 <div id="staffWorkHoursCalendars" class="work-hours-calendar"></div>
             </div>
 
-            <!-- 教練更表（主管查看全部） -->
+            <!-- 教練更表 -->
             <div id="staffRosterSection" class="feature-interface hidden">
                 <div class="interface-header">
-                    <h3><i class="fas fa-user-calendar"></i> 教練更表</h3>
+                    <h3 id="rosterSectionTitle"><i class="fas fa-user-calendar"></i> 教練更表</h3>
                     <button class="back-btn" onclick="hideAllFeatures()">
                         <i class="fas fa-arrow-left"></i> 返回
                     </button>
@@ -417,7 +417,7 @@
     <script src="database-connector.js?v=26" defer></script>
     
     <!-- 主要腳本使用defer，避免阻塞渲染 -->
-    <script src="script.js?v=30" defer></script>
+    <script src="script.js?v=31" defer></script>
     
     <!-- 非關鍵腳本異步載入 -->
     <script src="scheduler-light.js?v=4" async></script>

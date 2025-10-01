@@ -1949,10 +1949,17 @@ async function loadRosterData() {
 				rosterByDay.set(day, arr);
 			}
 		});
-		// 使用可编辑版本以支持月份选择
+		// 根据用户类型选择合适的日历版本
 		const container = document.getElementById('rosterCalendar');
 		if (container) {
-			generateEditableRosterCalendar(year, month, rosterByDay);
+			const userType = localStorage.getItem('current_user_type') || 'coach';
+			if (userType === 'supervisor') {
+				// 主管：使用可编辑版本
+				generateEditableRosterCalendar(year, month, rosterByDay);
+			} else {
+				// 教练：使用只读版本
+				generateReadonlyRosterCalendar(year, month, rosterByDay);
+			}
 		}
 	} catch (error) {
 		console.error('加载更表数据失败:', error);
@@ -2756,6 +2763,12 @@ function showStaffRoster() {
         const saveBtn = document.querySelector('#staffRosterSection .export-btn');
         if (saveBtn) saveBtn.style.display = 'none';
         
+        // 教練模式：更新界面標題
+        const sectionTitle = document.getElementById('rosterSectionTitle');
+        if (sectionTitle) {
+            sectionTitle.innerHTML = '<i class="fas fa-user-calendar"></i> 我的更表（只讀）';
+        }
+        
         // 教練模式：統計功能僅顯示自己的數據
         const statsSection = document.querySelector('.roster-statistics-section');
         if (statsSection) {
@@ -2773,6 +2786,12 @@ function showStaffRoster() {
         populateCoachSelect();
         // 若已選擇教練則載入該教練可編輯界面
         onChangeStaffCoach();
+        
+        // 主管模式：更新界面標題
+        const sectionTitle = document.getElementById('rosterSectionTitle');
+        if (sectionTitle) {
+            sectionTitle.innerHTML = '<i class="fas fa-user-calendar"></i> 教練更表管理';
+        }
         
         // 主管模式：統計功能顯示所有教練數據
         const statsSection = document.querySelector('.roster-statistics-section');
