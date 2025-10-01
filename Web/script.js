@@ -1393,10 +1393,19 @@ function adjustCalendarSizing(containerEl) {
 		if (!grid) return;
 		const cells = grid.querySelectorAll('.cal-cell');
 		if (!cells.length) return;
-		// 使用第一個單元格的實際寬度作為高度
-		const firstCell = cells[0];
-		const cellWidth = firstCell.getBoundingClientRect().width;
-		cells.forEach(c => { c.style.height = `${Math.max(60, Math.round(cellWidth))}px`; });
+		
+		// 檢查是否為更表日曆容器
+		const isRosterCalendar = containerEl.id === 'rosterCalendar' || containerEl.querySelector('#rosterCalendar');
+		
+		if (isRosterCalendar) {
+			// 更表日曆使用固定高度160px，確保三個時段內容完整顯示
+			cells.forEach(c => { c.style.height = '160px'; });
+		} else {
+			// 其他日曆使用原有的寬度=高度邏輯
+			const firstCell = cells[0];
+			const cellWidth = firstCell.getBoundingClientRect().width;
+			cells.forEach(c => { c.style.height = `${Math.max(60, Math.round(cellWidth))}px`; });
+		}
 	} catch (_) {}
 }
 
