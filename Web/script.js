@@ -2404,9 +2404,9 @@ async function generateEditableRosterCalendar(year, month, rosterByDay) {
             
             // 上午时段
             `<div class=\"time-slot\" style=\"margin-bottom: 4px;\">`+
-                `<div style=\"font-size: 11px; color: #666; margin-bottom: 2px;\">上午</div>`+
-                `<input class=\"roster-time-morning\" data-day=\"${day}\" data-period=\"morning\" type=\"text\" placeholder=\"9:00-12:00\" value=\"${morningTime}\" style=\"width:100%;height:24px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:11px;margin-bottom:2px;\"/>`+
-                `<select class=\"roster-location-morning\" data-day=\"${day}\" data-period=\"morning\" style=\"width:100%;height:24px;border:1px solid #d1d5db;border-radius:3px;font-size:11px;\">`+
+                `<div style=\"font-size: 9px; color: #666; margin-bottom: 2px;\">上午</div>`+
+                `<input class=\"roster-time-morning\" data-day=\"${day}\" data-period=\"morning\" type=\"text\" placeholder=\"9:00-12:00\" value=\"${morningTime}\" style=\"width:100%;height:20px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;margin-bottom:2px;\"/>`+
+                `<select class=\"roster-location-morning\" data-day=\"${day}\" data-period=\"morning\" style=\"width:100%;height:20px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;\">`+
                     `<option value=\"\">選擇地點</option>`+
                     `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===morningLoc?'selected':''}>${loc}</option>`).join('')}`+
                 `</select>`+
@@ -2414,9 +2414,9 @@ async function generateEditableRosterCalendar(year, month, rosterByDay) {
             
             // 下午时段
             `<div class=\"time-slot\" style=\"margin-bottom: 4px;\">`+
-                `<div style=\"font-size: 11px; color: #666; margin-bottom: 2px;\">下午</div>`+
-                `<input class=\"roster-time-afternoon\" data-day=\"${day}\" data-period=\"afternoon\" type=\"text\" placeholder=\"1:00-5:00\" value=\"${afternoonTime}\" style=\"width:100%;height:24px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:11px;margin-bottom:2px;\"/>`+
-                `<select class=\"roster-location-afternoon\" data-day=\"${day}\" data-period=\"afternoon\" style=\"width:100%;height:24px;border:1px solid #d1d5db;border-radius:3px;font-size:11px;\">`+
+                `<div style=\"font-size: 9px; color: #666; margin-bottom: 2px;\">下午</div>`+
+                `<input class=\"roster-time-afternoon\" data-day=\"${day}\" data-period=\"afternoon\" type=\"text\" placeholder=\"1:00-5:00\" value=\"${afternoonTime}\" style=\"width:100%;height:20px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;margin-bottom:2px;\"/>`+
+                `<select class=\"roster-location-afternoon\" data-day=\"${day}\" data-period=\"afternoon\" style=\"width:100%;height:20px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;\">`+
                     `<option value=\"\">選擇地點</option>`+
                     `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===afternoonLoc?'selected':''}>${loc}</option>`).join('')}`+
                 `</select>`+
@@ -2424,9 +2424,9 @@ async function generateEditableRosterCalendar(year, month, rosterByDay) {
             
             // 晚上时段
             `<div class=\"time-slot\">`+
-                `<div style=\"font-size: 11px; color: #666; margin-bottom: 2px;\">晚上</div>`+
-                `<input class=\"roster-time-evening\" data-day=\"${day}\" data-period=\"evening\" type=\"text\" placeholder=\"6:00-8:00\" value=\"${eveningTime}\" style=\"width:100%;height:24px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:11px;margin-bottom:2px;\"/>`+
-                `<select class=\"roster-location-evening\" data-day=\"${day}\" data-period=\"evening\" style=\"width:100%;height:24px;border:1px solid #d1d5db;border-radius:3px;font-size:11px;\">`+
+                `<div style=\"font-size: 9px; color: #666; margin-bottom: 2px;\">晚上</div>`+
+                `<input class=\"roster-time-evening\" data-day=\"${day}\" data-period=\"evening\" type=\"text\" placeholder=\"6:00-8:00\" value=\"${eveningTime}\" style=\"width:100%;height:20px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;margin-bottom:2px;\"/>`+
+                `<select class=\"roster-location-evening\" data-day=\"${day}\" data-period=\"evening\" style=\"width:100%;height:20px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;\">`+
                     `<option value=\"\">選擇地點</option>`+
                     `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===eveningLoc?'selected':''}>${loc}</option>`).join('')}`+
                 `</select>`+
@@ -3093,23 +3093,23 @@ async function generateReadonlyRosterCalendar(year, month, rosterByDay) {
             
             // 上午时段（只讀顯示）
             `<div class="time-slot" style="margin-bottom: 4px;">`+
-                `<div style="font-size: 11px; color: #666; margin-bottom: 2px;">上午</div>`+
-                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${morningTime || ''}</div>`+
-                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;background-color:#f9fafb;color:#374151;">${morningLoc || ''}</div>`+
+                `<div style="font-size: 9px; color: #666; margin-bottom: 2px;">上午</div>`+
+                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${morningTime || ''}</div>`+
+                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;background-color:#f9fafb;color:#374151;">${morningLoc || ''}</div>`+
             `</div>`+
             
             // 下午时段（只讀顯示）
             `<div class="time-slot" style="margin-bottom: 4px;">`+
-                `<div style="font-size: 11px; color: #666; margin-bottom: 2px;">下午</div>`+
-                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${afternoonTime || ''}</div>`+
-                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;background-color:#f9fafb;color:#374151;">${afternoonLoc || ''}</div>`+
+                `<div style="font-size: 9px; color: #666; margin-bottom: 2px;">下午</div>`+
+                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${afternoonTime || ''}</div>`+
+                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;background-color:#f9fafb;color:#374151;">${afternoonLoc || ''}</div>`+
             `</div>`+
             
             // 晚上时段（只讀顯示）
             `<div class="time-slot">`+
-                `<div style="font-size: 11px; color: #666; margin-bottom: 2px;">晚上</div>`+
-                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${eveningTime || ''}</div>`+
-                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;background-color:#f9fafb;color:#374151;">${eveningLoc || ''}</div>`+
+                `<div style="font-size: 9px; color: #666; margin-bottom: 2px;">晚上</div>`+
+                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${eveningTime || ''}</div>`+
+                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;background-color:#f9fafb;color:#374151;">${eveningLoc || ''}</div>`+
             `</div>`+
         `</div>`;
     }
