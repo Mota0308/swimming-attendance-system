@@ -2399,7 +2399,7 @@ async function generateEditableRosterCalendar(year, month, rosterByDay) {
             }
         });
         
-        html += `<div class=\"cal-cell\" style=\"height: auto; min-height: 120px;\">`+
+        html += `<div class=\"cal-cell\" style=\"height: auto; min-height: 160px;\">`+
             `<div class=\"cal-day\" style=\"text-align: center; font-weight: bold; margin-bottom: 8px;\">${day}</div>`+
             
             // 上午时段
@@ -3088,7 +3088,7 @@ async function generateReadonlyRosterCalendar(year, month, rosterByDay) {
             }
         });
         
-        html += `<div class="cal-cell" style="height: auto; min-height: 120px;">`+
+        html += `<div class="cal-cell" style="height: auto; min-height: 160px;">`+
             `<div class="cal-day" style="text-align: center; font-weight: bold; margin-bottom: 8px;">${day}</div>`+
             
             // 上午时段（只讀顯示）
