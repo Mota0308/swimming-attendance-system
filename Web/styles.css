@@ -93,11 +93,118 @@ body {
     border-radius: 8px;
     padding: 16px;
     min-height: 100px;
+    overflow-x: auto;
 }
 
 .daily-stats-container.empty {
     display: flex;
     align-items: center;
+}
+
+/* Excel樣式表格 */
+.daily-stats-table.excel-style {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 800px;
+    background: white;
+}
+
+.daily-stats-table.excel-style th,
+.daily-stats-table.excel-style td {
+    border: 1px solid #ccc;
+    text-align: center;
+    vertical-align: middle;
+    word-wrap: break-word;
+}
+
+.daily-stats-table.excel-style .location-header {
+    background: #f0f0f0;
+    font-weight: bold;
+    min-width: 80px;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+}
+
+.daily-stats-table.excel-style .date-header {
+    background: #e6f3ff;
+    font-weight: bold;
+    min-width: 180px;
+}
+
+.daily-stats-table.excel-style .date-header.today-header {
+    background: #ffeb3b;
+    color: #333;
+}
+
+.daily-stats-table.excel-style .location-name {
+    background: #f9f9f9;
+    font-weight: bold;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+}
+
+.daily-stats-table.excel-style .time-slot-cell {
+    font-size: 10px;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px;
+}
+
+.daily-stats-table.excel-style .time-slot-cell.today-cell {
+    background: #fff9c4;
+}
+
+.daily-stats-table.excel-style .time-slot-cell:hover {
+    background: #f0f8ff;
+    cursor: pointer;
+}
+
+/* 教練更表編輯樣式 */
+.cal-cell .time-slot {
+    margin-bottom: 4px;
+}
+
+.cal-cell .time-slot:last-child {
+    margin-bottom: 0;
+}
+
+.cal-cell .roster-time-morning,
+.cal-cell .roster-time-afternoon,
+.cal-cell .roster-time-evening {
+    width: 100%;
+    height: 24px;
+    padding: 2px 4px;
+    border: 1px solid #d1d5db;
+    border-radius: 3px;
+    font-size: 11px;
+    margin-bottom: 2px;
+}
+
+.cal-cell .roster-location-morning,
+.cal-cell .roster-location-afternoon,
+.cal-cell .roster-location-evening {
+    width: 100%;
+    height: 24px;
+    border: 1px solid #d1d5db;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.cal-cell .roster-time-morning:focus,
+.cal-cell .roster-time-afternoon:focus,
+.cal-cell .roster-time-evening:focus,
+.cal-cell .roster-location-morning:focus,
+.cal-cell .roster-location-afternoon:focus,
+.cal-cell .roster-location-evening:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
     justify-content: center;
     color: #6b7280;
     font-style: italic;
