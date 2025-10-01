@@ -1955,10 +1955,10 @@ async function loadRosterData() {
 			const userType = localStorage.getItem('current_user_type') || 'coach';
 			if (userType === 'supervisor') {
 				// 主管：使用可编辑版本
-				generateEditableRosterCalendar(year, month, rosterByDay);
+				await generateEditableRosterCalendar(year, month, rosterByDay);
 			} else {
 				// 教练：使用只读版本
-				generateReadonlyRosterCalendar(year, month, rosterByDay);
+				await generateReadonlyRosterCalendar(year, month, rosterByDay);
 			}
 		}
 	} catch (error) {
@@ -2203,14 +2203,14 @@ async function renderAllCoachesRoster(targetYear = null, targetMonth = null) {
         });
         // 根据用户类型选择合适的日历版本
         // 將容器 id 切換為 rosterCalendar 所需結構
-        container.id = 'rosterCalendar';
         const userType = localStorage.getItem('current_user_type') || 'coach';
+        container.id = 'rosterCalendar';
         if (userType === 'supervisor') {
             // 主管：使用可編輯版本
-            generateEditableRosterCalendar(year, month, rosterByDay);
+            await generateEditableRosterCalendar(year, month, rosterByDay);
         } else {
             // 教练：使用只读版本
-            generateReadonlyRosterCalendar(year, month, rosterByDay);
+            await generateReadonlyRosterCalendar(year, month, rosterByDay);
         }
         container.id = 'staffRosterCalendars';
     } catch (e) {
@@ -2289,15 +2289,15 @@ async function renderCoachRoster(phone, targetYear = null, targetMonth = null) {
                 rosterByDay.set(day, arr);
             }
         });
-        container.id = 'rosterCalendar';
         // 根据用户类型选择合适的日历版本
         const userType = localStorage.getItem('current_user_type') || 'coach';
+        container.id = 'rosterCalendar';
         if (userType === 'supervisor') {
             // 主管：使用可編輯樣式
-            generateEditableRosterCalendar(year, month, rosterByDay);
+            await generateEditableRosterCalendar(year, month, rosterByDay);
         } else {
             // 教练：使用只读样式
-            generateReadonlyRosterCalendar(year, month, rosterByDay);
+            await generateReadonlyRosterCalendar(year, month, rosterByDay);
         }
         container.id = 'staffRosterCalendars';
         container.setAttribute('data-coach-phone', phone);
