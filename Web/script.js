@@ -2243,13 +2243,21 @@ function onChangeStaffCoach() {
     const phone = (document.getElementById('staffCoachSelect') || {}).value || '';
     const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
     if (userType === 'supervisor' && phone) {
+        // 主管选择了特定教练
         renderCoachRoster(phone);
     } else if (userType === 'supervisor' && !phone) {
-        // 未選擇教練清空
-        const container = document.getElementById('staffRosterCalendars');
-        if (container) container.innerHTML = '';
-    } else {
+        // 主管未选择教练，显示所有教练
         renderAllCoachesRoster();
+    } else {
+        // 教练用户，显示自己的更表
+        const currentUserPhone = localStorage.getItem('current_user_phone') || '';
+        if (currentUserPhone) {
+            renderCoachRoster(currentUserPhone);
+        } else {
+            console.warn('教练用户未找到手机号');
+            const container = document.getElementById('staffRosterCalendars');
+            if (container) container.innerHTML = '<div style="text-align:center;padding:20px;color:#666;">未找到用户信息，请重新登录</div>';
+        }
     }
 }
 
