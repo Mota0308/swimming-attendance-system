@@ -1907,6 +1907,168 @@ app.use((error, req, res, next) => {
     });
 });
 
+// ===== API路由别名 (解决前端路径不匹配问题) =====
+// 前端调用 /api/work-hours，映射到 /coach-work-hours
+app.get('/api/work-hours', validateApiKeys, async (req, res) => {
+    try {
+        const phone = req.query.phone;
+        const year = parseInt(req.query.year, 10);
+        const month = parseInt(req.query.month, 10);
+        const location = req.query.location;
+        const club = req.query.club;
+        
+        // 主管模式：允许不提供phone参数，获取所有教练数据
+        const userType = req.query.userType;
+        const isSupervisor = userType === 'supervisor';
+        
+        if (!phone && !isSupervisor) {
+            return res.status(400).json({ success: false, message: '缺少必要參數 phone' });
+        }
+        
+        console.log(`📊 [API别名] 獲取教練工時 - 電話: ${phone || '所有教練'}, 年份: ${year}, 月份: ${month}, 用戶類型: ${userType}`);
+
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_work_hours');
+
+        // 構建查詢條件
+        const query = {};
+        
+        // 主管模式：不限制特定教练
+        if (phone && phone.trim()) {
+            query.phone = phone;
+        }
+        
+        // 新的邏輯：靈活篩選
+        if (year && month) {
+            // 如果提供了年份和月份，添加日期範圍
+            const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+            query.date = { $gte: startDate, $lte: endDate };
+        }
+        
+        // 添加地點/泳會過濾（寬鬆匹配）
+        if (location && location.trim() && location !== '全部地點') {
+            try {
+                const pattern = location.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                query.location = { $regex: pattern, $options: 'i' };
+            } catch (_) {
+                query.location = location;
+            }
+        }
+        if (club && club.trim() && club !== '全部泳會') {
+            query.club = club;
+        }
+        
+        console.log(`🔍 [API别名] 查詢條件:`, JSON.stringify(query, null, 2));
+        
+        const docs = await collection.find(query).sort({ date: 1, time: 1 }).toArray();
+        await client.close();
+        
+        console.log(`📋 [API别名] 找到 ${docs.length} 條工時記錄`);
+        
+        const records = docs.map(doc => ({
+            date: doc.date,
+            time: doc.time || '',
+            location: doc.location || '',
+            club: doc.club || '',
+            phone: doc.phone || '',
+            name: doc.name || ''
+        }));
+        
+        return res.json({ success: true, records });
+    } catch (error) {
+        console.error('❌ [API别名] 獲取工時數據失敗:', error);
+        return res.status(500).json({ success: false, message: '獲取工時數據失敗', error: error.message });
+    }
+});
+
+// 前端调用 /api/coach-roster，映射到 /coach-roster  
+app.get('/api/coach-roster', validateApiKeys, async (req, res) => {
+  try {
+    const phone = (req.query.phone || '').toString();
+    const name = (req.query.name || '').toString();
+    const year = parseInt(req.query.year, 10);
+    const month = parseInt(req.query.month, 10);
+    const userType = req.query.userType || 'coach';
+    const isSupervisor = userType === 'supervisor';
+    
+    // 主管模式：允许不提供phone参数，获取所有教练数据
+    if (!phone && !isSupervisor) {
+      return res.status(400).json({ success: false, message: '缺少必要參數 phone, year, month（name 選填）' });
+    }
+    
+    if (!year || !month) {
+      return res.status(400).json({ success: false, message: '缺少必要參數 year, month' });
+    }
+    
+    console.log(`📅 [API别名] 獲取教練更表 - 電話: ${phone || '所有教練'}, 姓名: ${name}, 年份: ${year}, 月份: ${month}, 用戶類型: ${userType}`);
+    
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const col = db.collection('Coach_roster');
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+    const filter = { date: { $gte: startDate, $lte: endDate } };
+    
+    // 主管模式：不限制特定教练，查詢所有教練數據
+    if (!isSupervisor && phone) {
+      filter.phone = phone;
+    }
+    if (name && name.trim()) {
+      filter.name = name;
+    }
+    
+    console.log(`🔍 [API别名] 查詢條件:`, JSON.stringify(filter, null, 2));
+    
+    const docs = await col.find(filter).sort({ date: 1 }).toArray();
+    await client.close();
+    
+    console.log(`📋 [API别名] 找到 ${docs.length} 條更表記錄`);
+    
+    const records = (docs || []).map(d => ({ date: d.date, time: d.time || '', location: d.location || '', phone: d.phone || '', name: d.name || '' }));
+    return res.json({ success: true, records });
+  } catch (e) {
+    console.error('❌ [API别名] 讀取更表錯誤:', e);
+    return res.status(500).json({ success: false, message: '讀取更表失敗', error: e.message });
+  }
+});
+
+// 前端调用 /api/coach-roster/batch，映射到 /coach-roster/batch
+app.post('/api/coach-roster/batch', validateApiKeys, async (req, res) => {
+  try {
+    const { phone, name, entries } = req.body;
+    if (!phone || !name || !Array.isArray(entries)) {
+      return res.status(400).json({ success: false, message: '參數錯誤，需提供 phone、name、entries[]' });
+    }
+    
+    console.log(`💾 [API别名] 批量保存教練更表 - 電話: ${phone}, 姓名: ${name}, 條目數: ${entries.length}`);
+    
+    const client = new MongoClient(MONGO_URI);
+    await client.connect();
+    const db = client.db(DB_NAME);
+    const col = db.collection('Coach_roster');
+    const ops = entries.map(e => ({
+      updateOne: {
+        filter: { phone, name, date: e.date, time: e.time || '' },
+        update: { $set: { phone, name, date: e.date, time: e.time || '', location: e.location || '' } },
+        upsert: true
+      }
+    }));
+    const result = await col.bulkWrite(ops);
+    await client.close();
+    
+    console.log(`✅ [API别名] 批量操作完成 - 插入: ${result.upsertedCount}, 更新: ${result.modifiedCount}`);
+    
+    return res.json({ success: true, message: '批量保存成功', result });
+  } catch (e) {
+    console.error('❌ [API别名] 批量保存更表錯誤:', e);
+    return res.status(500).json({ success: false, message: '批量保存失敗', error: e.message });
+  }
+});
+
 // 啟動服務器
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 API 服務器已啟動');
