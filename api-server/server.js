@@ -1198,7 +1198,7 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
     const col = db.collection('Coach_roster');
     const ops = entries.map(e => ({
       updateOne: {
-        filter: { phone, name, date: e.date },
+        filter: { phone, name, date: e.date, time: e.time || '' },
         update: { $set: { phone, name, date: e.date, time: e.time || '', location: e.location || '', updatedAt: new Date() } },
         upsert: true
       }
