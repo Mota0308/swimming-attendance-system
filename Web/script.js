@@ -1399,7 +1399,10 @@ function adjustCalendarSizing(containerEl) {
 		
 		if (isRosterCalendar) {
 			// 更表日曆使用固定高度160px，確保三個時段內容完整顯示
-			cells.forEach(c => { c.style.height = '160px'; });
+			cells.forEach(c => { 
+				c.style.setProperty('height', '160px', 'important');
+				c.style.setProperty('min-height', '160px', 'important');
+			});
 		} else {
 			// 其他日曆使用原有的寬度=高度邏輯
 			const firstCell = cells[0];
