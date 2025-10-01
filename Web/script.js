@@ -2201,10 +2201,17 @@ async function renderAllCoachesRoster(targetYear = null, targetMonth = null) {
                 rosterByDay.set(day, arr);
             }
         });
-        // 直接渲染到容器（使用可編輯版本以支持月份選擇）
+        // 根据用户类型选择合适的日历版本
         // 將容器 id 切換為 rosterCalendar 所需結構
         container.id = 'rosterCalendar';
-        generateEditableRosterCalendar(year, month, rosterByDay);
+        const userType = localStorage.getItem('current_user_type') || 'coach';
+        if (userType === 'supervisor') {
+            // 主管：使用可編輯版本
+            generateEditableRosterCalendar(year, month, rosterByDay);
+        } else {
+            // 教练：使用只读版本
+            generateReadonlyRosterCalendar(year, month, rosterByDay);
+        }
         container.id = 'staffRosterCalendars';
     } catch (e) {
         console.warn('載入教練更表失敗', e);
@@ -2283,8 +2290,15 @@ async function renderCoachRoster(phone, targetYear = null, targetMonth = null) {
             }
         });
         container.id = 'rosterCalendar';
-        // 主管：使用可編輯樣式
-        generateEditableRosterCalendar(year, month, rosterByDay);
+        // 根据用户类型选择合适的日历版本
+        const userType = localStorage.getItem('current_user_type') || 'coach';
+        if (userType === 'supervisor') {
+            // 主管：使用可編輯樣式
+            generateEditableRosterCalendar(year, month, rosterByDay);
+        } else {
+            // 教练：使用只读样式
+            generateReadonlyRosterCalendar(year, month, rosterByDay);
+        }
         container.id = 'staffRosterCalendars';
         container.setAttribute('data-coach-phone', phone);
         
