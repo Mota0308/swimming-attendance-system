@@ -304,42 +304,7 @@ app.get('/api/attendance', async (req, res) => {
     }
 });
 
-// 网页应用工时数据端点
-app.get('/api/work-hours', async (req, res) => {
-    try {
-        console.log('🌐 网页应用请求工时数据');
-        
-        const { month } = req.query;
-        console.log(`查询参数: 月份=${month}`);
-        
-        // 这里可以连接到MongoDB获取实际数据
-        // 暂时返回模拟数据
-        const workHours = {
-            totalDays: 22,
-            totalHours: 176,
-            averageHours: 8,
-            dailyRecords: [
-                { date: '2025-08-01', hours: 8, location: '維多利亞公園游泳池' },
-                { date: '2025-08-02', hours: 8, location: '荔枝角公園游泳池' },
-                { date: '2025-08-03', hours: 6, location: '觀塘游泳池' }
-            ]
-        };
-        
-        res.json({
-            success: true,
-            workHours: workHours,
-            month: month,
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        console.error('❌ 获取工时数据错误:', error);
-        res.status(500).json({
-            success: false,
-            message: '获取工时数据失败',
-            error: error.message
-        });
-    }
-});
+// 旧的网页应用工时数据端点已删除，使用API别名版本
 
 // 网页应用更表数据端点
 app.get('/api/roster', async (req, res) => {
@@ -1980,6 +1945,72 @@ app.get('/api/work-hours', validateApiKeys, async (req, res) => {
         return res.json({ success: true, records });
     } catch (error) {
         console.error('❌ [API别名] 獲取工時數據失敗:', error);
+        return res.status(500).json({ success: false, message: '獲取工時數據失敗', error: error.message });
+    }
+});
+
+// 前端调用 /api/coach-work-hours，映射到 /coach-work-hours (与/api/work-hours相同逻辑)
+app.get('/api/coach-work-hours', validateApiKeys, async (req, res) => {
+    try {
+        const phone = req.query.phone;
+        const year = parseInt(req.query.year, 10);
+        const month = parseInt(req.query.month, 10);
+        const location = req.query.location;
+        const club = req.query.club;
+        const userType = req.query.userType;
+        const isSupervisor = userType === 'supervisor';
+        
+        if (!phone && !isSupervisor) {
+            return res.status(400).json({ success: false, message: '缺少必要參數 phone' });
+        }
+        
+        console.log(`📊 [API别名-coach-work-hours] 獲取教練工時 - 電話: ${phone || '所有教練'}, 年份: ${year}, 月份: ${month}, 用戶類型: ${userType}`);
+
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_work_hours');
+
+        const query = {};
+        if (phone && phone.trim()) {
+            query.phone = phone;
+        }
+        if (year && month) {
+            const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+            const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+            query.date = { $gte: startDate, $lte: endDate };
+        }
+        if (location && location.trim() && location !== '全部地點') {
+            try {
+                const pattern = location.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                query.location = { $regex: pattern, $options: 'i' };
+            } catch (_) {
+                query.location = location;
+            }
+        }
+        if (club && club.trim() && club !== '全部泳會') {
+            query.club = club;
+        }
+        
+        console.log(`🔍 [API别名-coach-work-hours] 查詢條件:`, JSON.stringify(query, null, 2));
+        
+        const docs = await collection.find(query).sort({ date: 1, time: 1 }).toArray();
+        await client.close();
+        
+        console.log(`📋 [API别名-coach-work-hours] 找到 ${docs.length} 條工時記錄`);
+        
+        const records = docs.map(doc => ({
+            date: doc.date,
+            time: doc.time || '',
+            location: doc.location || '',
+            club: doc.club || '',
+            phone: doc.phone || '',
+            name: doc.name || ''
+        }));
+        
+        return res.json({ success: true, records });
+    } catch (error) {
+        console.error('❌ [API别名-coach-work-hours] 獲取工時數據失敗:', error);
         return res.status(500).json({ success: false, message: '獲取工時數據失敗', error: error.message });
     }
 });
