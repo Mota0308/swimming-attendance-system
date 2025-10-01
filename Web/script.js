@@ -642,7 +642,7 @@ function showStaffRoster() {
         const container = document.getElementById('staffRosterCalendars');
         const phone = localStorage.getItem('current_user_phone') || '';
         // 只渲染只讀
-        renderCoachRosterReadonly(phone);
+        renderCoachRoster(phone);
         const saveBtn = document.querySelector('#staffRosterSection .export-btn');
         if (saveBtn) saveBtn.style.display = 'none';
     } else {
@@ -2781,7 +2781,7 @@ function showStaffRoster() {
         const container = document.getElementById('staffRosterCalendars');
         const phone = localStorage.getItem('current_user_phone') || '';
         // 只渲染只讀
-        renderCoachRosterReadonly(phone);
+        renderCoachRoster(phone);
         const saveBtn = document.querySelector('#staffRosterSection .export-btn');
         if (saveBtn) saveBtn.style.display = 'none';
         
@@ -2858,38 +2858,7 @@ function initializeRosterStatistics() {
     }
 }
 
-async function renderCoachRosterReadonly(phone) {
-    try {
-        showLoading(true);
-        const year = new Date().getFullYear();
-        const month = new Date().getMonth() + 1;
-        const records = await databaseConnector.fetchRoster(month, phone);
-        const container = document.getElementById('staffRosterCalendars');
-        if (!container) return;
-        const rosterByDay = new Map();
-        (records || []).forEach(item => {
-            const dateStr = item?.date || item?.rosterDate || item?.day;
-            if (!dateStr) return;
-            const d = new Date(dateStr);
-            if (!Number.isNaN(d.getTime()) && d.getFullYear() === year && (d.getMonth()+1) === month) {
-                const day = d.getDate();
-                const time = item?.time || item?.timeRange || '';
-                const location = item?.location || item?.place || '';
-                const arr = rosterByDay.get(day) || [];
-                arr.push({ time, location });
-                rosterByDay.set(day, arr);
-            }
-        });
-        container.id = 'rosterCalendar';
-        // 使用只讀版本以支持月份選擇但內容只讀
-        generateReadonlyRosterCalendar(year, month, rosterByDay);
-        container.id = 'staffRosterCalendars';
-    } catch (e) {
-        console.warn('載入只讀更表失敗', e);
-    } finally {
-        showLoading(false);
-    }
-}
+
 
 // 处理更表月份变更
 window.onRosterMonthChange = function() {
@@ -3028,7 +2997,7 @@ function refreshWorkHoursSummary() {
     generateWorkHoursSummaryTable();
 }
 
-// 生成只讀版本的更表日曆（支持月份選擇但內容只讀）
+// 生成只讀版本的更表日曆（與主管版本格式一致，但內容只讀）
 async function generateReadonlyRosterCalendar(year, month, rosterByDay) {
     const container = document.getElementById('rosterCalendar');
     if (!container) return;
@@ -3057,43 +3026,91 @@ async function generateReadonlyRosterCalendar(year, month, rosterByDay) {
     html += `</select>`;
     html += `</div>`;
     
-    // 生成只讀日曆內容
+    // 生成只讀日曆內容（與主管版本格式一致）
     html += '<div class="cal grid-7">';
     weekdays.forEach(w => { html += `<div class="cal-head">${w}</div>`; });
     
-    const cal = new Date(year, month - 1, 1);
-    const firstDow = cal.getDay();
+    const first = new Date(year, month - 1, 1);
+    const offset = first.getDay();
+    for (let i = 0; i < offset; i++) html += '<div class="cal-cell cal-empty"></div>';
+
     const daysInMonth = new Date(year, month, 0).getDate();
-    for (let i=0;i<firstDow;i++) html += '<div class="cal-cell cal-empty"></div>';
     
-    const today = new Date();
-    const isThisMonth = (today.getFullYear()===year && (today.getMonth()+1)===month);
-    const todayDay = isThisMonth ? today.getDate() : -1;
-    
-    // 小工具：時間正規化並排序
-    const normalizeTime = (t) => {
-        const s = String(t||'').trim();
-        const m = s.match(/^(\d{1,2})(:?)(\d{0,2})(?:\s*-\s*(\d{1,2})(:?)(\d{0,2}))?/);
-        if (!m) return { sortKey: 9999, label: s };
-        const h1 = Number(m[1]); const min1 = m[3] ? Number(m[3]) : 0;
-        const h2 = m[4] ? Number(m[4]) : null; const min2 = m[6] ? Number(m[6]) : 0;
-        const pad = (n)=> String(n).padStart(2,'0');
-        const left = `${pad(h1)}:${pad(min1)}`;
-        const right = (h2!==null) ? `${pad(h2)}:${pad(min2)}` : '';
-        return { sortKey: h1*60+min1, label: right? `${left}-${right}` : left };
-    };
-    
-    for (let d=1; d<=daysInMonth; d++) {
-        const raw = rosterByDay.get(d) || [];
-        // 排序並格式化
-        const slots = raw
-            .map(s=>({ timeObj: normalizeTime(s.time||s.timeRange||''), location: s.location||s.place||'' }))
-            .sort((a,b)=> a.timeObj.sortKey - b.timeObj.sortKey)
-            .map(x=>({ time: x.timeObj.label, location: x.location }));
-        const topClass = d===todayDay ? 'is-today' : '';
-        html += `<div class="cal-cell ${topClass} ${slots.length? 'has-hours':''}">`+
-            `<div class="cal-day">${d}</div>`+
-            `<div class="cal-roster">${slots.map(s => `<div class="slot"><div class="cal-roster-time">${s.time||''}</div><div class="cal-roster-loc">${s.location||''}</div></div>`).join('')}</div>`+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const items = rosterByDay.get(day) || [];
+        
+        // 按時段分類數據
+        let morningTime = '', morningLoc = '';
+        let afternoonTime = '', afternoonLoc = '';
+        let eveningTime = '', eveningLoc = '';
+        
+        items.forEach(item => {
+            const time = item.time || '';
+            const location = item.location || '';
+            
+            // 提取時段和時間
+            let period = 'morning';
+            let cleanTime = time;
+            
+            if (time.includes('上午')) {
+                period = 'morning';
+                cleanTime = time.replace('上午', '').trim();
+            } else if (time.includes('下午')) {
+                period = 'afternoon';
+                cleanTime = time.replace('下午', '').trim();
+            } else if (time.includes('晚上') || time.includes('晚')) {
+                period = 'evening';
+                cleanTime = time.replace(/晚上|晚/g, '').trim();
+            } else {
+                // 根據時間判斷時段
+                const timeMatch = time.match(/^(\d{1,2})/);
+                if (timeMatch) {
+                    const hour = parseInt(timeMatch[1]);
+                    if (hour >= 6 && hour < 12) {
+                        period = 'morning';
+                    } else if (hour >= 12 && hour < 18) {
+                        period = 'afternoon';
+                    } else {
+                        period = 'evening';
+                    }
+                }
+            }
+            
+            if (period === 'morning') {
+                morningTime = cleanTime;
+                morningLoc = location;
+            } else if (period === 'afternoon') {
+                afternoonTime = cleanTime;
+                afternoonLoc = location;
+            } else if (period === 'evening') {
+                eveningTime = cleanTime;
+                eveningLoc = location;
+            }
+        });
+        
+        html += `<div class="cal-cell" style="height: auto; min-height: 120px;">`+
+            `<div class="cal-day" style="text-align: center; font-weight: bold; margin-bottom: 8px;">${day}</div>`+
+            
+            // 上午时段（只讀顯示）
+            `<div class="time-slot" style="margin-bottom: 4px;">`+
+                `<div style="font-size: 11px; color: #666; margin-bottom: 2px;">上午</div>`+
+                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${morningTime || ''}</div>`+
+                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;background-color:#f9fafb;color:#374151;">${morningLoc || ''}</div>`+
+            `</div>`+
+            
+            // 下午时段（只讀顯示）
+            `<div class="time-slot" style="margin-bottom: 4px;">`+
+                `<div style="font-size: 11px; color: #666; margin-bottom: 2px;">下午</div>`+
+                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${afternoonTime || ''}</div>`+
+                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;background-color:#f9fafb;color:#374151;">${afternoonLoc || ''}</div>`+
+            `</div>`+
+            
+            // 晚上时段（只讀顯示）
+            `<div class="time-slot">`+
+                `<div style="font-size: 11px; color: #666; margin-bottom: 2px;">晚上</div>`+
+                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${eveningTime || ''}</div>`+
+                `<div style="width:100%;height:24px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:11px;background-color:#f9fafb;color:#374151;">${eveningLoc || ''}</div>`+
+            `</div>`+
         `</div>`;
     }
     
