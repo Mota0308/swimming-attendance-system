@@ -192,6 +192,35 @@ async function handleLogin(event) {
         const loginResult = await authenticateUser(phone, password, role);
         
         if (loginResult.success) {
+            // 验证后端返回的用户信息
+            const userData = loginResult.user;
+            
+            // 对于教练登录，必须验证position和type
+            if (role === 'coach') {
+                if (!userData.position || userData.position !== 'staff') {
+                    securityManager.recordLoginAttempt(phone, false);
+                    showLoginMessage('登入失敗：教練賬號必須具有staff職位', 'error');
+                    return;
+                }
+                
+                if (!userData.type || !['full-time', 'part-time'].includes(userData.type)) {
+                    securityManager.recordLoginAttempt(phone, false);
+                    showLoginMessage('登入失敗：教練賬號必須指定工作類型(full-time或part-time)', 'error');
+                    return;
+                }
+                
+                // 保存完整的用户数据，包括工作类型
+                localStorage.setItem('current_user_data', JSON.stringify(userData));
+                localStorage.setItem('current_user_name', userData.name || `教練_${phone}`);
+                
+                console.log('✅ 教練登錄驗證通過:', {
+                    phone: phone,
+                    position: userData.position,
+                    type: userData.type,
+                    name: userData.name
+                });
+            }
+            
             // 记录成功登录
             securityManager.recordLoginAttempt(phone, true);
             
@@ -205,7 +234,7 @@ async function handleLogin(event) {
             
             // 延迟跳转，让用户看到成功消息
             setTimeout(() => {
-                const apiUserType = (loginResult.user && loginResult.user.userType) ? loginResult.user.userType : null;
+                const apiUserType = userData.userType;
                 const finalRole = (apiUserType || role || '').toString().toLowerCase();
                 
                 if (finalRole === 'coach' || finalRole === 'supervisor') {
@@ -240,7 +269,13 @@ async function handleLogin(event) {
     } catch (error) {
         // 记录失败登录
         securityManager.recordLoginAttempt(phone, false);
-        showLoginMessage(`登入失敗：${error.message}`, 'error');
+        
+        // 检查是否是403错误（验证失败）
+        if (error.message.includes('403')) {
+            showLoginMessage('登入失敗：賬號權限不足或資料不完整', 'error');
+        } else {
+            showLoginMessage(`登入失敗：${error.message}`, 'error');
+        }
     } finally {
         showLoading(false);
     }
@@ -269,6 +304,15 @@ async function authenticateUser(phone, password, userType) {
         });
         
         if (!response.ok) {
+            // 对于403错误，尝试解析错误消息
+            if (response.status === 403) {
+                try {
+                    const errorData = await response.json();
+                    throw new Error(`HTTP ${response.status}: ${errorData.message || response.statusText}`);
+                } catch (parseError) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
