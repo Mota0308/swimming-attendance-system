@@ -371,11 +371,31 @@ app.post('/api/auth/login', async (req, res) => {
         await client.close();
         
         if (user) {
-            // 验证用户类型
+            // 验证用户类型和职位
             const expectedUserType = user.userType || user.type || 'coach';
             const requestedUserType = userType || 'coach';
+            const userPosition = user.position || '';
+            const workType = user.type || '';
             
-            console.log(`用户验证成功: ${phone}, 数据库类型: ${expectedUserType}, 请求类型: ${requestedUserType}`);
+            console.log(`用户验证成功: ${phone}, 数据库类型: ${expectedUserType}, 请求类型: ${requestedUserType}, 职位: ${userPosition}, 工作类型: ${workType}`);
+            
+            // 教练登录验证：必须是position="staff"
+            if (requestedUserType === 'coach') {
+                if (userPosition !== 'staff') {
+                    return res.status(403).json({
+                        success: false,
+                        message: '教练账号必须具有staff职位'
+                    });
+                }
+                
+                // 验证工作类型必须是full-time或part-time
+                if (!['full-time', 'part-time'].includes(workType)) {
+                    return res.status(403).json({
+                        success: false,
+                        message: '教练账号必须指定工作类型(full-time或part-time)'
+                    });
+                }
+            }
             
             // 支持主管、教练、管理员登录
             if (['supervisor', 'coach', 'admin'].includes(expectedUserType)) {
@@ -388,7 +408,8 @@ app.post('/api/auth/login', async (req, res) => {
                         name: user.name || '',
                         email: user.email || '',
                         role: user.role || expectedUserType,
-                        type: user.type || expectedUserType,
+                        type: workType,
+                        position: userPosition,
                         loginTime: new Date().toISOString()
                     },
                     timestamp: new Date().toISOString()
@@ -2144,6 +2165,211 @@ app.get('/api/schedule/data', validateApiKeys, async (req, res) => {
     } catch (e) {
         console.error('❌ 查詢課程編排數據失敗', e);
         res.status(500).json({ success: false, message: '查詢失敗', error: e.message });
+    }
+});
+
+// ===== 新的更表系统API =====
+
+// 提交更表数据
+app.post('/api/roster/submit', validateApiKeys, async (req, res) => {
+    try {
+        console.log('📤 收到更表提交请求');
+        
+        const { phone, name, month, year, workType, availableDays, submittedAt } = req.body;
+        
+        // 验证必要参数
+        if (!phone || !month || !year || !workType || !availableDays) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少必要参数：phone, month, year, workType, availableDays'
+            });
+        }
+        
+        // 验证工作类型
+        if (!['full-time', 'part-time'].includes(workType)) {
+            return res.status(400).json({
+                success: false,
+                message: '工作类型必须是 full-time 或 part-time'
+            });
+        }
+        
+        console.log(`📋 提交更表 - 教练: ${name}(${phone}), ${year}年${month}月, 类型: ${workType}, 可用日期: ${availableDays.length}天`);
+        
+        // 连接数据库
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_roster_submissions');
+        
+        // 准备存储的数据
+        const rosterSubmission = {
+            phone: phone,
+            name: name || `教练_${phone}`,
+            month: parseInt(month),
+            year: parseInt(year),
+            workType: workType,
+            availableDays: availableDays,
+            submittedAt: submittedAt || new Date().toISOString(),
+            status: 'submitted', // 提交状态：submitted, approved, rejected
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        
+        // 检查是否已经提交过该月的更表
+        const existingSubmission = await collection.findOne({
+            phone: phone,
+            month: parseInt(month),
+            year: parseInt(year)
+        });
+        
+        let result;
+        if (existingSubmission) {
+            // 更新现有提交
+            result = await collection.updateOne(
+                { _id: existingSubmission._id },
+                { 
+                    $set: {
+                        ...rosterSubmission,
+                        updatedAt: new Date().toISOString()
+                    }
+                }
+            );
+            console.log(`✅ 更新现有更表提交 - 修改了 ${result.modifiedCount} 条记录`);
+        } else {
+            // 创建新提交
+            result = await collection.insertOne(rosterSubmission);
+            console.log(`✅ 创建新更表提交 - 插入ID: ${result.insertedId}`);
+        }
+        
+        await client.close();
+        
+        res.json({
+            success: true,
+            message: existingSubmission ? '更表已更新' : '更表已提交',
+            data: {
+                submissionId: existingSubmission ? existingSubmission._id : result.insertedId,
+                phone: phone,
+                month: month,
+                year: year,
+                availableDaysCount: availableDays.length,
+                isUpdate: !!existingSubmission
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ 提交更表失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '提交更表失败',
+            error: error.message
+        });
+    }
+});
+
+// 获取更表提交记录（供主管查看）
+app.get('/api/roster/submissions', validateApiKeys, async (req, res) => {
+    try {
+        console.log('📋 获取更表提交记录');
+        
+        const { month, year, phone } = req.query;
+        
+        // 连接数据库
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_roster_submissions');
+        
+        // 构建查询条件
+        const query = {};
+        if (month) query.month = parseInt(month);
+        if (year) query.year = parseInt(year);
+        if (phone) query.phone = phone;
+        
+        console.log('🔍 查询条件:', query);
+        
+        // 查询提交记录
+        const submissions = await collection.find(query)
+            .sort({ submittedAt: -1 })
+            .toArray();
+        
+        await client.close();
+        
+        console.log(`✅ 找到 ${submissions.length} 条更表提交记录`);
+        
+        res.json({
+            success: true,
+            submissions: submissions,
+            count: submissions.length
+        });
+        
+    } catch (error) {
+        console.error('❌ 获取更表提交记录失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取更表提交记录失败',
+            error: error.message
+        });
+    }
+});
+
+// 審批更表提交（供主管使用）
+app.post('/api/roster/approve', validateApiKeys, async (req, res) => {
+    try {
+        console.log('✅ 審批更表提交');
+        
+        const { submissionId, status, approvedBy, remarks } = req.body;
+        
+        if (!submissionId || !status || !['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少必要参数或状态无效'
+            });
+        }
+        
+        // 连接数据库
+        const client = new MongoClient(MONGO_URI);
+        await client.connect();
+        const db = client.db(DB_NAME);
+        const collection = db.collection('Coach_roster_submissions');
+        
+        // 更新提交状态
+        const result = await collection.updateOne(
+            { _id: new ObjectId(submissionId) },
+            {
+                $set: {
+                    status: status,
+                    approvedBy: approvedBy || '',
+                    approvedAt: new Date().toISOString(),
+                    remarks: remarks || '',
+                    updatedAt: new Date().toISOString()
+                }
+            }
+        );
+        
+        await client.close();
+        
+        if (result.modifiedCount > 0) {
+            console.log(`✅ 更表審批完成 - 状态: ${status}`);
+            res.json({
+                success: true,
+                message: `更表已${status === 'approved' ? '批准' : '拒绝'}`,
+                submissionId: submissionId,
+                status: status
+            });
+        } else {
+            res.status(404).json({
+                success: false,
+                message: '未找到指定的更表提交'
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ 審批更表失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '審批更表失败',
+            error: error.message
+        });
     }
 });
 

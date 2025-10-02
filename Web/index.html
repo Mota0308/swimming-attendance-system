@@ -13,9 +13,9 @@
     <!-- 預載入關鍵資源 -->
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" as="style">
     <link rel="preload" href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" as="style">
-    <link rel="preload" href="styles.css?v=8" as="style">
+    <link rel="preload" href="styles.css?v=9" as="style">
     <link rel="preload" href="database-connector.js?v=26" as="script">
-    <link rel="preload" href="script.js?v=40" as="script">
+    <link rel="preload" href="script.js?v=41" as="script">
     
     <!-- DNS預解析 -->
     <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
@@ -42,7 +42,7 @@
     </style>
     
     <!-- 非關鍵CSS異步載入 -->
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=9">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -156,7 +156,7 @@
                     
                     <div class="feature-card" onclick="showStaffRoster()">
                         <i class="fas fa-user-calendar"></i>
-                        <h3>教練更表</h3>
+                        <h3>更表</h3>
                         <p>查看所有 staff 的更表</p>
                     </div>
                 </div>
@@ -342,63 +342,68 @@
                 <div id="staffWorkHoursCalendars" class="work-hours-calendar"></div>
             </div>
 
-            <!-- 教練更表 -->
+            <!-- 更表 -->
             <div id="staffRosterSection" class="feature-interface hidden">
                 <div class="interface-header">
-                    <h3 id="rosterSectionTitle"><i class="fas fa-user-calendar"></i> 教練更表</h3>
+                    <h3 id="rosterSectionTitle"><i class="fas fa-user-calendar"></i> 更表</h3>
                     <button class="back-btn" onclick="hideAllFeatures()">
                         <i class="fas fa-arrow-left"></i> 返回
                     </button>
                 </div>
                 
-                <!-- 新增：每日上課地點統計 -->
-                <div class="roster-statistics-section">
-                    <h4><i class="fas fa-chart-bar"></i> 每日上課地點統計</h4>
-                    <div class="statistics-controls">
-                        <div class="control-group">
-                            <label>統計月份：</label>
-                            <select id="statsMonth">
-                                <option value="1">1月</option>
-                                <option value="2">2月</option>
-                                <option value="3">3月</option>
-                                <option value="4">4月</option>
-                                <option value="5">5月</option>
-                                <option value="6">6月</option>
-                                <option value="7">7月</option>
-                                <option value="8" selected>8月</option>
-                                <option value="9">9月</option>
-                                <option value="10">10月</option>
-                                <option value="11">11月</option>
-                                <option value="12">12月</option>
-                            </select>
-                        </div>
-                        <button class="refresh-btn" onclick="generateDailyLocationStats()">
-                            <i class="fas fa-calculator"></i> 生成統計
-                        </button>
-                        <button class="export-btn" onclick="exportLocationStats()">
-                            <i class="fas fa-download"></i> 導出統計
-                        </button>
+                <!-- 新的更表控制面板 -->
+                <div class="roster-controls">
+                    <div class="control-group">
+                        <label for="rosterMonth">月份選擇：</label>
+                        <select id="rosterMonth">
+                            <option value="1">1月</option>
+                            <option value="2">2月</option>
+                            <option value="3">3月</option>
+                            <option value="4">4月</option>
+                            <option value="5">5月</option>
+                            <option value="6">6月</option>
+                            <option value="7">7月</option>
+                            <option value="8" selected>8月</option>
+                            <option value="9">9月</option>
+                            <option value="10">10月</option>
+                            <option value="11">11月</option>
+                            <option value="12">12月</option>
+                        </select>
                     </div>
-                    <div id="dailyLocationStats" class="daily-stats-container">
-                        <!-- 統計結果將在這裡顯示 -->
+                    
+                    <div class="button-group">
+                        <button class="roster-btn save-btn" onclick="saveRosterData()">
+                            <i class="fas fa-save"></i> 保存更表
+                        </button>
+                        <button class="roster-btn load-btn" onclick="loadRosterData()">
+                            <i class="fas fa-download"></i> 載入更表
+                        </button>
+                        <button class="roster-btn submit-btn" onclick="submitRosterData()">
+                            <i class="fas fa-paper-plane"></i> 提交更表
+                        </button>
                     </div>
                 </div>
                 
-                <div class="location-club-controls">
-                    <div class="control-group">
-                        <label>選擇教練：</label>
-                        <select id="staffCoachSelect">
-                            <option value="">全部教練</option>
-                        </select>
+                <!-- 工作类型提示 -->
+                <div id="workTypeIndicator" class="work-type-indicator">
+                    <span id="workTypeText">工作類型：未知</span>
+                    <div id="workTypeInstructions" class="instructions">
+                        <!-- 根据工作类型显示不同的说明 -->
                     </div>
-                    <button class="refresh-btn" onclick="onChangeStaffCoach()">
-                        <i class="fas fa-sync-alt"></i> 載入更表
-                    </button>
-                    <button class="export-btn" onclick="saveSelectedCoachRoster()">
-                        <i class="fas fa-save"></i> 保存更表
-                    </button>
                 </div>
-                <div id="staffRosterCalendars" class="roster-calendar"></div>
+                
+                <!-- 更表日历 -->
+                <div id="newRosterCalendar" class="new-roster-calendar">
+                    <!-- 日历将在这里动态生成 -->
+                </div>
+                
+                <!-- 提交状态显示 -->
+                <div id="submitStatus" class="submit-status hidden">
+                    <div class="status-message">
+                        <i class="fas fa-check-circle"></i>
+                        <span>更表已提交成功</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -417,7 +422,7 @@
     <script src="database-connector.js?v=26" defer></script>
     
     <!-- 主要腳本使用defer，避免阻塞渲染 -->
-    <script src="script.js?v=40" defer></script>
+    <script src="script.js?v=41" defer></script>
     
     <!-- 非關鍵腳本異步載入 -->
     <script src="scheduler-light.js?v=4" async></script>

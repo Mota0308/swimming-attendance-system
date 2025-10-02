@@ -642,7 +642,7 @@ function showStaffRoster() {
         const container = document.getElementById('staffRosterCalendars');
         const phone = localStorage.getItem('current_user_phone') || '';
         // 只渲染只讀
-        renderCoachRoster(phone);
+        renderCoachRosterReadonly(phone);
         const saveBtn = document.querySelector('#staffRosterSection .export-btn');
         if (saveBtn) saveBtn.style.display = 'none';
     } else {
@@ -1393,22 +1393,10 @@ function adjustCalendarSizing(containerEl) {
 		if (!grid) return;
 		const cells = grid.querySelectorAll('.cal-cell');
 		if (!cells.length) return;
-		
-		// 檢查是否為更表日曆容器
-		const isRosterCalendar = containerEl.id === 'rosterCalendar' || containerEl.querySelector('#rosterCalendar');
-		
-		if (isRosterCalendar) {
-			// 更表日曆使用固定高度160px，確保三個時段內容完整顯示
-			cells.forEach(c => { 
-				c.style.setProperty('height', '160px', 'important');
-				c.style.setProperty('min-height', '160px', 'important');
-			});
-		} else {
-			// 其他日曆使用原有的寬度=高度邏輯
-			const firstCell = cells[0];
-			const cellWidth = firstCell.getBoundingClientRect().width;
-			cells.forEach(c => { c.style.height = `${Math.max(60, Math.round(cellWidth))}px`; });
-		}
+		// 使用第一個單元格的實際寬度作為高度
+		const firstCell = cells[0];
+		const cellWidth = firstCell.getBoundingClientRect().width;
+		cells.forEach(c => { c.style.height = `${Math.max(60, Math.round(cellWidth))}px`; });
 	} catch (_) {}
 }
 
@@ -1491,52 +1479,18 @@ async function generateDailyLocationStats() {
             const locationInfo = extractLocationFromRoster(location, time);
             console.log(`📍 條目 ${index} 地點提取結果:`, locationInfo);
             
-            // 解析時段信息
-            let period = 'morning'; // 默認上午
-            if (time.includes('上午') || time.match(/^0?[6-9]:|^1[01]:/)) {
-                period = 'morning';
-            } else if (time.includes('下午') || time.match(/^1[2-7]:/)) {
-                period = 'afternoon';
-            } else if (time.includes('晚上') || time.includes('晚') || time.match(/^1[8-9]:|^2[0-3]:/)) {
-                period = 'evening';
-            }
-            
             if (locationInfo.isValidLocation) {
-                // 收集教練每日地點數據（包含時段信息）
+                // 收集教練每日地點數據
                 if (!coachDailyData.has(coachName)) {
                     coachDailyData.set(coachName, {
                         name: coachName,
-                        dailyLocations: new Map(),
-                        dailySchedule: new Map() // 新增：詳細時段安排
+                        dailyLocations: new Map()
                     });
                     console.log(`👤 新增教練: ${coachName}`);
                 }
                 const coachData = coachDailyData.get(coachName);
-                
-                // 設置地點（保持兼容性） - 修改為支持多時段
-                if (!coachData.dailyLocations.has(day)) {
-                    coachData.dailyLocations.set(day, []);
-                }
-                const dayLocations = coachData.dailyLocations.get(day);
-                if (!dayLocations.includes(locationInfo.location)) {
-                    dayLocations.push(locationInfo.location);
-                }
-                
-                // 設置詳細時段安排
-                if (!coachData.dailySchedule.has(day)) {
-                    coachData.dailySchedule.set(day, {
-                        morning: { location: '', time: '' },
-                        afternoon: { location: '', time: '' },
-                        evening: { location: '', time: '' }
-                    });
-                }
-                const daySchedule = coachData.dailySchedule.get(day);
-                daySchedule[period] = {
-                    location: locationInfo.location,
-                    time: time
-                };
-                
-                console.log(`✅ 教練 ${coachName} 第 ${day} 天 ${period} 設置: ${locationInfo.location} (${time})`);
+                coachData.dailyLocations.set(day, locationInfo.location);
+                console.log(`✅ 教練 ${coachName} 第 ${day} 天設置地點: ${locationInfo.location}`);
                 
                 // 收集每日統計數據
                 const dayStats = dailyStats.get(day) || new Map();
@@ -1658,7 +1612,7 @@ function extractLocationFromRoster(location, time) {
     return { isValidLocation: false, location: '' };
 }
 
-// 顯示每日地點統計結果（Excel表格格式）
+// 顯示每日地點統計結果（橫向表格格式）
 function showDailyLocationStats(statsArray) {
     const container = document.getElementById('dailyLocationStats');
     if (!container) return;
@@ -1676,153 +1630,87 @@ function showDailyLocationStats(statsArray) {
     const year = new Date().getFullYear();
     const daysInMonth = new Date(year, month, 0).getDate();
     
-    // 獲取所有地點列表和教練數據
-    const allLocations = new Set();
-    const coachData = statsArray.coachData || new Map();
-    const locationCoachSchedule = new Map(); // 地點 -> 日期 -> 時段 -> 教練列表
-    
-         // 從教練數據中提取所有地點和時段安排
-     coachData.forEach((coach, coachKey) => {
-         const coachName = coach.name || coachKey || '教練';
-         
-         // 優先使用詳細時段安排數據
-         if (coach.dailySchedule) {
-             coach.dailySchedule.forEach((daySchedule, day) => {
-                 ['morning', 'afternoon', 'evening'].forEach(period => {
-                     const periodData = daySchedule[period];
-                     if (periodData && periodData.location) {
-                         const location = periodData.location;
-                         allLocations.add(location);
-                         
-                         // 初始化地點數據結構
-                         if (!locationCoachSchedule.has(location)) {
-                             locationCoachSchedule.set(location, new Map());
-                         }
-                         const locationSchedule = locationCoachSchedule.get(location);
-                         
-                         if (!locationSchedule.has(day)) {
-                             locationSchedule.set(day, {
-                                 morning: [],
-                                 afternoon: [],
-                                 evening: []
-                             });
-                         }
-                         
-                         const dayScheduleForLocation = locationSchedule.get(day);
-                         if (!dayScheduleForLocation[period].includes(coachName)) {
-                             dayScheduleForLocation[period].push(coachName);
-                         }
-                     }
-                 });
-             });
-         } else if (coach.dailyLocations) {
-             // 兼容舊格式：如果沒有詳細時段數據，使用dailyLocations
-             coach.dailyLocations.forEach((locationData, day) => {
-                 // 處理新的數組格式或舊的字符串格式
-                 const locations = Array.isArray(locationData) ? locationData : [locationData];
-                 
-                 locations.forEach(location => {
-                     if (location) {
-                         allLocations.add(location);
-                         
-                         // 初始化地點數據結構
-                         if (!locationCoachSchedule.has(location)) {
-                             locationCoachSchedule.set(location, new Map());
-                         }
-                         const locationSchedule = locationCoachSchedule.get(location);
-                         
-                         if (!locationSchedule.has(day)) {
-                             locationSchedule.set(day, {
-                                 morning: [],
-                                 afternoon: [],
-                                 evening: []
-                             });
-                         }
-                         
-                         // 默認放到上午時段
-                         const dayScheduleForLocation = locationSchedule.get(day);
-                         if (!dayScheduleForLocation.morning.includes(coachName)) {
-                             dayScheduleForLocation.morning.push(coachName);
-                         }
-                     }
-                 });
-             });
-         }
-     });
-    
-    // 如果沒有地點數據，使用默認地點列表
-    if (allLocations.size === 0) {
-        ['九龍公園', '上門', '堅城', '中山', '維園', '美孚', '觀塘'].forEach(loc => allLocations.add(loc));
-    }
-    
-    const locationList = Array.from(allLocations).sort();
-    
-    // 創建Excel樣式表格
+    // 創建橫向表格
     let html = '<div class="stats-table-container">';
-    html += '<table class="daily-stats-table excel-style" style="border-collapse: collapse; width: 100%; font-size: 12px;">';
+    html += '<table class="daily-stats-table horizontal">';
     
-    // 表頭：第一列為地點，後面的列為日期+時段
-    html += '<thead>';
-    html += '<tr>';
-    html += '<th rowspan="2" class="location-header" style="border: 1px solid #ccc; background: #f0f0f0; padding: 8px; text-align: center; font-weight: bold; min-width: 80px;">地點</th>';
+    // 表頭：第一列為教練名稱，後面的列為日期
+    html += '<thead><tr>';
+    html += '<th class="coach-header">教練名稱</th>';
     
-    // 添加日期列標題（合併3列）
+    // 添加日期列標題
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month - 1, day);
         const dayOfWeek = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
         const isToday = new Date().getDate() === day && new Date().getMonth() === month - 1;
         const todayClass = isToday ? ' today-header' : '';
         
-        html += `<th colspan="3" class="date-header${todayClass}" style="border: 1px solid #ccc; background: #e6f3ff; padding: 4px; text-align: center; font-weight: bold; min-width: 180px;">`;
-        html += `<div>${day}</div>`;
-        html += `<div style="font-size: 10px;">${dayOfWeek}</div>`;
+        html += `<th class="date-header${todayClass}">`;
+        html += `<div class="date-number">${day}</div>`;
+        html += `<div class="date-weekday">${dayOfWeek}</div>`;
         html += '</th>';
     }
-    html += '</tr>';
+    html += '</tr></thead>';
     
-    // 時段子標題行
-    html += '<tr>';
-    for (let day = 1; day <= daysInMonth; day++) {
-        html += '<th style="border: 1px solid #ccc; background: #f8f8f8; padding: 2px; text-align: center; font-size: 10px; width: 60px;">上午</th>';
-        html += '<th style="border: 1px solid #ccc; background: #f8f8f8; padding: 2px; text-align: center; font-size: 10px; width: 60px;">下午</th>';
-        html += '<th style="border: 1px solid #ccc; background: #f8f8f8; padding: 2px; text-align: center; font-size: 10px; width: 60px;">晚上</th>';
-    }
-    html += '</tr>';
-    html += '</thead>';
-    
-    // 表格主體：每行代表一個地點
+    // 表格主體：每行代表一個教練
     html += '<tbody>';
     
-    locationList.forEach(location => {
-        html += '<tr>';
-        html += `<td class="location-name" style="border: 1px solid #ccc; background: #f9f9f9; padding: 6px; font-weight: bold; text-align: center;">${location}</td>`;
-        
-        // 為每一天的每個時段添加教練信息
-        for (let day = 1; day <= daysInMonth; day++) {
-            const isToday = new Date().getDate() === day && new Date().getMonth() === month - 1;
-            const todayClass = isToday ? ' today-cell' : '';
+    // 從統計數據中提取教練信息
+    const coachData = statsArray.coachData || new Map();
+    
+    // 如果沒有教練數據，嘗試從統計數據中構建
+    if (coachData.size === 0) {
+        statsArray.forEach(stat => {
+            if (stat.locations && stat.locations.length > 0) {
+                stat.locations.forEach(loc => {
+                    // 使用地點作為教練標識（當沒有具體教練信息時）
+                    const coachKey = `教練_${loc.location}`;
+                    if (!coachData.has(coachKey)) {
+                        coachData.set(coachKey, {
+                            name: `教練_${loc.location}`,
+                            dailyLocations: new Map()
+                        });
+                    }
+                    const coach = coachData.get(coachKey);
+                    coach.dailyLocations.set(stat.day, loc.location);
+                });
+            }
+        });
+    }
+    
+    // 如果沒有教練數據，顯示提示信息
+    if (coachData.size === 0) {
+        html += '<tr><td colspan="' + (daysInMonth + 1) + '" class="no-data">本月沒有教練更表數據</td></tr>';
+    } else {
+        // 顯示每個教練的行
+        coachData.forEach((coach, coachKey) => {
+            // 檢查教練數據結構
+            if (!coach || typeof coach !== 'object') {
+                console.warn('教練數據結構異常:', coach);
+                return;
+            }
             
-            // 獲取該地點該天的教練安排
-            const locationSchedule = locationCoachSchedule.get(location);
-            const daySchedule = locationSchedule ? locationSchedule.get(day) : null;
+            const coachName = coach.name || coachKey || '未知教練';
+            const dailyLocations = coach.dailyLocations || new Map();
             
-            // 上午時段
-            const morningCoaches = daySchedule ? daySchedule.morning : [];
-            const morningContent = morningCoaches.length > 0 ? morningCoaches.join(',') : '';
-            html += `<td class="time-slot-cell${todayClass}" style="border: 1px solid #ccc; padding: 2px; text-align: center; font-size: 10px; max-width: 60px; overflow: hidden; text-overflow: ellipsis;" title="${morningContent}">${morningContent}</td>`;
+            html += '<tr>';
+            html += `<td class="coach-name">${coachName}</td>`;
             
-            // 下午時段
-            const afternoonCoaches = daySchedule ? daySchedule.afternoon : [];
-            const afternoonContent = afternoonCoaches.length > 0 ? afternoonCoaches.join(',') : '';
-            html += `<td class="time-slot-cell${todayClass}" style="border: 1px solid #ccc; padding: 2px; text-align: center; font-size: 10px; max-width: 60px; overflow: hidden; text-overflow: ellipsis;" title="${afternoonContent}">${afternoonContent}</td>`;
-            
-            // 晚上時段
-            const eveningCoaches = daySchedule ? daySchedule.evening : [];
-            const eveningContent = eveningCoaches.length > 0 ? eveningCoaches.join(',') : '';
-            html += `<td class="time-slot-cell${todayClass}" style="border: 1px solid #ccc; padding: 2px; text-align: center; font-size: 10px; max-width: 60px; overflow: hidden; text-overflow: ellipsis;" title="${eveningContent}">${eveningContent}</td>`;
-        }
-        html += '</tr>';
-    });
+            // 為每一天添加地點信息
+            for (let day = 1; day <= daysInMonth; day++) {
+                const location = dailyLocations.get ? dailyLocations.get(day) : null;
+                const isToday = new Date().getDate() === day && new Date().getMonth() === month - 1;
+                const todayClass = isToday ? ' today-cell' : '';
+                
+                if (location) {
+                    html += `<td class="location-cell${todayClass}" title="${location}">${location}</td>`;
+                } else {
+                    html += `<td class="empty-cell${todayClass}">-</td>`;
+                }
+            }
+            html += '</tr>';
+        });
+    }
     
     html += '</tbody></table>';
     html += '</div>';
@@ -1837,7 +1725,7 @@ function showDailyLocationStats(statsArray) {
     html += '<h5 style="margin: 0 0 12px 0; color: #374151;">月度統計總結</h5>';
     html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">';
     html += `<div><strong>總天數：</strong>${totalDays}天</div>`;
-    html += `<div><strong>總地點數：</strong>${locationList.length}個</div>`;
+    html += `<div><strong>總地點數：</strong>${totalLocations}個</div>`;
     html += `<div><strong>總教練數：</strong>${totalCoaches}人次</div>`;
     html += `<div><strong>日均教練數：</strong>${avgCoachesPerDay}人</div>`;
     html += '</div>';
@@ -1961,17 +1849,10 @@ async function loadRosterData() {
 				rosterByDay.set(day, arr);
 			}
 		});
-		// 根据用户类型选择合适的日历版本
+		// 使用可编辑版本以支持月份选择
 		const container = document.getElementById('rosterCalendar');
 		if (container) {
-			const userType = localStorage.getItem('current_user_type') || 'coach';
-			if (userType === 'supervisor') {
-				// 主管：使用可编辑版本
-				await generateEditableRosterCalendar(year, month, rosterByDay);
-			} else {
-				// 教练：使用只读版本
-				await generateReadonlyRosterCalendar(year, month, rosterByDay);
-			}
+			generateEditableRosterCalendar(year, month, rosterByDay);
 		}
 	} catch (error) {
 		console.error('加载更表数据失败:', error);
@@ -2213,17 +2094,10 @@ async function renderAllCoachesRoster(targetYear = null, targetMonth = null) {
                 rosterByDay.set(day, arr);
             }
         });
-        // 根据用户类型选择合适的日历版本
+        // 直接渲染到容器（使用可編輯版本以支持月份選擇）
         // 將容器 id 切換為 rosterCalendar 所需結構
-        const userType = localStorage.getItem('current_user_type') || 'coach';
         container.id = 'rosterCalendar';
-        if (userType === 'supervisor') {
-            // 主管：使用可編輯版本
-            await generateEditableRosterCalendar(year, month, rosterByDay);
-        } else {
-            // 教练：使用只读版本
-            await generateReadonlyRosterCalendar(year, month, rosterByDay);
-        }
+        generateEditableRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
     } catch (e) {
         console.warn('載入教練更表失敗', e);
@@ -2255,21 +2129,13 @@ function onChangeStaffCoach() {
     const phone = (document.getElementById('staffCoachSelect') || {}).value || '';
     const userType = (localStorage.getItem('current_user_type') || '').toLowerCase();
     if (userType === 'supervisor' && phone) {
-        // 主管选择了特定教练
         renderCoachRoster(phone);
     } else if (userType === 'supervisor' && !phone) {
-        // 主管未选择教练，显示所有教练
-        renderAllCoachesRoster();
+        // 未選擇教練清空
+        const container = document.getElementById('staffRosterCalendars');
+        if (container) container.innerHTML = '';
     } else {
-        // 教练用户，显示自己的更表
-        const currentUserPhone = localStorage.getItem('current_user_phone') || '';
-        if (currentUserPhone) {
-            renderCoachRoster(currentUserPhone);
-        } else {
-            console.warn('教练用户未找到手机号');
-            const container = document.getElementById('staffRosterCalendars');
-            if (container) container.innerHTML = '<div style="text-align:center;padding:20px;color:#666;">未找到用户信息，请重新登录</div>';
-        }
+        renderAllCoachesRoster();
     }
 }
 
@@ -2309,16 +2175,9 @@ async function renderCoachRoster(phone, targetYear = null, targetMonth = null) {
                 rosterByDay.set(day, arr);
             }
         });
-        // 根据用户类型选择合适的日历版本
-        const userType = localStorage.getItem('current_user_type') || 'coach';
         container.id = 'rosterCalendar';
-        if (userType === 'supervisor') {
-            // 主管：使用可編輯樣式
-            await generateEditableRosterCalendar(year, month, rosterByDay);
-        } else {
-            // 教练：使用只读样式
-            await generateReadonlyRosterCalendar(year, month, rosterByDay);
-        }
+        // 主管：使用可編輯樣式
+        generateEditableRosterCalendar(year, month, rosterByDay);
         container.id = 'staffRosterCalendars';
         container.setAttribute('data-coach-phone', phone);
         
@@ -2384,65 +2243,16 @@ async function generateEditableRosterCalendar(year, month, rosterByDay) {
 
     for (let day = 1; day <= daysInMonth; day++) {
         const items = rosterByDay.get(day) || [];
-        
-        // 解析现有数据，尝试分配到三个时间段
-        let morningTime = '', morningLoc = '';
-        let afternoonTime = '', afternoonLoc = '';
-        let eveningTime = '', eveningLoc = '';
-        
-        items.forEach(item => {
-            const time = item.time || '';
-            const location = item.location || '';
-            
-            // 根据时间判断时间段
-            if (time.includes('上午') || time.match(/^0?[6-9]:|^1[01]:/)) {
-                morningTime = time;
-                morningLoc = location;
-            } else if (time.includes('下午') || time.match(/^1[2-7]:/)) {
-                afternoonTime = time;
-                afternoonLoc = location;
-            } else if (time.includes('晚上') || time.includes('晚') || time.match(/^1[8-9]:|^2[0-3]:/)) {
-                eveningTime = time;
-                eveningLoc = location;
-            } else if (!morningTime) {
-                // 如果无法判断且上午为空，默认放到上午
-                morningTime = time;
-                morningLoc = location;
-            }
-        });
-        
-        html += `<div class=\"cal-cell\" style=\"height: auto; min-height: 160px;\">`+
-            `<div class=\"cal-day\" style=\"text-align: center; font-weight: bold; margin-bottom: 8px;\">${day}</div>`+
-            
-            // 上午时段
-            `<div class=\"time-slot\" style=\"margin-bottom: 4px;\">`+
-                `<div style=\"font-size: 9px; color: #666; margin-bottom: 2px;\">上午</div>`+
-                `<input class=\"roster-time-morning\" data-day=\"${day}\" data-period=\"morning\" type=\"text\" placeholder=\"9:00-12:00\" value=\"${morningTime}\" style=\"width:100%;height:20px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;margin-bottom:2px;\"/>`+
-                `<select class=\"roster-location-morning\" data-day=\"${day}\" data-period=\"morning\" style=\"width:100%;height:20px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;\">`+
-                    `<option value=\"\">選擇地點</option>`+
-                    `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===morningLoc?'selected':''}>${loc}</option>`).join('')}`+
-                `</select>`+
-            `</div>`+
-            
-            // 下午时段
-            `<div class=\"time-slot\" style=\"margin-bottom: 4px;\">`+
-                `<div style=\"font-size: 9px; color: #666; margin-bottom: 2px;\">下午</div>`+
-                `<input class=\"roster-time-afternoon\" data-day=\"${day}\" data-period=\"afternoon\" type=\"text\" placeholder=\"1:00-5:00\" value=\"${afternoonTime}\" style=\"width:100%;height:20px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;margin-bottom:2px;\"/>`+
-                `<select class=\"roster-location-afternoon\" data-day=\"${day}\" data-period=\"afternoon\" style=\"width:100%;height:20px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;\">`+
-                    `<option value=\"\">選擇地點</option>`+
-                    `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===afternoonLoc?'selected':''}>${loc}</option>`).join('')}`+
-                `</select>`+
-            `</div>`+
-            
-            // 晚上时段
-            `<div class=\"time-slot\">`+
-                `<div style=\"font-size: 9px; color: #666; margin-bottom: 2px;\">晚上</div>`+
-                `<input class=\"roster-time-evening\" data-day=\"${day}\" data-period=\"evening\" type=\"text\" placeholder=\"6:00-8:00\" value=\"${eveningTime}\" style=\"width:100%;height:20px;padding:2px 4px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;margin-bottom:2px;\"/>`+
-                `<select class=\"roster-location-evening\" data-day=\"${day}\" data-period=\"evening\" style=\"width:100%;height:20px;border:1px solid #d1d5db;border-radius:3px;font-size:9px;\">`+
-                    `<option value=\"\">選擇地點</option>`+
-                    `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===eveningLoc?'selected':''}>${loc}</option>`).join('')}`+
-                `</select>`+
-            `</div>`+
+        const firstItem = items[0] || { time: '', location: '' };
+        const timeVal = firstItem.time || '';
+        const locVal = firstItem.location || '';
+        html += `<div class=\"cal-cell\">`+
+            `<div class=\"cal-day\">${day}</div>`+
+            `<input class=\"roster-time\" data-day=\"${day}\" type=\"text\" placeholder=\"hh:mm-hh:mm\" value=\"${timeVal}\" style=\"width:100%;height:32px;padding:6px;border:1px solid #d1d5db;border-radius:6px;\"/>`+
+            `<select class=\"roster-location\" data-day=\"${day}\" style=\"width:100%;height:32px;margin-top:6px;border:1px solid #d1d5db;border-radius:6px;\">`+
+                `<option value=\"\">選擇地點</option>`+
+                `${(locations||[]).map(loc => `<option value=\"${loc}\" ${loc===locVal?'selected':''}>${loc}</option>`).join('')}`+
+            `</select>`+
         `</div>`;
     }
     html += '</div>';
@@ -2459,42 +2269,34 @@ async function saveSelectedCoachRoster() {
         const month = new Date().getMonth() + 1;
         const nodes = (document.querySelectorAll('#staffRosterCalendars .cal-cell') || []);
         const entries = [];
-        
         nodes.forEach(cell => {
-            // 处理三个时间段：上午、下午、晚上
-            const periods = ['morning', 'afternoon', 'evening'];
-            const periodNames = { morning: '上午', afternoon: '下午', evening: '晚上' };
+            const timeElement = cell.querySelector('.roster-time');
+            const locationElement = cell.querySelector('.roster-location');
             
-            periods.forEach(period => {
-                const timeElement = cell.querySelector(`.roster-time-${period}`);
-                const locationElement = cell.querySelector(`.roster-location-${period}`);
-                
-                if (!timeElement || !locationElement) {
-                    return;
-                }
-                
-                const day = Number(timeElement.getAttribute('data-day'));
-                const time = timeElement.value || '';
-                const location = locationElement.value || '';
-                
-                console.log(`檢查日期 ${day} ${periodNames[period]}: 時間="${time}", 地點="${location}"`);
-                
-                // 只要有日期和地點或時間，就認為是有效條目
-                if (!day) {
-                    console.log(`跳過：無效日期 ${day}`);
-                    return;
-                }
-                if (!time && !location) {
-                    console.log(`跳過：日期 ${day} ${periodNames[period]} 既無時間也無地點`);
-                    return;
-                }
-                
-                const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-                // 在时间前添加时段标识
-                const timeWithPeriod = time ? `${periodNames[period]} ${time}` : periodNames[period];
-                entries.push({ date, time: timeWithPeriod, location });
-                console.log(`添加條目：${date} - 時間:${timeWithPeriod}, 地點:${location}`);
-            });
+            if (!timeElement || !locationElement) {
+                console.log(`跳過：缺少必要的DOM元素`);
+                return;
+            }
+            
+            const day = Number(timeElement.getAttribute('data-day'));
+            const time = timeElement.value || '';
+            const location = locationElement.value || '';
+            
+            console.log(`檢查日期 ${day}: 時間="${time}", 地點="${location}"`);
+            
+            // 只要有日期和地點或時間，就認為是有效條目
+            if (!day) {
+                console.log(`跳過：無效日期 ${day}`);
+                return;
+            }
+            if (!time && !location) {
+                console.log(`跳過：日期 ${day} 既無時間也無地點`);
+                return;
+            }
+            
+            const date = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            entries.push({ date, time, location });
+            console.log(`添加條目：${date} - 時間:${time}, 地點:${location}`);
         });
         
         // 獲取教練姓名
@@ -2793,15 +2595,9 @@ function showStaffRoster() {
         const container = document.getElementById('staffRosterCalendars');
         const phone = localStorage.getItem('current_user_phone') || '';
         // 只渲染只讀
-        renderCoachRoster(phone);
+        renderCoachRosterReadonly(phone);
         const saveBtn = document.querySelector('#staffRosterSection .export-btn');
         if (saveBtn) saveBtn.style.display = 'none';
-        
-        // 教練模式：更新界面標題
-        const sectionTitle = document.getElementById('rosterSectionTitle');
-        if (sectionTitle) {
-            sectionTitle.innerHTML = '<i class="fas fa-user-calendar"></i> 我的更表（只讀）';
-        }
         
         // 教練模式：統計功能僅顯示自己的數據
         const statsSection = document.querySelector('.roster-statistics-section');
@@ -2820,12 +2616,6 @@ function showStaffRoster() {
         populateCoachSelect();
         // 若已選擇教練則載入該教練可編輯界面
         onChangeStaffCoach();
-        
-        // 主管模式：更新界面標題
-        const sectionTitle = document.getElementById('rosterSectionTitle');
-        if (sectionTitle) {
-            sectionTitle.innerHTML = '<i class="fas fa-user-calendar"></i> 教練更表管理';
-        }
         
         // 主管模式：統計功能顯示所有教練數據
         const statsSection = document.querySelector('.roster-statistics-section');
@@ -2870,7 +2660,38 @@ function initializeRosterStatistics() {
     }
 }
 
-
+async function renderCoachRosterReadonly(phone) {
+    try {
+        showLoading(true);
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        const records = await databaseConnector.fetchRoster(month, phone);
+        const container = document.getElementById('staffRosterCalendars');
+        if (!container) return;
+        const rosterByDay = new Map();
+        (records || []).forEach(item => {
+            const dateStr = item?.date || item?.rosterDate || item?.day;
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            if (!Number.isNaN(d.getTime()) && d.getFullYear() === year && (d.getMonth()+1) === month) {
+                const day = d.getDate();
+                const time = item?.time || item?.timeRange || '';
+                const location = item?.location || item?.place || '';
+                const arr = rosterByDay.get(day) || [];
+                arr.push({ time, location });
+                rosterByDay.set(day, arr);
+            }
+        });
+        container.id = 'rosterCalendar';
+        // 使用只讀版本以支持月份選擇但內容只讀
+        generateReadonlyRosterCalendar(year, month, rosterByDay);
+        container.id = 'staffRosterCalendars';
+    } catch (e) {
+        console.warn('載入只讀更表失敗', e);
+    } finally {
+        showLoading(false);
+    }
+}
 
 // 处理更表月份变更
 window.onRosterMonthChange = function() {
@@ -3009,7 +2830,7 @@ function refreshWorkHoursSummary() {
     generateWorkHoursSummaryTable();
 }
 
-// 生成只讀版本的更表日曆（與主管版本格式一致，但內容只讀）
+// 生成只讀版本的更表日曆（支持月份選擇但內容只讀）
 async function generateReadonlyRosterCalendar(year, month, rosterByDay) {
     const container = document.getElementById('rosterCalendar');
     if (!container) return;
@@ -3038,91 +2859,43 @@ async function generateReadonlyRosterCalendar(year, month, rosterByDay) {
     html += `</select>`;
     html += `</div>`;
     
-    // 生成只讀日曆內容（與主管版本格式一致）
+    // 生成只讀日曆內容
     html += '<div class="cal grid-7">';
     weekdays.forEach(w => { html += `<div class="cal-head">${w}</div>`; });
     
-    const first = new Date(year, month - 1, 1);
-    const offset = first.getDay();
-    for (let i = 0; i < offset; i++) html += '<div class="cal-cell cal-empty"></div>';
-
+    const cal = new Date(year, month - 1, 1);
+    const firstDow = cal.getDay();
     const daysInMonth = new Date(year, month, 0).getDate();
+    for (let i=0;i<firstDow;i++) html += '<div class="cal-cell cal-empty"></div>';
     
-    for (let day = 1; day <= daysInMonth; day++) {
-        const items = rosterByDay.get(day) || [];
-        
-        // 按時段分類數據
-        let morningTime = '', morningLoc = '';
-        let afternoonTime = '', afternoonLoc = '';
-        let eveningTime = '', eveningLoc = '';
-        
-        items.forEach(item => {
-            const time = item.time || '';
-            const location = item.location || '';
-            
-            // 提取時段和時間
-            let period = 'morning';
-            let cleanTime = time;
-            
-            if (time.includes('上午')) {
-                period = 'morning';
-                cleanTime = time.replace('上午', '').trim();
-            } else if (time.includes('下午')) {
-                period = 'afternoon';
-                cleanTime = time.replace('下午', '').trim();
-            } else if (time.includes('晚上') || time.includes('晚')) {
-                period = 'evening';
-                cleanTime = time.replace(/晚上|晚/g, '').trim();
-            } else {
-                // 根據時間判斷時段
-                const timeMatch = time.match(/^(\d{1,2})/);
-                if (timeMatch) {
-                    const hour = parseInt(timeMatch[1]);
-                    if (hour >= 6 && hour < 12) {
-                        period = 'morning';
-                    } else if (hour >= 12 && hour < 18) {
-                        period = 'afternoon';
-                    } else {
-                        period = 'evening';
-                    }
-                }
-            }
-            
-            if (period === 'morning') {
-                morningTime = cleanTime;
-                morningLoc = location;
-            } else if (period === 'afternoon') {
-                afternoonTime = cleanTime;
-                afternoonLoc = location;
-            } else if (period === 'evening') {
-                eveningTime = cleanTime;
-                eveningLoc = location;
-            }
-        });
-        
-        html += `<div class="cal-cell" style="height: auto; min-height: 160px;">`+
-            `<div class="cal-day" style="text-align: center; font-weight: bold; margin-bottom: 8px;">${day}</div>`+
-            
-            // 上午时段（只讀顯示）
-            `<div class="time-slot" style="margin-bottom: 4px;">`+
-                `<div style="font-size: 9px; color: #666; margin-bottom: 2px;">上午</div>`+
-                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${morningTime || ''}</div>`+
-                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;background-color:#f9fafb;color:#374151;">${morningLoc || ''}</div>`+
-            `</div>`+
-            
-            // 下午时段（只讀顯示）
-            `<div class="time-slot" style="margin-bottom: 4px;">`+
-                `<div style="font-size: 9px; color: #666; margin-bottom: 2px;">下午</div>`+
-                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${afternoonTime || ''}</div>`+
-                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;background-color:#f9fafb;color:#374151;">${afternoonLoc || ''}</div>`+
-            `</div>`+
-            
-            // 晚上时段（只讀顯示）
-            `<div class="time-slot">`+
-                `<div style="font-size: 9px; color: #666; margin-bottom: 2px;">晚上</div>`+
-                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;margin-bottom:2px;background-color:#f9fafb;color:#374151;">${eveningTime || ''}</div>`+
-                `<div style="width:100%;height:20px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:3px;font-size:9px;background-color:#f9fafb;color:#374151;">${eveningLoc || ''}</div>`+
-            `</div>`+
+    const today = new Date();
+    const isThisMonth = (today.getFullYear()===year && (today.getMonth()+1)===month);
+    const todayDay = isThisMonth ? today.getDate() : -1;
+    
+    // 小工具：時間正規化並排序
+    const normalizeTime = (t) => {
+        const s = String(t||'').trim();
+        const m = s.match(/^(\d{1,2})(:?)(\d{0,2})(?:\s*-\s*(\d{1,2})(:?)(\d{0,2}))?/);
+        if (!m) return { sortKey: 9999, label: s };
+        const h1 = Number(m[1]); const min1 = m[3] ? Number(m[3]) : 0;
+        const h2 = m[4] ? Number(m[4]) : null; const min2 = m[6] ? Number(m[6]) : 0;
+        const pad = (n)=> String(n).padStart(2,'0');
+        const left = `${pad(h1)}:${pad(min1)}`;
+        const right = (h2!==null) ? `${pad(h2)}:${pad(min2)}` : '';
+        return { sortKey: h1*60+min1, label: right? `${left}-${right}` : left };
+    };
+    
+    for (let d=1; d<=daysInMonth; d++) {
+        const raw = rosterByDay.get(d) || [];
+        // 排序並格式化
+        const slots = raw
+            .map(s=>({ timeObj: normalizeTime(s.time||s.timeRange||''), location: s.location||s.place||'' }))
+            .sort((a,b)=> a.timeObj.sortKey - b.timeObj.sortKey)
+            .map(x=>({ time: x.timeObj.label, location: x.location }));
+        const topClass = d===todayDay ? 'is-today' : '';
+        html += `<div class="cal-cell ${topClass} ${slots.length? 'has-hours':''}">`+
+            `<div class="cal-day">${d}</div>`+
+            `<div class="cal-roster">${slots.map(s => `<div class="slot"><div class="cal-roster-time">${s.time||''}</div><div class="cal-roster-loc">${s.location||''}</div></div>`).join('')}</div>`+
         `</div>`;
     }
     
@@ -3169,3 +2942,468 @@ window.onCoachRosterMonthChange = async function() {
         showLoading(false);
     }
 };
+
+// ===== 新的更表系统 =====
+
+// 全局变量
+let currentWorkType = null; // 'full-time' 或 'part-time'
+let selectedDays = new Set(); // 存储选中的日期
+let currentMonth = new Date().getMonth() + 1; // 当前选择的月份
+let currentYear = new Date().getFullYear(); // 当前年份
+
+// 初始化新更表系统
+function initNewRosterSystem() {
+    console.log('🔄 初始化新更表系统');
+    
+    // 获取用户工作类型
+    const userType = localStorage.getItem('current_user_type');
+    const userData = JSON.parse(localStorage.getItem('current_user_data') || '{}');
+    currentWorkType = userData.type || null;
+    
+    console.log('👤 用户类型:', userType, '工作类型:', currentWorkType);
+    
+    // 更新工作类型指示器
+    updateWorkTypeIndicator();
+    
+    // 生成日历
+    generateNewRosterCalendar();
+    
+    // 绑定月份选择事件
+    const monthSelect = document.getElementById('rosterMonth');
+    if (monthSelect) {
+        monthSelect.addEventListener('change', (e) => {
+            currentMonth = parseInt(e.target.value);
+            generateNewRosterCalendar();
+        });
+    }
+}
+
+// 更新工作类型指示器
+function updateWorkTypeIndicator() {
+    const indicator = document.getElementById('workTypeIndicator');
+    const typeText = document.getElementById('workTypeText');
+    const instructions = document.getElementById('workTypeInstructions');
+    
+    if (!indicator || !typeText || !instructions) return;
+    
+    // 清除之前的类
+    indicator.classList.remove('full-time', 'part-time');
+    
+    if (currentWorkType === 'full-time') {
+        indicator.classList.add('full-time');
+        typeText.textContent = '工作類型：全職 (Full-time)';
+        instructions.innerHTML = `
+            <strong>全職教練操作說明：</strong><br>
+            • 所有日期默認為上班日（綠色高亮）<br>
+            • 點擊日期中的紅色 ✕ 按鈕標記該日不上班<br>
+            • 點擊「提交更表」確認您的排班安排
+        `;
+    } else if (currentWorkType === 'part-time') {
+        indicator.classList.add('part-time');
+        typeText.textContent = '工作類型：兼職 (Part-time)';
+        instructions.innerHTML = `
+            <strong>兼職教練操作說明：</strong><br>
+            • 點擊星期標題選擇整列日期（如：點擊「星期一」選擇所有星期一）<br>
+            • 選中的日期會變成綠色，表示可以上班<br>
+            • 點擊已選日期中的紅色 ✕ 按鈕取消該日<br>
+            • 點擊「提交更表」確認您的排班安排
+        `;
+    } else {
+        typeText.textContent = '工作類型：未知';
+        instructions.innerHTML = '請聯繫管理員確認您的工作類型設置。';
+    }
+}
+
+// 生成新的更表日历
+function generateNewRosterCalendar() {
+    const container = document.getElementById('newRosterCalendar');
+    if (!container) return;
+    
+    console.log(`📅 生成 ${currentYear}年${currentMonth}月 更表日历`);
+    
+    // 获取月份信息
+    const firstDay = new Date(currentYear, currentMonth - 1, 1);
+    const lastDay = new Date(currentYear, currentMonth, 0);
+    const daysInMonth = lastDay.getDate();
+    const startWeekday = firstDay.getDay(); // 0=Sunday, 1=Monday, ...
+    
+    // 清空容器
+    container.innerHTML = '';
+    
+    // 创建日历头部
+    const header = document.createElement('div');
+    header.className = 'calendar-header';
+    header.innerHTML = `<h3>${currentYear}年 ${currentMonth}月</h3>`;
+    container.appendChild(header);
+    
+    // 创建星期标题行
+    const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+    const weekdayContainer = document.createElement('div');
+    weekdayContainer.className = 'calendar-weekdays';
+    
+    weekdays.forEach((day, index) => {
+        const weekdayEl = document.createElement('div');
+        weekdayEl.className = 'weekday-header';
+        weekdayEl.textContent = day;
+        weekdayEl.dataset.weekday = index;
+        
+        // 为兼职教练添加列选择功能
+        if (currentWorkType === 'part-time') {
+            weekdayEl.addEventListener('click', () => selectWeekdayColumn(index));
+        }
+        
+        weekdayContainer.appendChild(weekdayEl);
+    });
+    
+    container.appendChild(weekdayContainer);
+    
+    // 创建日历网格
+    const grid = document.createElement('div');
+    grid.className = 'calendar-grid';
+    
+    // 计算需要显示的总天数（包括上月末尾和下月开头）
+    const totalCells = Math.ceil((daysInMonth + startWeekday) / 7) * 7;
+    
+    for (let i = 0; i < totalCells; i++) {
+        const dayNumber = i - startWeekday + 1;
+        const isCurrentMonth = dayNumber >= 1 && dayNumber <= daysInMonth;
+        
+        const dayEl = document.createElement('div');
+        dayEl.className = 'calendar-day';
+        
+        if (isCurrentMonth) {
+            dayEl.classList.add('current-month');
+            dayEl.dataset.date = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`;
+            dayEl.dataset.day = dayNumber;
+            dayEl.dataset.weekday = i % 7;
+            
+            // 创建日期显示
+            const dayNumberEl = document.createElement('div');
+            dayNumberEl.className = 'day-number';
+            dayNumberEl.textContent = dayNumber;
+            dayEl.appendChild(dayNumberEl);
+            
+            // 创建状态显示
+            const statusEl = document.createElement('div');
+            statusEl.className = 'day-status';
+            dayEl.appendChild(statusEl);
+            
+            // 创建删除按钮
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'remove-btn';
+            removeBtn.innerHTML = '✕';
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleDayUnavailable(dayEl);
+            });
+            dayEl.appendChild(removeBtn);
+            
+            // 设置初始状态
+            if (currentWorkType === 'full-time') {
+                // 全职：默认所有日期都可用
+                setDayAvailable(dayEl);
+            } else if (currentWorkType === 'part-time') {
+                // 兼职：默认所有日期都不可用
+                setDayUnavailable(dayEl);
+                
+                // 为兼职教练添加日期点击事件
+                dayEl.addEventListener('click', () => toggleDaySelection(dayEl));
+            }
+        } else {
+            dayEl.classList.add('other-month');
+            // 显示上月或下月的日期
+            let displayDay;
+            if (dayNumber <= 0) {
+                // 上月日期
+                const prevMonth = new Date(currentYear, currentMonth - 2, 0);
+                displayDay = prevMonth.getDate() + dayNumber;
+            } else {
+                // 下月日期
+                displayDay = dayNumber - daysInMonth;
+            }
+            dayEl.innerHTML = `<div class="day-number">${displayDay}</div>`;
+        }
+        
+        grid.appendChild(dayEl);
+    }
+    
+    container.appendChild(grid);
+}
+
+// 为兼职教练选择整列（星期几）
+function selectWeekdayColumn(weekday) {
+    if (currentWorkType !== 'part-time') return;
+    
+    console.log(`📅 选择星期 ${weekday} 的所有日期`);
+    
+    // 切换星期标题的选中状态
+    const weekdayHeaders = document.querySelectorAll('.weekday-header');
+    const header = weekdayHeaders[weekday];
+    const isSelected = header.classList.contains('selected');
+    
+    if (isSelected) {
+        header.classList.remove('selected');
+    } else {
+        header.classList.add('selected');
+    }
+    
+    // 选择/取消选择该列的所有日期
+    const days = document.querySelectorAll(`.calendar-day[data-weekday="${weekday}"]`);
+    days.forEach(day => {
+        if (day.classList.contains('current-month')) {
+            if (isSelected) {
+                setDayUnavailable(day);
+            } else {
+                setDayAvailable(day);
+            }
+        }
+    });
+}
+
+// 切换单个日期的选择状态（仅兼职）
+function toggleDaySelection(dayEl) {
+    if (currentWorkType !== 'part-time') return;
+    
+    const isAvailable = dayEl.classList.contains('available');
+    
+    if (isAvailable) {
+        setDayUnavailable(dayEl);
+    } else {
+        setDayAvailable(dayEl);
+    }
+}
+
+// 切换日期为不可用（红色×按钮功能）
+function toggleDayUnavailable(dayEl) {
+    const isAvailable = dayEl.classList.contains('available');
+    
+    if (isAvailable) {
+        setDayUnavailable(dayEl);
+    } else if (currentWorkType === 'full-time') {
+        // 全职可以重新设为可用
+        setDayAvailable(dayEl);
+    }
+}
+
+// 设置日期为可用
+function setDayAvailable(dayEl) {
+    dayEl.classList.remove('unavailable');
+    dayEl.classList.add('available');
+    
+    const statusEl = dayEl.querySelector('.day-status');
+    if (statusEl) {
+        statusEl.textContent = '可上班';
+        statusEl.className = 'day-status status-available';
+    }
+    
+    // 添加到选中日期集合
+    const date = dayEl.dataset.date;
+    if (date) {
+        selectedDays.add(date);
+    }
+}
+
+// 设置日期为不可用
+function setDayUnavailable(dayEl) {
+    dayEl.classList.remove('available');
+    dayEl.classList.add('unavailable');
+    
+    const statusEl = dayEl.querySelector('.day-status');
+    if (statusEl) {
+        statusEl.textContent = '不上班';
+        statusEl.className = 'day-status status-unavailable';
+    }
+    
+    // 从选中日期集合中移除
+    const date = dayEl.dataset.date;
+    if (date) {
+        selectedDays.delete(date);
+    }
+}
+
+// 保存更表数据
+async function saveRosterData() {
+    console.log('💾 保存更表数据');
+    
+    try {
+        showLoading(true);
+        
+        // 收集当前选择的数据
+        const rosterData = {
+            month: currentMonth,
+            year: currentYear,
+            workType: currentWorkType,
+            selectedDays: Array.from(selectedDays),
+            savedAt: new Date().toISOString()
+        };
+        
+        // 保存到本地存储
+        const phone = localStorage.getItem('current_user_phone');
+        const storageKey = `roster_${phone}_${currentYear}_${currentMonth}`;
+        localStorage.setItem(storageKey, JSON.stringify(rosterData));
+        
+        console.log('✅ 更表数据已保存到本地存储');
+        showMessage('更表已保存到本地', 'success');
+        
+    } catch (error) {
+        console.error('❌ 保存更表失败:', error);
+        showMessage('保存失败：' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 载入更表数据
+async function loadRosterData() {
+    console.log('📥 载入更表数据');
+    
+    try {
+        showLoading(true);
+        
+        const phone = localStorage.getItem('current_user_phone');
+        const storageKey = `roster_${phone}_${currentYear}_${currentMonth}`;
+        const savedData = localStorage.getItem(storageKey);
+        
+        if (savedData) {
+            const rosterData = JSON.parse(savedData);
+            
+            // 恢复选中的日期
+            selectedDays.clear();
+            rosterData.selectedDays.forEach(date => selectedDays.add(date));
+            
+            // 重新生成日历以反映加载的数据
+            generateNewRosterCalendar();
+            
+            console.log('✅ 更表数据已从本地存储载入');
+            showMessage('更表已载入', 'success');
+        } else {
+            console.log('ℹ️ 没有找到保存的更表数据');
+            showMessage('没有找到保存的更表数据', 'info');
+        }
+        
+    } catch (error) {
+        console.error('❌ 载入更表失败:', error);
+        showMessage('载入失败：' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 提交更表数据
+async function submitRosterData() {
+    console.log('📤 提交更表数据');
+    
+    try {
+        showLoading(true);
+        
+        const phone = localStorage.getItem('current_user_phone');
+        const userName = localStorage.getItem('current_user_name') || `教练_${phone}`;
+        
+        if (selectedDays.size === 0) {
+            showMessage('请先选择可上班的日期', 'warning');
+            return;
+        }
+        
+        // 准备提交数据
+        const submitData = {
+            phone: phone,
+            name: userName,
+            month: currentMonth,
+            year: currentYear,
+            workType: currentWorkType,
+            availableDays: Array.from(selectedDays),
+            submittedAt: new Date().toISOString()
+        };
+        
+        console.log('📋 提交数据:', submitData);
+        
+        // 调用后端API提交数据
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/roster/submit`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Public-Key': API_CONFIG.PUBLIC_API_KEY,
+                'X-API-Private-Key': API_CONFIG.PRIVATE_API_KEY
+            },
+            body: JSON.stringify(submitData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log('✅ 更表提交成功');
+            
+            // 显示成功状态
+            showSubmitSuccess();
+            
+            // 保存提交状态
+            const phone = localStorage.getItem('current_user_phone');
+            const statusKey = `roster_submitted_${phone}_${currentYear}_${currentMonth}`;
+            localStorage.setItem(statusKey, 'true');
+            
+            showMessage('更表提交成功！主管可以查看您的排班安排。', 'success');
+        } else {
+            throw new Error(result.message || '提交失败');
+        }
+        
+    } catch (error) {
+        console.error('❌ 提交更表失败:', error);
+        showMessage('提交失败：' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 显示提交成功状态
+function showSubmitSuccess() {
+    const statusEl = document.getElementById('submitStatus');
+    if (statusEl) {
+        statusEl.classList.remove('hidden');
+        
+        // 3秒后自动隐藏
+        setTimeout(() => {
+            statusEl.classList.add('hidden');
+        }, 3000);
+    }
+}
+
+// 显示消息
+function showMessage(message, type = 'info') {
+    // 创建消息元素
+    const messageEl = document.createElement('div');
+    messageEl.className = `message message-${type}`;
+    messageEl.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 1000;
+        animation: slideDown 0.3s ease;
+    `;
+    messageEl.textContent = message;
+    
+    document.body.appendChild(messageEl);
+    
+    // 3秒后移除
+    setTimeout(() => {
+        messageEl.remove();
+    }, 3000);
+}
+
+// 修改showStaffRoster函数以使用新系统
+function showStaffRoster() {
+    hideAllFeatures();
+    document.getElementById('staffRosterSection').classList.remove('hidden');
+    
+    // 初始化新更表系统
+    initNewRosterSystem();
+}
