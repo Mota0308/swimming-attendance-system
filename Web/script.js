@@ -6,7 +6,7 @@ let clubs = [];
 
 // API配置 - 使用代理，避免CORS问题
 const API_CONFIG = {
-    BASE_URL: '', // 使用空字符串，通过代理访问
+    BASE_URL: 'https://swimming-attendance-system-production.up.railway.app', // 正确的API服务器地址
     PUBLIC_API_KEY: 'ttdrcccy',
     PRIVATE_API_KEY: '2b207365-cbf0-4e42-a3bf-f932c84557c4'
 };
