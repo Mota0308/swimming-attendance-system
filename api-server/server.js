@@ -1311,12 +1311,33 @@ app.get('/location-clubs', validateApiKeys, async (req, res) => {
             return;
         }
         
-        res.json({
-            success: true,
-            locationClubs: locationClubs
+        // 將平鋪的數據轉換為分組格式
+        const groupedLocationClubs = {};
+        locationClubs.forEach(item => {
+            const location = item.location;
+            const club = item.club;
+            
+            if (!groupedLocationClubs[location]) {
+                groupedLocationClubs[location] = {
+                    location: location,
+                    clubs: []
+                };
+            }
+            
+            if (club && !groupedLocationClubs[location].clubs.includes(club)) {
+                groupedLocationClubs[location].clubs.push(club);
+            }
         });
         
-        console.log(`✅ 返回地點泳會組合: ${locationClubs.length}個`);
+        // 轉換為數組格式
+        const result = Object.values(groupedLocationClubs);
+        
+        res.json({
+            success: true,
+            locationClubs: result
+        });
+        
+        console.log(`✅ 返回地點泳會組合: ${result.length}個地點，共${locationClubs.length}條記錄`);
     } catch (error) {
         console.error('❌ 獲取地點泳會組合失敗:', error);
         
