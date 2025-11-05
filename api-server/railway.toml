@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm ci --production=false"
+buildCommand = "npm install"
 
 [deploy]
 rootDirectory = "api-server"
