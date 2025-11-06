@@ -1,0 +1,50 @@
+# Railway 部署配置文件
+# 用於部署游泳課程管理系統 API 服務器到 Railway 平台
+
+[build]
+# 使用 nixpacks 作為構建器（Railway 默認）
+builder = "nixpacks"
+
+# 構建命令：安裝依賴，不使用緩存以確保最新版本
+buildCommand = "npm install --no-cache"
+
+[deploy]
+# 根目錄設置（根據部署方式選擇）
+# 情況 1: 如果從項目根目錄部署，取消下面這行的註釋
+# rootDirectory = "api-server"
+# 情況 2: 如果從 api-server 目錄直接部署，保持註釋狀態
+
+# 啟動命令
+startCommand = "npm start"
+
+# 健康檢查配置
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+
+# 重啟策略
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[deploy.envs]
+# 運行環境
+NODE_ENV = "production"
+
+# 注意：以下環境變量需要在 Railway Dashboard 中手動設置
+# 設置路徑：Railway Dashboard → 您的服務 → Variables 標籤
+#
+# 必需環境變量：
+# - MONGO_BASE_URI: MongoDB 連接字符串
+#   例如: mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+#
+# - PUBLIC_API_KEY: 公開 API 密鑰
+#   例如: ttdrcccy
+#
+# - PRIVATE_API_KEY: 私有 API 密鑰
+#   例如: 2b207365-cbf0-4e42-a3bf-f932c84557c4
+#
+# 可選環境變量：
+# - DEFAULT_DB_NAME: 默認數據庫名稱（默認為 'test'）
+# - CLUBS: 俱樂部配置 JSON 字符串（如果需要）
+#
+# PORT 環境變量會由 Railway 自動設置，無需手動配置
+
