@@ -1,10 +1,8 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --no-cache"
+buildCommand = "npm install"
 
 [deploy]
-# 從項目根目錄部署，設置根目錄為 api-server
-rootDirectory = "api-server"
 startCommand = "npm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
@@ -13,4 +11,3 @@ restartPolicyMaxRetries = 10
 
 [deploy.envs]
 NODE_ENV = "production"
-# PORT 會由 Railway 自動設置

@@ -46,8 +46,7 @@ router.get('/locations', async (req, res) => {
             '荔枝角公園游泳池', 
             '觀塘游泳池',
             '深水埗公園游泳池',
-            '黃大仙游泳池',
-            'Office'
+            '黃大仙游泳池'
         ];
         
         res.json({

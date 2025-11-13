@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://swimming-attendance-system-production.up.railway.app https://cdnjs.cloudflare.com; img-src 'self' data: https:; object-src 'none'; base-uri 'self'; form-action 'self';">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23667eea'/%3E%3Ctext x='32' y='38' text-anchor='middle' font-size='28' fill='white'%3E%F0%9F%8F%8B%EF%B8%8F%3C/text%3E%3C/svg%3E">
+    <title>游泳系統 - 管理平台</title>
+    
+    <!-- 預載入關鍵資源 -->
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" as="style">
+    <link rel="preload" href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" as="style">
+    <link rel="preload" href="styles.css?v=9" as="style">
+    <link rel="preload" href="database-connector.js?v=29" as="script">
+    <link rel="preload" href="main-app.js?v=45" as="script">
+    
+    <!-- DNS預解析 -->
+    <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="//fonts.googleapis.com">
+    <link rel="dns-prefetch" href="//fonts.gstatic.com">
+    <link rel="dns-prefetch" href="//swimming-attendance-system-production.up.railway.app">
+    
+    <!-- 關鍵CSS內聯，避免阻塞渲染 -->
+    <style>
+        /* 關鍵渲染路徑CSS */
+        body { margin: 0; font-family: 'Inter', sans-serif; }
+        .hidden { display: none !important; }
+        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+        .loading-spinner { color: white; text-align: center; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .login-container { max-width: 400px; margin: 50px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .login-btn { width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        
+        /* 優化字體載入 */
+        .font-loading { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .font-loaded { font-family: 'Inter', sans-serif; }
+    </style>
+    
+    <!-- 非關鍵CSS異步載入 -->
+    <link rel="stylesheet" href="styles.css?v=9">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 登入界面 -->
+    <div id="loginSection" class="section active">
+        <div class="login-container">
+            <div class="login-header">
+                <h1><i class="fas fa-swimming-pool"></i> 游泳系統</h1>
+                <p>管理平台</p>
+            </div>
+            
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="phoneInput">
+                        <i class="fas fa-phone"></i> 電話號碼
+                    </label>
+                    <input type="tel" id="phoneInput" name="phone" required placeholder="請輸入電話號碼">
+                </div>
+                
+                <div class="form-group">
+                    <label for="passwordInput">
+                        <i class="fas fa-lock"></i> 密碼
+                    </label>
+                    <input type="password" id="passwordInput" name="password" required placeholder="請輸入密碼">
+                </div>
+                
+                <div class="form-group">
+                    <label for="roleSelect">
+                        <i class="fas fa-user-tag"></i> 登入身份
+                    </label>
+                    <select id="roleSelect" name="role">
+                        <option value="parent">學生</option>
+                        <option value="coach" selected>教練</option>
+                        <option value="supervisor">主管</option>
+                        <option value="admin">管理員</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i> 登入
+                </button>
+            </form>
+            
+            <div id="loginMessage" class="message"></div>
+            
+            <div class="login-footer">
+                <p>© 2025 游泳系統</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 教練主界面 -->
+    <div id="coachSection" class="section">
+        <nav class="top-nav">
+            <div class="nav-left">
+                <h2><i class="fas fa-swimming-pool"></i> 游泳系統</h2>
+            </div>
+            <div class="nav-right">
+                <div class="user-info">
+                    <span id="userPhone"></span>
+                    <span id="userType"></span>
+                </div>
+                <button id="logoutBtn" class="logout-btn">
+                    <i class="fas fa-sign-out-alt"></i> 登出
+                </button>
+            </div>
+        </nav>
+
+        <div class="main-content">
+            <!-- 功能選單 -->
+            <div class="feature-grid">
+                <div class="feature-card" data-feature="attendance">
+                    <div class="feature-icon">
+                        <i class="fas fa-clipboard-check"></i>
+                    </div>
+                    <h3>出席管理</h3>
+                    <p>管理學生出席記錄</p>
+                </div>
+                
+                <div class="feature-card" data-feature="work-hours-roster">
+                    <div class="feature-icon">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <h3>工時記錄與更表</h3>
+                    <p>查看和管理工時記錄與更表</p>
+                </div>
+                
+                <div class="feature-card" data-feature="personal-settings">
+                    <div class="feature-icon">
+                        <i class="fas fa-user-cog"></i>
+                    </div>
+                    <h3>個人設置</h3>
+                    <p>編輯個人資料</p>
+                </div>
+            </div>
+
+            <!-- 出席管理界面 -->
+            <div id="attendanceInterface" class="interface-section hidden">
+                <div class="interface-header">
+                    <h3><i class="fas fa-clipboard-check"></i> 出席管理</h3>
+                    <button id="backToMain" class="back-btn">
+                        <i class="fas fa-arrow-left"></i> 返回主選單
+                    </button>
+                </div>
+                
+                <div class="attendance-controls">
+                    <div class="control-group">
+                        <label>地點</label>
+                        <select id="attendanceLocation">
+                            <option value="">全部地點</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>日期</label>
+                        <input type="date" id="attendanceDate">
+                    </div>
+                    <button id="refreshAttendance" class="refresh-btn">
+                        <i class="fas fa-sync"></i> 刷新
+                    </button>
+                </div>
+                
+                <div id="attendanceTable" class="attendance-table">
+                    <!-- 出席表格將在這裡動態生成 -->
+                </div>
+            </div>
+
+            <!-- 工時管理界面 -->
+            <div id="workHoursInterface" class="interface-section hidden">
+                <div class="interface-header">
+                    <h3><i class="fas fa-clock"></i> 工時管理</h3>
+                    <button id="backToMain2" class="back-btn">
+                        <i class="fas fa-arrow-left"></i> 返回主選單
+                    </button>
+                </div>
+                
+                <!-- 工時管理控制面板 -->
+                <div class="work-hours-controls">
+                    <div class="control-group">
+                        <label for="coachWorkHoursYearSelect">年份：</label>
+                        <select id="coachWorkHoursYearSelect" onchange="WorkHoursFunctions.onDateChange()">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="coachWorkHoursMonthSelect">月份：</label>
+                        <select id="coachWorkHoursMonthSelect" onchange="WorkHoursFunctions.onDateChange()">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button onclick="WorkHoursFunctions.loadWorkHoursData()" class="btn-primary">
+                            <i class="fas fa-download"></i> 載入工時
+                    </button>
+                        <button onclick="WorkHoursFunctions.exportCurrentEmployee()" class="btn-secondary">
+                            <i class="fas fa-file-excel"></i> 導出
+                    </button>
+                    </div>
+                </div>
+                
+                <!-- 工時表格容器 -->
+                <div id="coachWorkHoursTableContainer" class="work-hours-table-container">
+                    <!-- 工時表格將在這裡動態生成 -->
+                </div>
+            </div>
+
+            <!-- 教練更表界面 -->
+            <div id="rosterInterface" class="interface-section hidden">
+                <div class="interface-header">
+                    <h3 id="rosterSectionTitle"><i class="fas fa-calendar-alt"></i> 教練更表</h3>
+                    <button class="back-btn" onclick="hideAllFeatures()">
+                        <i class="fas fa-arrow-left"></i> 返回主選單
+                    </button>
+                </div>
+                
+                <!-- 新的更表控制面板 -->
+                <div class="roster-controls">
+                    <div class="control-group">
+                        <label for="rosterCoachSelect">選擇教練：</label>
+                        <select id="rosterCoachSelect">
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="rosterMonth">月份選擇：</label>
+                        <select id="rosterMonth" onchange="onCoachRosterMonthChange()">
+                            <!-- 動態生成選項：當前月份前4個月到後6個月 -->
+                        </select>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="roster-btn load-btn" onclick="loadRosterData()">
+                            <i class="fas fa-download"></i> 載入更表
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 工作类型提示 -->
+                <div id="workTypeIndicator" class="work-type-indicator">
+                    <span id="workTypeText">工作類型：未知</span>
+                    <div id="workTypeInstructions" class="instructions">
+                        <!-- 根据工作类型显示不同的说明 -->
+                    </div>
+                </div>
+                
+                
+                <!-- 更表日历 -->
+                <div id="rosterCalendar" class="roster-calendar">
+                    <!-- 日历将在这里动态生成 -->
+                </div>
+                
+                <!-- 提交状态显示 -->
+                <div id="submitStatus" class="submit-status hidden">
+                    <div class="status-message">
+                        <i class="fas fa-check-circle"></i>
+                        <span>更表已提交成功</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 工時記錄與更表統一界面 -->
+            <div id="coachWorkHoursRosterSection" class="interface-section hidden">
+                <div class="interface-header">
+                    <h3><i class="fas fa-calendar-check"></i> 工時記錄與更表</h3>
+                    <button class="back-btn" onclick="hideAllFeatures()">
+                        <i class="fas fa-arrow-left"></i> 返回主選單
+                    </button>
+                </div>
+                
+                <!-- 第一部分：更表 -->
+                <div class="roster-section" style="margin-bottom: 40px; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+                    <h3 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a90e2; padding-bottom: 10px;">
+                        <i class="fas fa-calendar-alt"></i> 更表
+                    </h3>
+                    <div class="roster-controls" style="margin-bottom: 20px;">
+                        <div class="control-group">
+                            <label for="coachRosterMonthSelect">月份選擇：</label>
+                            <select id="coachRosterMonthSelect" onchange="loadCoachRoster()">
+                                <!-- 動態生成選項 -->
+                            </select>
+                        </div>
+                        <div class="button-group">
+                            <button onclick="loadCoachRoster()" class="btn-primary">
+                                <i class="fas fa-download"></i> 載入更表
+                            </button>
+                        </div>
+                    </div>
+                    <div id="coachRosterDisplay" class="roster-calendar">
+                        <!-- 更表將在這裡顯示 -->
+                        <div class="empty">請選擇月份並點擊「載入更表」</div>
+                    </div>
+                </div>
+                
+                <!-- 第二部分：工時記錄表 -->
+                <div class="workhours-section" style="margin-bottom: 40px; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+                    <h3 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a90e2; padding-bottom: 10px;">
+                        <i class="fas fa-clock"></i> 工時記錄表
+                    </h3>
+                    <div class="work-hours-controls" style="margin-bottom: 20px;">
+                        <div class="control-group">
+                            <label for="coachWorkHoursYearSelect">年份：</label>
+                            <select id="coachWorkHoursYearSelect">
+                                <!-- 動態生成選項 -->
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label for="coachWorkHoursMonthSelect">月份：</label>
+                            <select id="coachWorkHoursMonthSelect">
+                                <!-- 動態生成選項 -->
+                            </select>
+                        </div>
+                        <div class="button-group">
+                            <button onclick="loadCoachWorkHours()" class="btn-primary">
+                                <i class="fas fa-download"></i> 載入工時
+                            </button>
+                            <button onclick="WorkHoursFunctions.exportCurrentEmployee()" class="btn-secondary">
+                                <i class="fas fa-file-excel"></i> 導出
+                            </button>
+                        </div>
+                    </div>
+                    <div id="coachWorkHoursDisplay" class="work-hours-table-container">
+                        <!-- 工時記錄表將在這裡顯示 -->
+                        <div class="empty">請選擇年份和月份並點擊「載入工時」</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 個人設置界面 -->
+            <div id="personalSettingsInterface" class="interface-section hidden">
+                <div class="interface-header">
+                    <h3><i class="fas fa-user-cog"></i> 個人設置</h3>
+                    <button class="back-btn" onclick="hideAllFeatures()">
+                        <i class="fas fa-arrow-left"></i> 返回主選單
+                    </button>
+                </div>
+                
+                <div id="personalSettingsContainer" class="personal-settings-container">
+                    <div class="settings-section">
+                        <h4>基本信息</h4>
+                        <div class="form-group">
+                            <label for="settingsName">姓名：</label>
+                            <input type="text" id="settingsName" class="form-control">
+                </div>
+                        <div class="form-group">
+                            <label for="settingsPhone">電話號碼：</label>
+                            <input type="text" id="settingsPhone" class="form-control">
+            </div>
+                        <div class="form-group">
+                            <label for="settingsEmail">電子郵箱：</label>
+                            <input type="email" id="settingsEmail" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsPassword">登入密碼：</label>
+                            <input type="password" id="settingsPassword" class="form-control" placeholder="留空表示不修改">
+                        </div>
+                    </div>
+                    
+                    <div class="settings-section">
+                        <h4>銀行信息</h4>
+                        <div class="form-group">
+                            <label for="settingsBankName">所屬銀行名稱：</label>
+                            <input type="text" id="settingsBankName" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="settingsBankAccount">銀行賬戶：</label>
+                            <input type="text" id="settingsBankAccount" class="form-control">
+                        </div>
+                    </div>
+                    
+                    <div class="settings-actions">
+                        <button id="saveSettingsBtn" class="btn-primary">
+                            <i class="fas fa-save"></i> 保存設置
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<!-- 主管頁面 -->
+<div id="supervisorSection" class="section">
+    <nav class="top-nav">
+        <div class="nav-left">
+            <h2><i class="fas fa-user-tie"></i> 游泳系統 - 主管管理</h2>
+        </div>
+        <div class="nav-right">
+            <div class="user-info">
+                <span id="userPhone"></span>
+                <span id="userType"></span>
+            </div>
+            <button id="supervisorLogoutBtn" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i> 登出
+            </button>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <!-- 主管功能選單 -->
+        <div class="feature-grid">
+            <div class="feature-card" data-feature="supervisor-attendance">
+                <div class="feature-icon">
+                    <i class="fas fa-clipboard-check"></i>
+                </div>
+                <h3>出席管理</h3>
+                <p>查看和管理所有教練的出席記錄</p>
+            </div>
+            
+            <div class="feature-card" data-feature="supervisor-work-hours-roster">
+                <div class="feature-icon">
+                    <i class="fas fa-calendar-check"></i>
+                </div>
+                <h3>工時記錄與更表</h3>
+                <p>查看和管理工時記錄與更表</p>
+            </div>
+            
+            <div class="feature-card" data-feature="supervisor-reports">
+                <div class="feature-icon">
+                    <i class="fas fa-chart-bar"></i>
+                </div>
+                <h3>報表管理</h3>
+                <p>查看各種統計報表</p>
+            </div>
+            <div class="feature-card" data-feature="data-management">
+                <div class="feature-icon"><i class="fas fa-database"></i></div>
+                <h3>資料管理</h3>
+                <p>瀏覽員工、會員、試堂數據</p>
+              </div>
+            <div class="feature-card" data-feature="supervisor-personal-settings">
+                <div class="feature-icon">
+                    <i class="fas fa-user-cog"></i>
+                </div>
+                <h3>個人設置</h3>
+                <p>編輯個人資料</p>
+            </div>
+            
+            <div class="feature-card" data-feature="supervisor-misc">
+                <div class="feature-icon">
+                    <i class="fas fa-tools"></i>
+                </div>
+                <h3>雜項</h3>
+                <p>各種管理功能</p>
+            </div>
+        </div>
+
+        <!-- 主管工時記錄與更表統一界面 -->
+        <div id="supervisorWorkHoursRosterSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-calendar-check"></i> 工時記錄與更表</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <!-- 總統計月份更表區域（僅主管頁面顯示，獨立於員工選擇，置於頂部） -->
+            <div id="supervisorAllRosterArea" style="margin-bottom: 30px; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+                <h3 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a90e2; padding-bottom: 10px;">
+                    <i class="fas fa-chart-bar"></i> 總統計月份更表
+                </h3>
+                <div class="roster-statistics-section">
+                    <div class="statistics-controls">
+                        <div class="control-group">
+                            <label for="supervisorStatsMonth">統計月份：</label>
+                            <select id="supervisorStatsMonth">
+                                <!-- 動態生成選項 -->
+                            </select>
+                        </div>
+                        <button class="refresh-btn" onclick="renderAllCoachesRoster()">
+                            <i class="fas fa-chart-bar"></i> 顯示更表
+                        </button>
+                    </div>
+                    <div id="dailyLocationStats" class="daily-stats-container empty">
+                        <div class="empty">點擊「顯示更表」按鈕開始顯示月份更表</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 控制面板（僅員工選擇） -->
+            <div class="work-hours-controls">
+                <div class="control-group">
+                    <label for="supervisorEmployeeSelect">員工：</label>
+                    <select id="supervisorEmployeeSelect" onchange="onSupervisorEmployeeSelectChange()">
+                        <!-- 動態生成選項 -->
+                    </select>
+                </div>
+            </div>
+            
+            <!-- 第一部分：更表 -->
+            <div class="roster-section" style="margin-bottom: 40px; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+                <h3 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a90e2; padding-bottom: 10px;">
+                    <i class="fas fa-calendar-alt"></i> 更表
+                </h3>
+                <div class="roster-controls" style="margin-bottom: 20px;">
+                    <div class="control-group">
+                        <label for="supervisorRosterMonthSelect">月份選擇：</label>
+                        <select id="supervisorRosterMonthSelect" onchange="loadSupervisorRoster()">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button onclick="loadSupervisorRoster()" class="btn-primary">
+                            <i class="fas fa-download"></i> 載入更表
+                        </button>
+                    </div>
+                </div>
+                <div id="supervisorRosterDisplay" class="roster-calendar">
+                    <!-- 更表將在這裡顯示 -->
+                    <div class="empty">請選擇月份並點擊「載入更表」</div>
+                </div>
+            </div>
+            
+            <!-- 第二部分：工時記錄表 -->
+            <div class="workhours-section" style="margin-bottom: 40px; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+                <h3 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a90e2; padding-bottom: 10px;">
+                    <i class="fas fa-clock"></i> 工時記錄表
+                </h3>
+                <div class="work-hours-controls" style="margin-bottom: 20px;">
+                    <div class="control-group">
+                        <label for="supervisorWorkHoursYearSelect">年份：</label>
+                        <select id="supervisorWorkHoursYearSelect">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="supervisorWorkHoursMonthSelect">月份：</label>
+                        <select id="supervisorWorkHoursMonthSelect">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button onclick="loadSupervisorWorkHours()" class="btn-primary">
+                            <i class="fas fa-download"></i> 載入工時
+                        </button>
+                        <button onclick="WorkHoursFunctions.exportAllWorkHours()" class="btn-secondary">
+                            <i class="fas fa-file-excel"></i> 導出
+                        </button>
+                    </div>
+                </div>
+                <div id="supervisorWorkHoursDisplay" class="work-hours-table-container">
+                    <!-- 工時記錄表將在這裡顯示 -->
+                    <div class="empty">請選擇年份和月份並點擊「載入工時」</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主管工時管理界面（保留舊版本，待刪除） -->
+        <div id="supervisorWorkHoursSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-calendar-alt"></i> 主管更表管理</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <!-- 教練選擇控制面板 -->
+            <div class="roster-controls">
+                <div class="control-group">
+                    <label for="staffCoachSelect">選擇教練：</label>
+                    <select id="staffCoachSelect" onchange="onChangeStaffCoach()">
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="rosterMonth">月份選擇：</label>
+                    <select id="rosterMonth" onchange="onRosterMonthChange()">
+                        <!-- 月份選項將動態生成 -->
+                    </select>
+                </div>
+            </div>
+            
+            <!-- 教練更表日曆容器 -->
+            <div id="staffRosterCalendars" class="roster-calendar">
+                <!-- 教練更表日曆將在這裡動態生成 -->
+            </div>
+            
+            <!-- 教練更表統計功能 -->
+            <div class="roster-statistics-section">
+                <h4><i class="fas fa-chart-bar"></i> 月份更表</h4>
+                
+                <div class="statistics-controls">
+                    <div class="control-group">
+                        <label for="statsMonth">統計月份：</label>
+                        <select id="statsMonth">
+                            <option value="1">1月</option>
+                            <option value="2">2月</option>
+                            <option value="3">3月</option>
+                            <option value="4">4月</option>
+                            <option value="5">5月</option>
+                            <option value="6">6月</option>
+                            <option value="7">7月</option>
+                            <option value="8" selected>8月</option>
+                            <option value="9">9月</option>
+                            <option value="10">10月</option>
+                            <option value="11">11月</option>
+                            <option value="12">12月</option>
+                        </select>
+                    </div>
+                    
+                    <button class="refresh-btn" onclick="renderAllCoachesRoster()">
+                        <i class="fas fa-chart-bar"></i> 顯示更表
+                    </button>
+                    
+                    <button class="export-btn" onclick="exportLocationStats()">
+                        <i class="fas fa-download"></i> 導出更表
+                    </button>
+                </div>
+                
+                <!-- 統計結果顯示區域 -->
+                <div id="dailyLocationStats" class="daily-stats-container empty">
+                    <div class="empty">點擊「顯示更表」按鈕開始顯示月份更表</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主管出席管理界面 -->
+        <div id="supervisorAttendanceSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-clipboard-check"></i> 主管出席管理</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            <div class="supervisor-attendance-content">
+                <!-- 主管出席管理內容 -->
+            </div>
+        </div>
+
+        <!-- 主管報表管理界面 -->
+        <div id="supervisorReportsSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-chart-bar"></i> 主管報表管理</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            <div class="supervisor-reports-content">
+                <!-- 主管報表管理內容 -->
+            </div>
+        </div>
+
+        <!-- 主管個人設置界面 -->
+        <div id="supervisorPersonalSettingsSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-user-cog"></i> 個人設置</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <div id="supervisorPersonalSettingsContainer" class="personal-settings-container">
+                <div class="settings-section">
+                    <h4>基本信息</h4>
+                    <div class="form-group">
+                        <label for="supervisorSettingsName">姓名：</label>
+                        <input type="text" id="supervisorSettingsName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="supervisorSettingsPhone">電話號碼：</label>
+                        <input type="text" id="supervisorSettingsPhone" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="supervisorSettingsEmail">電子郵箱：</label>
+                        <input type="email" id="supervisorSettingsEmail" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="supervisorSettingsPassword">登入密碼：</label>
+                        <input type="password" id="supervisorSettingsPassword" class="form-control" placeholder="留空表示不修改">
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4>銀行信息</h4>
+                    <div class="form-group">
+                        <label for="supervisorSettingsBankName">所屬銀行名稱：</label>
+                        <input type="text" id="supervisorSettingsBankName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="supervisorSettingsBankAccount">銀行賬戶：</label>
+                        <input type="text" id="supervisorSettingsBankAccount" class="form-control">
+                    </div>
+                </div>
+                
+                <div class="settings-actions">
+                    <button id="supervisorSaveSettingsBtn" class="btn-primary">
+                        <i class="fas fa-save"></i> 保存設置
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主管雜項界面 -->
+        <div id="supervisorMiscSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-tools"></i> 雜項</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <!-- 員工創建板塊（可點擊展開） -->
+            <div class="misc-section-card" onclick="toggleEmployeeCreate()">
+                <div class="misc-section-header">
+                    <h4><i class="fas fa-user-plus"></i> 員工創建</h4>
+                    <i class="fas fa-chevron-down" id="employeeCreateIcon"></i>
+                </div>
+            </div>
+            
+            <!-- 員工創建內容（初始隱藏） -->
+            <div id="employeeCreateContent" class="misc-section-content hidden">
+                <div class="form-group">
+                    <label for="employeeCreateName">中文姓名：<span style="color: red;">*</span></label>
+                    <input type="text" id="employeeCreateName" class="form-control" placeholder="例如：張三" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateEngName">英文姓名：<span style="color: red;">*</span></label>
+                    <input type="text" id="employeeCreateEngName" class="form-control" placeholder="例如：John Smith" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreatePhone">電話號碼：<span style="color: red;">*</span></label>
+                    <input type="tel" id="employeeCreatePhone" class="form-control" placeholder="例如：1234567890" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateEmail">電子郵箱：</label>
+                    <input type="email" id="employeeCreateEmail" class="form-control" placeholder="例如：example@email.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateWorkingType">類型：<span style="color: red;">*</span></label>
+                    <select id="employeeCreateWorkingType" class="form-control" required>
+                        <option value="full_time">全職</option>
+                        <option value="part_time">兼職</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateType">職位：<span style="color: red;">*</span></label>
+                    <select id="employeeCreateType" class="form-control" required>
+                        <option value="coach">教練</option>
+                        <option value="supervisor">主管</option>
+                        <option value="admin">管理員</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" style="display: none;">
+                    <label for="employeeCreatePassword">密碼：</label>
+                    <input type="text" id="employeeCreatePassword" class="form-control" placeholder="系統自動生成" readonly>
+                </div>
+                
+                <div class="settings-actions">
+                    <button onclick="createEmployee()" class="btn-primary">
+                        <i class="fas fa-user-plus"></i> 創建
+                    </button>
+                </div>
+            </div>
+            <!-- 試堂創建板塊（可點擊展開） -->
+            <div class="misc-section-card" onclick="toggleTrialCreate()">
+                <div class="misc-section-header">
+                    <h4><i class="fas fa-swimming-pool"></i> 試堂創建</h4>
+                    <i class="fas fa-chevron-down" id="trialCreateIcon"></i>
+                </div>
+            </div>
+            
+            <!-- 試堂創建內容（初始隱藏） -->
+            <div id="trialCreateContent" class="misc-section-content hidden">
+                <div class="form-group">
+                    <label for="trialName">姓名：<span style="color: red;">*</span></label>
+                    <input type="text" id="trialName" class="form-control" placeholder="例如：張三" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialGender">性別：<span style="color: red;">*</span></label>
+                    <select id="trialGender" class="form-control" required>
+                        <option value="">請選擇</option>
+                        <option value="M">男</option>
+                        <option value="F">女</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialEmail">郵箱：</label>
+                    <input type="email" id="trialEmail" class="form-control" placeholder="例如：example@email.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialPhone">電話：<span style="color: red;">*</span></label>
+                    <input type="tel" id="trialPhone" class="form-control" placeholder="例如：1234567890" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialAge">年齡：</label>
+                    <input type="number" id="trialAge" class="form-control" placeholder="例如：27" min="1" max="120">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialLocation">上課地點：<span style="color: red;">*</span></label>
+                    <select id="trialLocation" class="form-control" required>
+                        <option value="">正在載入地點...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialTime">試堂時間：<span style="color: red;">*</span></label>
+                    <input type="text" id="trialTime" class="form-control" placeholder="例如：1600-1700" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialDate">試堂日期：<span style="color: red;">*</span></label>
+                    <input type="date" id="trialDate" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialLevel">程度：</label>
+                    <input type="text" id="trialLevel" class="form-control" placeholder="例如：完全唔識">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialHowKnow">如何認識我們：</label>
+                    <input type="text" id="trialHowKnow" class="form-control" placeholder="例如：朋友介紹">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialPlatform">用什麼平臺瞭解我們：</label>
+                    <select id="trialPlatform" class="form-control">
+                        <option value="">請選擇</option>
+                        <option value="Facebook">Facebook</option>
+                        <option value="Instagram">Instagram</option>
+                        <option value="托管">托管</option>
+                        <option value="朋友">朋友</option>
+                        <option value="Google">Google</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialNotes">備註：</label>
+                    <textarea id="trialNotes" class="form-control" rows="3" placeholder="備註信息"></textarea>
+                </div>
+                
+                <div class="settings-actions">
+                    <button onclick="generateTrialInfo()" class="btn-primary">
+                        <i class="fas fa-check-circle"></i> 生成試堂信息
+                    </button>
+                </div>
+                
+                <!-- 生成的賬單信息顯示區域 -->
+                <div id="trialBillResult" class="hidden" style="margin-top: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                    <h5 style="margin-bottom: 10px;">生成的試堂信息：</h5>
+                    <div id="trialBillContent" style="background: white; padding: 15px; border-radius: 6px; white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.6;"></div>
+                    <button onclick="copyTrialBill()" class="btn-primary" style="margin-top: 10px;">
+                        <i class="fas fa-copy"></i> 複製賬單信息
+                    </button>
+                </div>
+            </div>
+            
+            <div class="misc-section-card" onclick="if (typeof toggleBillCreate === 'function') { toggleBillCreate(); }">
+                <div class="misc-section-header">
+                    <h4><i class="fas fa-file-invoice"></i> 賬單創建</h4>
+                    <i class="fas fa-chevron-down" id="billCreateIcon"></i>
+                </div>
+            </div>
+            
+            <!-- 賬單創建內容（初始隱藏） -->
+            <div id="billCreateContent" class="misc-section-content hidden">
+                <h5 style="margin-bottom: 15px;">報名類型</h5>
+                <div class="form-group">
+                    <label>
+                        <input type="radio" name="registrationType" value="新生報名" checked> 新生報名
+                    </label>
+                    <label style="margin-left: 20px;">
+                        <input type="radio" name="registrationType" value="學員續報"> 學員續報
+                    </label>
+                </div>
+                
+                <!-- 新生試堂資料 -->
+                <div id="trialLessonSection" class="form-group">
+                    <h5 style="margin-bottom: 10px;">試堂資料</h5>
+                    <div class="form-group">
+                        <label>試堂導師：<span style="color: red;">*</span></label>
+                        <select id="trialInstructor" class="form-control">
+                            <option value="">請選擇試堂導師</option>
+                            <option value="教練">教練</option>
+                            <option value="主管">主管</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>試堂日期：<span style="color: red;">*</span></label>
+                        <input type="date" id="trialDate" class="form-control">
+                    </div>
+                </div>
+                
+                <!-- 學員資料 -->
+                <h5 style="margin-bottom: 15px;">學員資料</h5>
+                <div id="studentsContainer" class="form-group">
+                    <div class="student-entry" style="display: grid; grid-template-columns: 2fr 1fr 1fr 2fr 1fr; gap: 10px; margin-bottom: 10px;">
+                        <input type="text" class="form-control student-name" placeholder="學員姓名">
+                        <input type="date" class="form-control student-birthday" placeholder="生日（選填）">
+                        <input type="number" class="form-control student-age" placeholder="年齡">
+                        <input type="tel" class="form-control student-phone" placeholder="電話（必填）">
+                        <button type="button" class="btn btn-danger remove-student-btn" style="display: none;">刪除</button>
+                    </div>
+                </div>
+                <button type="button" onclick="addNewStudent()" class="btn btn-secondary" style="margin-bottom: 15px;">
+                    <i class="fas fa-plus"></i> 新增學員
+                </button>
+                
+                <!-- 課程資料 -->
+                <h5 style="margin-bottom: 15px;">課程資料</h5>
+                <div class="form-group">
+                    <label>上課地點：<span style="color: red;">*</span></label>
+                    <select id="location" class="form-control" required>
+                        <option value="">請選擇上課地點</option>
+                        <!-- 選項將從後端加載 -->
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>課程類型：<span style="color: red;">*</span></label>
+                    <select id="courseType" class="form-control" required onchange="updateClassFormatOptions()">
+                        <option value="">請選擇課程類型</option>
+                        <!-- 選項將從後端加載 -->
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>課堂形式：<span style="color: red;">*</span></label>
+                    <select id="classFormat" class="form-control" required onchange="updateInstructorOptions()">
+                        <option value="">請先選擇課程類型</option>
+                        <!-- 選項將根據課程類型動態生成 -->
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>導師級別：<span style="color: red;">*</span></label>
+                    <select id="instructorType" class="form-control" required onchange="updatePricing()">
+                        <option value="">請先選擇課堂形式</option>
+                        <!-- 選項將根據課程類型和課堂形式動態生成 -->
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>指定導師名稱（選填）：</label>
+                    <input type="text" id="instructorName" class="form-control" placeholder="例如：李教练">
+                </div>
+                
+                <div class="form-group">
+                    <label>每堂收費：</label>
+                    <input type="number" id="pricePerLesson" class="form-control" value="" min="1" readonly placeholder="選擇課程類型、課堂形式和導師級別後自動計算">
+                </div>
+                
+                <!-- 上課時間和日期 -->
+                <div class="form-group" style="margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h5 style="margin: 0;">上課時間及日期安排</h5>
+                        <button type="button" onclick="addNewTimeSlot()" class="btn btn-secondary" style="font-size: 12px;">
+                            <i class="fas fa-plus"></i> 新增時段
+                        </button>
+                    </div>
+                    
+                    <!-- 時段容器 -->
+                    <div id="timeSlotsContainer" class="form-group">
+                        <!-- 第一個時段 -->
+                        <div class="time-slot" style="border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 15px; background-color: #f9f9f9;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h6 style="margin: 0; font-weight: 600;">時段 1</h6>
+                                <button type="button" class="remove-time-slot-btn btn btn-danger" style="font-size: 12px; padding: 5px 10px; opacity: 0.5; cursor: not-allowed;" disabled>
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- 上課時間輸入 -->
+                            <div class="form-group">
+                                <label>上課時間：<span style="color: red;">*</span></label>
+                                <input type="text" class="class-time form-control" placeholder="例：09:10-09:50" required>
+                            </div>
+                            
+                            <!-- 每日堂數 -->
+                            <div class="form-group">
+                                <label>每日堂數：</label>
+                                <select class="lessons-per-day form-control">
+                                    <option value="1">1堂</option>
+                                    <option value="1.5">1.5堂</option>
+                                    <option value="2">2堂</option>
+                                    <option value="2.5">2.5堂</option>
+                                    <option value="3">3堂</option>
+                                </select>
+                            </div>
+                            
+                            <!-- 日曆和待約堂數 -->
+                            <div class="slot-calendar-container" style="margin-top: 15px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <label>選擇上課日期：</label>
+                                    <button type="button" class="clear-slot-dates btn btn-sm" style="font-size: 11px; padding: 3px 8px;">
+                                        清除此時段
+                                    </button>
+                                </div>
+                                
+                                <!-- 月份導航 -->
+                                <div class="calendar-month-nav" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <button type="button" class="prev-month-btn btn btn-sm" style="padding: 5px 10px;">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                    <h6 class="current-month-year" style="margin: 0; font-weight: 600;"></h6>
+                                    <button type="button" class="next-month-btn btn btn-sm" style="padding: 5px 10px;">
+                                        <i class="fas fa-chevron-right"></i>
+                                    </button>
+                                </div>
+                                
+                                <!-- 日曆網格 -->
+                                <div class="calendar-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; background-color: #f0f0f0; padding: 4px; border-radius: 5px; margin-bottom: 10px;">
+                                    <!-- 星期標題（可點擊） -->
+                                    <div class="weekday-header text-center" data-weekday="0" data-chinese="星期日" style="font-weight: 600; padding: 6px; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.2s; user-select: none; min-height: 28px; display: flex; align-items: center; justify-content: center;">日</div>
+                                    <div class="weekday-header text-center" data-weekday="1" data-chinese="星期一" style="font-weight: 600; padding: 6px; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.2s; user-select: none; min-height: 28px; display: flex; align-items: center; justify-content: center;">一</div>
+                                    <div class="weekday-header text-center" data-weekday="2" data-chinese="星期二" style="font-weight: 600; padding: 6px; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.2s; user-select: none; min-height: 28px; display: flex; align-items: center; justify-content: center;">二</div>
+                                    <div class="weekday-header text-center" data-weekday="3" data-chinese="星期三" style="font-weight: 600; padding: 6px; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.2s; user-select: none; min-height: 28px; display: flex; align-items: center; justify-content: center;">三</div>
+                                    <div class="weekday-header text-center" data-weekday="4" data-chinese="星期四" style="font-weight: 600; padding: 6px; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.2s; user-select: none; min-height: 28px; display: flex; align-items: center; justify-content: center;">四</div>
+                                    <div class="weekday-header text-center" data-weekday="5" data-chinese="星期五" style="font-weight: 600; padding: 6px; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.2s; user-select: none; min-height: 28px; display: flex; align-items: center; justify-content: center;">五</div>
+                                    <div class="weekday-header text-center" data-weekday="6" data-chinese="星期六" style="font-weight: 600; padding: 6px; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.2s; user-select: none; min-height: 28px; display: flex; align-items: center; justify-content: center;">六</div>
+                                    <!-- 日期將在這裡動態生成 -->
+                                </div>
+                                
+                                <!-- 待約堂數控制 -->
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background-color: #f9f9f9; border-radius: 5px;">
+                                    <span style="font-size: 13px; font-weight: 500;">本月待約堂數：</span>
+                                    <div style="display: flex; gap: 5px; align-items: center;">
+                                        <button type="button" class="decrease-pending-btn btn btn-sm" style="padding: 3px 8px;">
+                                            <i class="fas fa-minus"></i>
+                                        </button>
+                                        <input type="number" class="current-month-pending form-control" value="0" min="0" style="width: 50px; text-align: center; font-size: 12px;">
+                                        <button type="button" class="increase-pending-btn btn btn-sm" style="padding: 3px 8px;">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 時段總結 -->
+                            <div class="slot-summary" style="margin-top: 15px; padding: 10px; background-color: #e8f4f8; border-radius: 5px;">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div style="flex: 1;">
+                                        <h6 style="font-size: 13px; font-weight: 600; margin-bottom: 5px;">此時段已選日期：</h6>
+                                        <div class="slot-selected-dates" style="font-size: 12px; color: #666;">
+                                            暫未選擇日期
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 12px; color: #666;">時段堂數</div>
+                                        <div class="slot-total-lessons" style="font-size: 20px; font-weight: bold; color: #007bff;">
+                                            0
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 總計顯示 -->
+                    <div id="allSlotsSummary" style="margin-top: 15px; padding: 15px; background-color: #d4edda; border-radius: 5px; border: 1px solid #28a745;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h6 style="font-size: 14px; font-weight: 600; color: #155724; margin-bottom: 5px;">所有時段總計：</h6>
+                                <div id="allSlotsSelectedDates" style="font-size: 12px; color: #28a745;">
+                                    暫未選擇日期
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 12px; color: #28a745;">總堂數</div>
+                                <div id="totalAllLessons" style="font-size: 24px; font-weight: bold; color: #28a745;">
+                                    0
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 總堂數顯示（隱藏） -->
+                <div class="form-group" style="display: none;">
+                    <label>總堂數：</label>
+                    <input type="number" id="totalLessons" class="form-control" readonly placeholder="自動根據選擇的日期計算">
+                </div>
+                
+                <div class="form-group">
+                    <label>學生來源：</label>
+                    <select id="studentSource" class="form-control" onchange="toggleReferrerNameSection()">
+                        <option value="無">無</option>
+                        <option value="朋友介紹">朋友介紹</option>
+                        <option value="Facebook">Facebook</option>
+                        <option value="Instagram">Instagram</option>
+                        <option value="Google">Google</option>
+                        <option value="小紅書">小紅書</option>
+                        <option value="電話查詢">電話查詢</option>
+                        <option value="何巴巴游泳池">何巴巴游泳池</option>
+                        <option value="Baby Tiger">Baby Tiger</option>
+                    </select>
+                </div>
+                
+                <div id="referrerNameSection" class="form-group" style="display: none;">
+                    <label>現有學員名字：</label>
+                    <input type="text" id="referrerName" class="form-control" placeholder="例如：赵同学">
+                </div>
+                
+                <!-- 折扣優惠 -->
+                <h5 style="margin-bottom: 15px;">折扣優惠</h5>
+                <div id="groupDiscountSection" class="form-group">
+                    <label>新生首次報名同行優惠：</label>
+                    <select id="groupDiscount" class="form-control">
+                        <option value="1">單人報名 (無折扣)</option>
+                        <option value="2">2人同行 (95折)</option>
+                        <option value="3">3人同行 (9折)</option>
+                        <option value="4">4人同行 (85折)</option>
+                    </select>
+                </div>
+                
+                <div id="referralDiscountSection" class="form-group" style="display: none;">
+                    <label>介紹朋友人數 (每位減$200)：</label>
+                    <select id="referralDiscount" class="form-control" onchange="updateReferralFields()">
+                        <option value="0">無介紹朋友</option>
+                        <option value="1">1位</option>
+                        <option value="2">2位</option>
+                        <option value="3">3位</option>
+                        <option value="4">4位</option>
+                        <option value="5">5位</option>
+                        <option value="6">6位</option>
+                        <option value="7">7位</option>
+                        <option value="8">8位</option>
+                        <option value="9">9位</option>
+                        <option value="10">10位</option>
+                    </select>
+                </div>
+                
+                <div id="referralSection" class="form-group" style="display: none;">
+                    <label>介紹朋友名單：</label>
+                    <div id="referralContainer"></div>
+                </div>
+                
+                <!-- 生成按鈕 -->
+                <div class="settings-actions">
+                    <button onclick="generateBillMessage()" class="btn-primary">
+                        <i class="fas fa-file-invoice"></i> 生成繳費訊息
+                    </button>
+                    <button onclick="confirmRegistration()" class="btn-success" style="margin-left: 10px; display: none;" id="confirmBtn">
+                        <i class="fas fa-check"></i> 確認報名
+                    </button>
+                </div>
+                
+                <!-- 生成的繳費訊息 -->
+                <div id="billMessageOutput" class="form-group" style="display: none;">
+                    <label>生成的繳費訊息：</label>
+                    <textarea id="generatedBillMessage" class="form-control" rows="25" readonly style="font-family: monospace; font-size: 14px; line-height: 1.6;"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="dataManagementSection" class="interface-section hidden">
+        <div class="interface-header">
+          <h3><i class="fas fa-database"></i> 資料管理</h3>
+          <button class="back-btn" onclick="hideAllFeatures()"><i class="fas fa-arrow-left"></i> 返回主選單</button>
+        </div>
+        <div class="data-tabs">
+          <button onclick="showDataTab('employee')">員工</button>
+          <button onclick="showDataTab('formal')">正式會員</button>
+          <button onclick="showDataTab('trial')">非正式會員</button>
+          <button onclick="showDataTab('workhours')">工時記錄</button>
+        </div>
+        <div id="dataSearchZone"></div>
+        <div id="dataTableZone"></div>
+    </div>
+</div>
+
+<!-- 管理員頁面 -->
+<div id="adminSection" class="section">
+    <nav class="top-nav">
+        <div class="nav-left">
+            <h2><i class="fas fa-user-shield"></i> 游泳系統 - 管理員</h2>
+        </div>
+        <div class="nav-right">
+            <div class="user-info">
+                <span id="userPhone"></span>
+                <span id="userType"></span>
+            </div>
+            <button id="adminLogoutBtn" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i> 登出
+            </button>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <!-- 管理員功能選單 -->
+        <div class="feature-grid">
+            <div class="feature-card" data-feature="data-management">
+                <div class="feature-icon"><i class="fas fa-database"></i></div>
+                <h3>資料管理</h3>
+                <p>瀏覽員工、會員、試堂數據</p>
+              </div>
+            <div class="feature-card" data-feature="admin-work-hours-roster">
+                <div class="feature-icon">
+                    <i class="fas fa-calendar-check"></i>
+                </div>
+                <h3>工時記錄與更表</h3>
+                <p>查看和管理工時記錄與更表</p>
+            </div>
+            
+            <div class="feature-card" data-feature="admin-personal-settings">
+                <div class="feature-icon">
+                    <i class="fas fa-user-cog"></i>
+                </div>
+                <h3>個人設置</h3>
+                <p>編輯個人資料</p>
+            </div>
+            
+            <div class="feature-card" data-feature="admin-misc">
+                <div class="feature-icon">
+                    <i class="fas fa-tools"></i>
+                </div>
+                <h3>雜項</h3>
+                <p>各種管理功能</p>
+            </div>
+        </div>
+
+        <
+
+        <!-- 管理員工時記錄與更表統一界面 -->
+        <div id="adminWorkHoursRosterSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-calendar-check"></i> 工時記錄與更表</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <!-- 控制面板（僅員工選擇） -->
+            <div class="work-hours-controls">
+                <div class="control-group">
+                    <label for="adminEmployeeSelect">員工：</label>
+                    <select id="adminEmployeeSelect" onchange="onAdminEmployeeSelectChange()">
+                        <!-- 動態生成選項 -->
+                    </select>
+                </div>
+            </div>
+            
+            <!-- 第一部分：更表 -->
+            <div class="roster-section" style="margin-bottom: 40px; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+                <h3 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a90e2; padding-bottom: 10px;">
+                    <i class="fas fa-calendar-alt"></i> 更表
+                </h3>
+                <div class="roster-controls" style="margin-bottom: 20px;">
+                    <div class="control-group">
+                        <label for="adminRosterMonthSelect">月份選擇：</label>
+                        <select id="adminRosterMonthSelect" onchange="loadAdminRoster()">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button onclick="loadAdminRoster()" class="btn-primary">
+                            <i class="fas fa-download"></i> 載入更表
+                        </button>
+                    </div>
+                </div>
+                <div id="adminRosterDisplay" class="roster-calendar">
+                    <!-- 更表將在這裡顯示 -->
+                    <div class="empty">請選擇月份並點擊「載入更表」</div>
+                </div>
+            </div>
+            
+            <!-- 第二部分：工時記錄表 -->
+            <div class="workhours-section" style="margin-bottom: 40px; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+                <h3 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #4a90e2; padding-bottom: 10px;">
+                    <i class="fas fa-clock"></i> 工時記錄表
+                </h3>
+                <div class="work-hours-controls" style="margin-bottom: 20px;">
+                    <div class="control-group">
+                        <label for="adminWorkHoursYearSelect">年份：</label>
+                        <select id="adminWorkHoursYearSelect">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="adminWorkHoursMonthSelect">月份：</label>
+                        <select id="adminWorkHoursMonthSelect">
+                            <!-- 動態生成選項 -->
+                        </select>
+                    </div>
+                    <div class="button-group">
+                        <button onclick="loadAdminWorkHours()" class="btn-primary">
+                            <i class="fas fa-download"></i> 載入工時
+                        </button>
+                        <button onclick="WorkHoursFunctions.exportAllWorkHours()" class="btn-secondary">
+                            <i class="fas fa-file-excel"></i> 導出
+                        </button>
+                    </div>
+                </div>
+                <div id="adminWorkHoursDisplay" class="work-hours-table-container">
+                    <!-- 工時記錄表將在這裡顯示 -->
+                    <div class="empty">請選擇年份和月份並點擊「載入工時」</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 管理員工時管理界面（保留舊版本，待刪除） -->
+        <div id="adminWorkHoursSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-clock"></i> 管理員工時管理</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <!-- 工時管理控制面板 -->
+            <div class="work-hours-controls">
+                <div class="control-group">
+                    <label for="workHoursEmployeeSelect">員工：</label>
+                    <select id="workHoursEmployeeSelect" onchange="WorkHoursFunctions.onEmployeeChange()">
+                        <!-- 動態生成選項 -->
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="workHoursYearSelect">年份：</label>
+                    <select id="workHoursYearSelect" onchange="WorkHoursFunctions.onDateChange()">
+                        <!-- 動態生成選項 -->
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="workHoursMonthSelect">月份：</label>
+                    <select id="workHoursMonthSelect" onchange="WorkHoursFunctions.onDateChange()">
+                        <!-- 動態生成選項 -->
+                    </select>
+                </div>
+                
+                
+                <div class="button-group">
+                    <button onclick="WorkHoursFunctions.loadWorkHoursData()" class="btn-primary">
+                        <i class="fas fa-download"></i> 載入工時
+                    </button>
+                    <button onclick="WorkHoursFunctions.exportAllWorkHours()" class="btn-secondary">
+                        <i class="fas fa-file-excel"></i> 導出
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 工時表格容器 -->
+            <div id="workHoursTableContainer" class="work-hours-table-container">
+                <!-- 工時表格將在這裡動態生成 -->
+            </div>
+        </div>
+
+        <!-- 管理員個人設置界面 -->
+        <div id="adminPersonalSettingsSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-user-cog"></i> 個人設置</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <div id="adminPersonalSettingsContainer" class="personal-settings-container">
+                <div class="settings-section">
+                    <h4>基本信息</h4>
+                    <div class="form-group">
+                        <label for="adminSettingsName">姓名：</label>
+                        <input type="text" id="adminSettingsName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="adminSettingsPhone">電話號碼：</label>
+                        <input type="text" id="adminSettingsPhone" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="adminSettingsEmail">電子郵箱：</label>
+                        <input type="email" id="adminSettingsEmail" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="adminSettingsPassword">登入密碼：</label>
+                        <input type="password" id="adminSettingsPassword" class="form-control" placeholder="留空表示不修改">
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4>銀行信息</h4>
+                    <div class="form-group">
+                        <label for="adminSettingsBankName">所屬銀行名稱：</label>
+                        <input type="text" id="adminSettingsBankName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="adminSettingsBankAccount">銀行賬戶：</label>
+                        <input type="text" id="adminSettingsBankAccount" class="form-control">
+                    </div>
+                </div>
+                
+                <div class="settings-actions">
+                    <button id="adminSaveSettingsBtn" class="btn-primary">
+                        <i class="fas fa-save"></i> 保存設置
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 管理員雜項界面 -->
+        <div id="adminMiscSection" class="interface-section hidden">
+            <div class="interface-header">
+                <h3><i class="fas fa-tools"></i> 雜項</h3>
+                <button class="back-btn" onclick="hideAllFeatures()">
+                    <i class="fas fa-arrow-left"></i> 返回主選單
+                </button>
+            </div>
+            
+            <!-- 員工創建板塊（可點擊展開） -->
+            <div class="misc-section-card" onclick="toggleEmployeeCreate('Admin')">
+                <div class="misc-section-header">
+                    <h4><i class="fas fa-user-plus"></i> 員工創建</h4>
+                    <i class="fas fa-chevron-down" id="employeeCreateIconAdmin"></i>
+                </div>
+            </div>
+            
+            <!-- 員工創建內容（初始隱藏） -->
+            <div id="employeeCreateContentAdmin" class="misc-section-content hidden">
+                <div class="form-group">
+                    <label for="employeeCreateNameAdmin">中文姓名：<span style="color: red;">*</span></label>
+                    <input type="text" id="employeeCreateNameAdmin" class="form-control" placeholder="例如：張三" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateEngNameAdmin">英文姓名：<span style="color: red;">*</span></label>
+                    <input type="text" id="employeeCreateEngNameAdmin" class="form-control" placeholder="例如：John Smith" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreatePhoneAdmin">電話號碼：<span style="color: red;">*</span></label>
+                    <input type="tel" id="employeeCreatePhoneAdmin" class="form-control" placeholder="例如：1234567890" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateEmailAdmin">電子郵箱：</label>
+                    <input type="email" id="employeeCreateEmailAdmin" class="form-control" placeholder="例如：example@email.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateWorkingTypeAdmin">類型：<span style="color: red;">*</span></label>
+                    <select id="employeeCreateWorkingTypeAdmin" class="form-control" required>
+                        <option value="full_time">全職</option>
+                        <option value="part_time">兼職</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="employeeCreateTypeAdmin">職位：<span style="color: red;">*</span></label>
+                    <select id="employeeCreateTypeAdmin" class="form-control" required>
+                        <option value="coach">教練</option>
+                        <option value="supervisor">主管</option>
+                        <option value="admin">管理員</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" style="display: none;">
+                    <label for="employeeCreatePasswordAdmin">密碼：</label>
+                    <input type="text" id="employeeCreatePasswordAdmin" class="form-control" placeholder="系統自動生成" readonly>
+                </div>
+                
+                <div class="settings-actions">
+                    <button onclick="createEmployee('Admin')" class="btn-primary">
+                        <i class="fas fa-user-plus"></i> 創建
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 試堂創建板塊（可點擊展開）- 管理員版本 -->
+            <div class="misc-section-card" onclick="toggleTrialCreate('Admin')">
+                <div class="misc-section-header">
+                    <h4><i class="fas fa-swimming-pool"></i> 試堂創建</h4>
+                    <i class="fas fa-chevron-down" id="trialCreateIconAdmin"></i>
+                </div>
+            </div>
+            
+            <!-- 試堂創建內容（初始隱藏）- 管理員版本 -->
+            <div id="trialCreateContentAdmin" class="misc-section-content hidden">
+                <div class="form-group">
+                    <label for="trialNameAdmin">姓名：<span style="color: red;">*</span></label>
+                    <input type="text" id="trialNameAdmin" class="form-control" placeholder="例如：張三" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialGenderAdmin">性別：<span style="color: red;">*</span></label>
+                    <select id="trialGenderAdmin" class="form-control" required>
+                        <option value="">請選擇</option>
+                        <option value="M">男</option>
+                        <option value="F">女</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialEmailAdmin">郵箱：</label>
+                    <input type="email" id="trialEmailAdmin" class="form-control" placeholder="例如：example@email.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialPhoneAdmin">電話：<span style="color: red;">*</span></label>
+                    <input type="tel" id="trialPhoneAdmin" class="form-control" placeholder="例如：1234567890" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialAgeAdmin">年齡：</label>
+                    <input type="number" id="trialAgeAdmin" class="form-control" placeholder="例如：27" min="1" max="120">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialLocationAdmin">上課地點：<span style="color: red;">*</span></label>
+                    <select id="trialLocationAdmin" class="form-control" required>
+                        <option value="">正在載入地點...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialTimeAdmin">試堂時間：<span style="color: red;">*</span></label>
+                    <input type="text" id="trialTimeAdmin" class="form-control" placeholder="例如：1600-1700" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialDateAdmin">試堂日期：<span style="color: red;">*</span></label>
+                    <input type="date" id="trialDateAdmin" class="form-control" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialLevelAdmin">程度：</label>
+                    <input type="text" id="trialLevelAdmin" class="form-control" placeholder="例如：完全唔識">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialHowKnowAdmin">如何認識我們：</label>
+                    <input type="text" id="trialHowKnowAdmin" class="form-control" placeholder="例如：朋友介紹">
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialPlatformAdmin">用什麼平臺瞭解我們：</label>
+                    <select id="trialPlatformAdmin" class="form-control">
+                        <option value="">請選擇</option>
+                        <option value="Facebook">Facebook</option>
+                        <option value="Instagram">Instagram</option>
+                        <option value="托管">托管</option>
+                        <option value="朋友">朋友</option>
+                        <option value="Google">Google</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="trialNotesAdmin">備註：</label>
+                    <textarea id="trialNotesAdmin" class="form-control" rows="3" placeholder="備註信息"></textarea>
+                </div>
+                
+                <div class="settings-actions">
+                    <button onclick="generateTrialInfo('Admin')" class="btn-primary">
+                        <i class="fas fa-check-circle"></i> 生成試堂信息
+                    </button>
+                </div>
+                
+                <!-- 生成的賬單信息顯示區域 -->
+                <div id="trialBillResultAdmin" class="hidden" style="margin-top: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                    <h5 style="margin-bottom: 10px;">生成的試堂信息：</h5>
+                    <div id="trialBillContentAdmin" style="background: white; padding: 15px; border-radius: 6px; white-space: pre-wrap; font-family: monospace; font-size: 13px; line-height: 1.6;"></div>
+                    <button onclick="copyTrialBill('Admin')" class="btn-primary" style="margin-top: 10px;">
+                        <i class="fas fa-copy"></i> 複製賬單信息
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 賬單創建板塊（可點擊展開） -->
+            <div class="misc-section-card" onclick="if (typeof toggleBillCreate === 'function') { toggleBillCreate('Admin'); }">
+                <div class="misc-section-header">
+                    <h4><i class="fas fa-file-invoice"></i> 賬單創建</h4>
+                    <i class="fas fa-chevron-down" id="billCreateIconAdmin"></i>
+                </div>
+            </div>
+            
+            <!-- 賬單創建內容（使用主管頁面的內容） -->
+            <div id="billCreateContentAdmin" class="misc-section-content hidden">
+                <!-- 內容已定義在主管頁面 -->
+            </div>
+        </div>
+    </div>
+    <div id="dataManagementSection" class="interface-section hidden">
+        <div class="interface-header">
+          <h3><i class="fas fa-database"></i> 資料管理</h3>
+          <button class="back-btn" onclick="hideAllFeatures()"><i class="fas fa-arrow-left"></i> 返回主選單</button>
+        </div>
+        <div class="data-tabs">
+          <button onclick="showDataTab('employee')">員工</button>
+          <button onclick="showDataTab('formal')">正式會員</button>
+          <button onclick="showDataTab('trial')">非正式會員</button>
+          <button onclick="showDataTab('workhours')">工時記錄</button>
+        </div>
+        <div id="dataSearchZone"></div>
+        <div id="dataTableZone"></div>
+    </div>
+</div>
+
+<!-- 學生頁面 -->
+<div id="studentSection" class="section">
+    <nav class="top-nav">
+        <div class="nav-left">
+            <h2><i class="fas fa-user-graduate"></i> 游泳系統 - 學生</h2>
+        </div>
+        <div class="nav-right">
+            <div class="user-info">
+                <span id="userPhone"></span>
+                <span id="userType"></span>
+            </div>
+            <button id="studentLogoutBtn" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i> 登出
+            </button>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <!-- 學生功能選單 -->
+        <div class="feature-grid">
+            <div class="feature-card" data-feature="student-schedule">
+                <div class="feature-icon">
+                    <i class="fas fa-calendar-check"></i>
+                </div>
+                <h3>我的課程</h3>
+                <p>查看我的課程安排</p>
+            </div>
+            
+            <div class="feature-card" data-feature="student-attendance">
+                <div class="feature-icon">
+                    <i class="fas fa-clipboard-list"></i>
+                </div>
+                <h3>出席記錄</h3>
+                <p>查看我的出席記錄</p>
+            </div>
+            
+            <div class="feature-card" data-feature="student-progress">
+                <div class="feature-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <h3>學習進度</h3>
+                <p>查看學習進度報告</p>
+            </div>
+            
+            <div class="feature-card" data-feature="student-profile">
+                <div class="feature-icon">
+                    <i class="fas fa-user"></i>
+                </div>
+                <h3>個人資料</h3>
+                <p>管理個人資料</p>
+            </div>
+        </div>
+
+        <!-- 學生功能內容區域 -->
+        <div id="studentContent" class="student-content">
+            <div class="student-placeholder">
+                <h3>學生功能開發中...</h3>
+                <p>此功能正在開發中，敬請期待。</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <!-- 載入中覆蓋層 -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>載入中...</p>
+        </div>
+    </div>
+
+        <!-- JavaScript 文件 -->
+        <!-- 1. 基礎模組 -->
+        <script src="security-manager.js?v=20250115"></script>
+        <script src="database-connector.js?v=29"></script>
+        <script src="employee-create-functions.js?v=20250115"></script>
+        <script src="bill-create-functions-time-slots.js?v=20250124"></script>
+        <script src="trial-create-functions.js?v=20250124"></script>
+        
+        <!-- 2. 主應用程序 (必須先加載，定義全局變量) -->
+        <script src="main-app.js?v=45"></script>
+        
+        <!-- 3. 工時管理模組 -->
+        <script src="work-hours-functions.js?v=20250115"></script>
+        
+        <!-- 3. 功能模組 (依賴 main-app.js 中的全局變量) -->
+        <script src="attendance-board.js?v=20250115"></script>
+        <script src="coach-functions.js?v=20250115"></script>
+        <script src="supervisor-functions.js?v=20250115"></script>
+        <script src="admin-functions.js?v=20250115"></script>
+        <script src="personal-settings.js?v=20250115"></script>
+</body>
+</html>
