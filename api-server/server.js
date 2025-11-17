@@ -227,7 +227,7 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         let user = null;
         
-        if (loginType === 'coach' || loginType === 'supervisor' || loginType === 'admin') {
+        if (loginType === 'coach' || loginType === 'supervisor' || loginType === 'admin' || loginType === 'manager') {
             const collection = db.collection('Admin_account');
             user = await collection.findOne({
                 phone: phone,
