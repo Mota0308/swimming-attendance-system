@@ -70,6 +70,124 @@ function formatDateToYYYYMMDD(dateValue) {
     return dateValue;
 }
 
+// ✅ 從 classTime 字符串中提取實際時長（分鐘）
+function extractDurationFromClassTime(classTime) {
+    if (!classTime || typeof classTime !== 'string') {
+        return null;
+    }
+    
+    // 移除空格
+    classTime = classTime.trim();
+    
+    // 支持多種分隔符
+    const separators = ['-', '~', '至', '到'];
+    let startTime = '';
+    let endTime = '';
+    
+    for (const sep of separators) {
+        if (classTime.includes(sep)) {
+            const parts = classTime.split(sep);
+            if (parts.length >= 2) {
+                startTime = parts[0].trim();
+                endTime = parts[parts.length - 1].trim();
+                break;
+            }
+        }
+    }
+    
+    if (!startTime || !endTime) {
+        return null;
+    }
+    
+    // 解析時間（支持 "09:00" 和 "0900" 格式）
+    function parseTime(timeStr) {
+        // 移除冒號
+        const cleanTime = timeStr.replace(/:/g, '');
+        if (cleanTime.length !== 4) {
+            return null;
+        }
+        
+        const hours = parseInt(cleanTime.substring(0, 2));
+        const minutes = parseInt(cleanTime.substring(2, 4));
+        
+        if (isNaN(hours) || isNaN(minutes)) {
+            return null;
+        }
+        
+        return hours * 60 + minutes; // 轉換為總分鐘數
+    }
+    
+    const startMinutes = parseTime(startTime);
+    const endMinutes = parseTime(endTime);
+    
+    if (startMinutes === null || endMinutes === null) {
+        return null;
+    }
+    
+    // 計算時長（考慮跨日情況）
+    let duration = endMinutes - startMinutes;
+    if (duration < 0) {
+        duration += 24 * 60; // 跨日情況
+    }
+    
+    return duration;
+}
+
+// ✅ 根據基礎時長和實際時長計算 total_time_slot（堂數）
+function calculateTotalTimeSlot(baseTimeSlot, actualDuration) {
+    if (!baseTimeSlot || !actualDuration) {
+        return 1; // 默認 1 堂
+    }
+    
+    // 計算倍數
+    const ratio = actualDuration / baseTimeSlot;
+    
+    // 四捨五入到最接近的 0.5
+    const roundedRatio = Math.round(ratio * 2) / 2;
+    
+    // 確保至少為 0.5 堂
+    return Math.max(0.5, roundedRatio);
+}
+
+// ✅ 獲取 classFormat 對應的 time_slot（從 Pricing 集合）
+async function getTimeSlotForClassFormat(db, classType, classFormat) {
+    if (!classType || !classFormat) {
+        return null;
+    }
+    
+    try {
+        const pricingCollection = db.collection('Pricing');
+        // ✅ 從 Pricing 集合查詢，同一 classType + classFormat 組合的 time_slot 應該相同
+        const pricingRecord = await pricingCollection.findOne({
+            class_type: classType,
+            class_format: classFormat
+        });
+        
+        if (pricingRecord && pricingRecord.time_slot) {
+            return pricingRecord.time_slot;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('❌ 獲取 time_slot 失敗:', error);
+        return null;
+    }
+}
+
+// 根路徑端點
+app.get('/', (req, res) => {
+    res.json({ 
+        success: true, 
+        message: '游泳課程管理系統 API 服務器',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            health: '/health',
+            login: '/auth/login'
+        }
+    });
+});
+
 // 健康檢查端點
 app.get('/health', (req, res) => {
     res.json({ 
@@ -150,14 +268,19 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
 // 獲取學生列表（支持分頁）
 app.get('/students', validateApiKeys, async (req, res) => {
     try {
-        const { page = 1, limit = 50, phone } = req.query;
+        const { page = 1, limit = 50, phone, studentId } = req.query;
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Student_account');
         
         const query = {};
+        // ✅ 支持通過電話號碼查詢
         if (phone) {
             query.phone = phone;
+        }
+        // ✅ 支持通過學生ID查詢
+        if (studentId) {
+            query.studentId = studentId;
         }
         
         const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -740,11 +863,20 @@ app.put('/attendance/timeslot/status', validateApiKeys, async (req, res) => {
             updatedAt: new Date()
         };
         
+        // ✅ 藍色狀態：isAttended=null, isLeave=null
         if (isAttended !== undefined) {
-            updateData.isAttended = isAttended === true;
+            if (isAttended === null) {
+                updateData.isAttended = null;
+            } else {
+                updateData.isAttended = isAttended === true;
+            }
         }
         if (isLeave !== undefined) {
-            updateData.isLeave = isLeave === true;
+            if (isLeave === null) {
+                updateData.isLeave = null;
+            } else {
+                updateData.isLeave = isLeave === true;
+            }
         }
         
         const result = await collection.updateOne(
@@ -790,13 +922,100 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('students_timeslot');
         
+        // ✅ 先獲取原始記錄，用於比較日期和地點是否改變
+        const originalRecord = await collection.findOne({ _id: new ObjectId(recordId) });
+        if (!originalRecord) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該記錄'
+            });
+        }
+        
+        const originalDate = originalRecord.classDate || '';
+        const originalLocation = originalRecord.location || '';
+        const originalTime = originalRecord.classTime || '';
+        const originalCourseType = originalRecord.courseType || originalRecord.classType || '';
+        const originalClassFormat = originalRecord.classFormat || originalRecord.class_format || '';
+        
+        // ✅ 判斷日期和地點是否改變
+        // 注意：前端可能傳遞原始值（如果用戶沒有修改），所以需要比較實際值
+        const dateChanged = classDate !== undefined && String(classDate).trim() !== String(originalDate).trim();
+        const locationChanged = location !== undefined && String(location).trim() !== String(originalLocation).trim();
+        const timeChanged = classTime !== undefined && String(classTime).trim() !== String(originalTime).trim();
+        
+        // ✅ 獲取 classFormat（如果修改了則使用新的，否則使用原始的）
+        const currentClassFormat = classFormat !== undefined ? classFormat : originalClassFormat;
+        const currentCourseType = originalCourseType; // courseType 通常不會在 move 接口中修改
+        
         const updateData = {
             updatedAt: new Date()
         };
         
         if (classTime !== undefined) {
             updateData.classTime = classTime;
-            updateData.isChangeTime = true;
+            
+            // ✅ 新的邏輯：
+            // 1. 如果同時修改了日期或地點，isChangeTime 為 false
+            // 2. 如果只修改了時間，需要比較 time_slot：
+            //    - 計算原始時間的 time_slot
+            //    - 計算新時間的 time_slot
+            //    - 如果新的 time_slot > 原始的 time_slot，則 isChangeTime = true
+            //    - 否則 isChangeTime = false
+            
+            if (timeChanged && !dateChanged && !locationChanged) {
+                // 只修改了時間，需要與第一次的 time_slot 比較
+                try {
+                    // 獲取基礎 time_slot（從 Pricing 集合）
+                    const baseTimeSlot = await getTimeSlotForClassFormat(db, currentCourseType, currentClassFormat);
+                    
+                    if (baseTimeSlot) {
+                        // ✅ 獲取第一次的 time_slot（如果記錄中沒有 originalTimeSlot，則使用當前時間計算並保存）
+                        let firstTimeSlot = originalRecord.originalTimeSlot;
+                        
+                        if (!firstTimeSlot) {
+                            // 如果沒有保存第一次的 time_slot，使用當前時間計算並保存
+                            const firstDuration = extractDurationFromClassTime(originalTime);
+                            firstTimeSlot = firstDuration ? calculateTotalTimeSlot(baseTimeSlot, firstDuration) : 1;
+                            // 保存第一次的 time_slot 到數據庫
+                            updateData.originalTimeSlot = firstTimeSlot;
+                            console.log(`📝 首次保存第一次的 time_slot: ${firstTimeSlot}`);
+                        }
+                        
+                        // ✅ 計算新時間的實際時長和 time_slot，並更新 total_time_slot
+                        const newDuration = extractDurationFromClassTime(classTime);
+                        const newTimeSlot = newDuration ? calculateTotalTimeSlot(baseTimeSlot, newDuration) : 1;
+                        
+                        // ✅ 更新 total_time_slot（後續修改的 time_slot）
+                        updateData.total_time_slot = newTimeSlot;
+                        // ✅ 保存基礎 time_slot（如果還沒有保存）
+                        if (!originalRecord.time_slot) {
+                            updateData.time_slot = baseTimeSlot;
+                        }
+                        
+                        // ✅ 與第一次的 time_slot 對比，有變化則為 true，沒變化則為 false
+                        if (newTimeSlot !== firstTimeSlot) {
+                            updateData.isChangeTime = true;
+                            console.log(`✅ 只修改了時間且新 time_slot (${newTimeSlot}) !== 第一次 time_slot (${firstTimeSlot})，設置 isChangeTime = true`);
+                        } else {
+                            updateData.isChangeTime = false;
+                            console.log(`⚠️ 只修改了時間但新 time_slot (${newTimeSlot}) === 第一次 time_slot (${firstTimeSlot})，設置 isChangeTime = false`);
+                        }
+                    } else {
+                        // 如果找不到基礎 time_slot，默認設置為 false
+                        updateData.isChangeTime = false;
+                        console.warn(`⚠️ 未找到 ${currentCourseType} - ${currentClassFormat} 的 time_slot 配置，設置 isChangeTime = false`);
+                    }
+                } catch (error) {
+                    console.error('❌ 計算 time_slot 失敗:', error);
+                    updateData.isChangeTime = false;
+                }
+            } else {
+                // 同時修改了日期或地點，isChangeTime 為 false
+                updateData.isChangeTime = false;
+                if (timeChanged) {
+                    console.log(`⚠️ 修改了時間但同時也修改了日期或地點，設置 isChangeTime = false (時間改變: ${timeChanged}, 日期改變: ${dateChanged}, 地點改變: ${locationChanged})`);
+                }
+            }
         }
         if (classFormat !== undefined) {
             updateData.classFormat = classFormat;
@@ -805,19 +1024,31 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
             updateData.instructorType = instructorType;
         }
         if (classDate !== undefined) {
-            updateData.classDate = classDate;
-            updateData.isChangeDate = true;
+            // ✅ 只有當日期實際改變時，才更新日期和設置 isChangeDate = true
+            if (dateChanged) {
+                updateData.classDate = classDate;
+                updateData.isChangeDate = true;
+            } else {
+                // ✅ 如果日期沒有改變，確保 isChangeDate = false（清除之前的標記）
+                updateData.isChangeDate = false;
+            }
         }
         if (location !== undefined) {
-            updateData.location = location;
-            updateData.isChangeLocation = true;
+            // ✅ 只有當地點實際改變時，才更新地點和設置 isChangeLocation = true
+            if (locationChanged) {
+                updateData.location = location;
+                updateData.isChangeLocation = true;
+            } else {
+                // ✅ 如果地點沒有改變，確保 isChangeLocation = false（清除之前的標記）
+                updateData.isChangeLocation = false;
+            }
         }
         
         const result = await collection.updateOne(
             { _id: new ObjectId(recordId) },
             { $set: updateData }
         );
-        
+
         if (result.matchedCount === 0) {
             return res.status(404).json({
                 success: false,
@@ -856,17 +1087,45 @@ app.put('/attendance/timeslot/date-location', validateApiKeys, async (req, res) 
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('students_timeslot');
         
+        // ✅ 先獲取原始記錄，用於比較日期和地點是否改變
+        const originalRecord = await collection.findOne({ _id: new ObjectId(recordId) });
+        if (!originalRecord) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該記錄'
+            });
+        }
+        
+        const originalDate = originalRecord.classDate || '';
+        const originalLocation = originalRecord.location || '';
+        
+        // ✅ 判斷日期和地點是否實際改變
+        const dateChanged = classDate !== undefined && String(classDate).trim() !== String(originalDate).trim();
+        const locationChanged = location !== undefined && String(location).trim() !== String(originalLocation).trim();
+        
         const updateData = {
             updatedAt: new Date()
         };
         
         if (classDate !== undefined) {
-            updateData.classDate = classDate;
-            updateData.isChangeDate = true;
+            // ✅ 只有當日期實際改變時，才更新日期和設置 isChangeDate = true
+            if (dateChanged) {
+                updateData.classDate = classDate;
+                updateData.isChangeDate = true;
+            } else {
+                // ✅ 如果日期沒有改變，確保 isChangeDate = false（清除之前的標記）
+                updateData.isChangeDate = false;
+            }
         }
         if (location !== undefined) {
-            updateData.location = location;
-            updateData.isChangeLocation = true;
+            // ✅ 只有當地點實際改變時，才更新地點和設置 isChangeLocation = true
+            if (locationChanged) {
+                updateData.location = location;
+                updateData.isChangeLocation = true;
+            } else {
+                // ✅ 如果地點沒有改變，確保 isChangeLocation = false（清除之前的標記）
+                updateData.isChangeLocation = false;
+            }
         }
         
         const result = await collection.updateOne(
@@ -916,11 +1175,20 @@ app.put('/attendance/trial-bill/status', validateApiKeys, async (req, res) => {
             updatedAt: new Date()
         };
         
+        // ✅ 藍色狀態：isAttended=null, isLeave=null
         if (isAttended !== undefined) {
-            updateData.isAttended = isAttended === true;
+            if (isAttended === null) {
+                updateData.isAttended = null;
+            } else {
+                updateData.isAttended = isAttended === true;
+            }
         }
         if (isLeave !== undefined) {
-            updateData.isLeave = isLeave === true;
+            if (isLeave === null) {
+                updateData.isLeave = null;
+            } else {
+                updateData.isLeave = isLeave === true;
+            }
         }
         
         const result = await collection.updateOne(
@@ -945,6 +1213,242 @@ app.put('/attendance/trial-bill/status', validateApiKeys, async (req, res) => {
         res.status(500).json({
             success: false,
             message: '更新失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 刪除學生時段記錄
+app.delete('/attendance/timeslot/delete', validateApiKeys, async (req, res) => {
+    try {
+        const { recordId } = req.body;
+        
+        if (!recordId) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少記錄ID'
+            });
+        }
+        
+        // ✅ 驗證 recordId 格式是否為有效的 ObjectId
+        if (!ObjectId.isValid(recordId)) {
+            return res.status(400).json({
+                success: false,
+                message: '無效的記錄ID格式'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        const result = await collection.deleteOne({ _id: new ObjectId(recordId) });
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該記錄'
+            });
+        }
+        
+        console.log(`✅ 已刪除學生時段記錄: ${recordId}`);
+        res.json({
+            success: true,
+            message: '刪除成功',
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('❌ 刪除學生時段記錄失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '刪除失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 刪除試堂記錄
+app.delete('/attendance/trial-bill/delete', validateApiKeys, async (req, res) => {
+    try {
+        const { recordId } = req.body;
+        
+        if (!recordId) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少記錄ID'
+            });
+        }
+        
+        // ✅ 驗證 recordId 格式是否為有效的 ObjectId
+        if (!ObjectId.isValid(recordId)) {
+            return res.status(400).json({
+                success: false,
+                message: '無效的記錄ID格式'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('trail_bill');
+        
+        const result = await collection.deleteOne({ _id: new ObjectId(recordId) });
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該記錄'
+            });
+        }
+        
+        console.log(`✅ 已刪除試堂記錄: ${recordId}`);
+        res.json({
+            success: true,
+            message: '刪除成功',
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('❌ 刪除試堂記錄失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '刪除失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 獲取學生的課程類型列表（從students_timeslot中獲取）
+app.get('/student/:studentId/course-types', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 查詢該學生的所有記錄，獲取唯一的課程類型
+        const records = await collection.find({ studentId: studentId }).toArray();
+        const courseTypes = [...new Set(records.map(r => r.courseType).filter(Boolean))];
+        
+        res.json({
+            success: true,
+            courseTypes: courseTypes.sort()
+        });
+    } catch (error) {
+        console.error('❌ 獲取學生課程類型失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取課程類型失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 檢查學生是否有多餘的待約堂數可以創建
+app.get('/student/:studentId/pending-slots-check', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 查詢該學生所有 isPending === true 的記錄
+        const pendingRecords = await collection.find({
+            studentId: studentId,
+            isPending: true
+        }).toArray();
+        
+        const hasPendingSlots = pendingRecords.length > 0;
+        
+        res.json({
+            success: true,
+            hasPendingSlots: hasPendingSlots,
+            pendingCount: pendingRecords.length
+        });
+    } catch (error) {
+        console.error('❌ 檢查待約堂數失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '檢查待約堂數失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 創建待補課程（更新isPending為true的記錄）
+app.post('/attendance/pending-class/create', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId, classDate, courseType, classTime, location } = req.body;
+        
+        if (!studentId || !classDate || !courseType || !classTime || !location) {
+            return res.status(400).json({
+                success: false,
+                message: '缺少必要參數：studentId, classDate, courseType, classTime, location'
+            });
+        }
+        
+        // 驗證時間格式 (hhmm-hhmm)
+        if (!/^\d{4}-\d{4}$/.test(classTime)) {
+            return res.status(400).json({
+                success: false,
+                message: '時間格式錯誤，應為 hhmm-hhmm (例如: 0900-1000)'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 查找該學生的一個isPending為true的記錄
+        const pendingRecord = await collection.findOne({
+            studentId: studentId,
+            isPending: true
+        });
+        
+        if (!pendingRecord) {
+            return res.status(404).json({
+                success: false,
+                message: '該學生沒有待約記錄（isPending為true的記錄）'
+            });
+        }
+        
+        // ✅ 解析時間格式 hhmm-hhmm (例如: 0900-1000)
+        // 保存為原始格式 hhmm-hhmm，不轉換為 hh:mm-hh:mm
+        // 因為數據庫中可能已經使用這種格式
+        
+        // 更新記錄
+        const updateData = {
+            classDate: classDate,
+            courseType: courseType,
+            classTime: classTime, // 保持原始格式 hhmm-hhmm
+            location: location, // ✅ 添加地點
+            isPending: false,
+            updatedAt: new Date()
+        };
+        
+        const result = await collection.updateOne(
+            { _id: pendingRecord._id },
+            { $set: updateData }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該記錄'
+            });
+        }
+        
+        console.log(`✅ 已更新待補課程: 學生ID=${studentId}, 日期=${classDate}, 課程類型=${courseType}, 時間=${classTime}, 地點=${location}`);
+        
+        res.json({
+            success: true,
+            message: '待補課程創建成功',
+            recordId: pendingRecord._id.toString(),
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('❌ 創建待補課程失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '創建失敗',
             error: error.message
         });
     }
@@ -1047,27 +1551,265 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Staff_work_hours');
+        const adminCollection = db.collection('Admin_account');
         
-        const coachRecords = await collection.find({
-            phone,
-            year: parseInt(year),
-            month: parseInt(month),
-            editorType: 'coach'
-        }).toArray();
+        // ✅ 首先確定員工類型（coach 或 admin）
+        // 從 Admin_account 查詢員工信息（所有員工的基本資料都在 Admin_account 裡）
+        let employee = await adminCollection.findOne({ phone });
+        let employeeType = employee?.type;
         
-        const adminRecords = await collection.find({
-            phone,
-            year: parseInt(year),
-            month: parseInt(month),
-            editorType: { $in: ['admin', 'supervisor'] }
-        }).toArray();
+        // ✅ 如果 Admin_account 中沒有找到，或者類型不確定，從 Staff_work_hours 記錄中推斷
+        if (!employeeType) {
+            const sampleRecord = await collection.findOne({ phone });
+            if (sampleRecord) {
+                employeeType = sampleRecord.type || 'coach';
+                console.log(`⚠️ Admin_account 中未找到員工，從 Staff_work_hours 推斷類型: ${employeeType}`);
+            } else {
+                employeeType = 'coach';
+            }
+        }
+        
+        // ✅ 如果 Admin_account 中的類型與實際記錄不一致，使用實際記錄中的類型
+        const sampleRecord = await collection.findOne({ phone });
+        if (sampleRecord && sampleRecord.type && sampleRecord.type !== employeeType) {
+            console.log(`⚠️ Admin_account 類型 (${employeeType}) 與實際記錄類型 (${sampleRecord.type}) 不一致，使用實際記錄類型`);
+            employeeType = sampleRecord.type;
+        }
+        
+        console.log(`📊 員工類型: ${employeeType}, phone: ${phone}`);
+        
+        let version1Records = [];
+        let version2Records = [];
+        
+        if (employeeType === 'admin') {
+            // ✅ 如果員工是admin，則比較：
+            // - version1: admin自己編輯的記錄（editorType: 'admin'）
+            // - version2: 主管幫admin編輯的記錄（editorType: 'supervisor'）
+            version1Records = await collection.find({
+                phone,
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'admin' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'admin' },
+                                { type: 'admin' }
+                            ]}
+                        ]
+                    }
+                ]
+            }).toArray();
+            
+            version2Records = await collection.find({
+                phone,
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'supervisor' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'supervisor' },
+                                { type: 'supervisor' }
+                            ]}
+                        ]
+                    }
+                ]
+            }).toArray();
+            
+            console.log(`📊 比較查詢結果（admin）: admin自己編輯=${version1Records.length}條, 主管編輯=${version2Records.length}條`);
+        } else {
+            // ✅ 如果員工是coach，則比較：
+            // - version1: coach自己編輯的記錄（editorType: 'coach'）
+            // - version2: 主管/管理員幫coach編輯的記錄（editorType: 'admin' 或 'supervisor'）
+            version1Records = await collection.find({
+                phone,
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'coach' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'coach' },
+                                { type: 'coach' }
+                            ]}
+                        ]
+                    }
+                ]
+            }).toArray();
+            
+            version2Records = await collection.find({
+                phone,
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: { $in: ['admin', 'supervisor'] } },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: { $in: ['admin', 'supervisor'] } },
+                                { type: { $in: ['admin', 'supervisor'] } }
+                            ]}
+                        ]
+                    }
+                ]
+            }).toArray();
+            
+            console.log(`📊 比較查詢結果（coach）: coach記錄=${version1Records.length}條, admin/supervisor記錄=${version2Records.length}條`);
+        }
+        
+        // ✅ 生成比較結果數組
+        // 格式：每個元素包含 key, location, club, workDate, hasDifferences, onlyOneVersion 等字段
+        const comparisonMap = new Map();
+        
+        // ✅ 處理version1記錄（coach自己編輯的記錄，或admin自己編輯的記錄）
+        version1Records.forEach(record => {
+            const club = record.club || '';
+            const key = `${record.location}-${club}-${record.workDate}`;
+            if (!comparisonMap.has(key)) {
+                comparisonMap.set(key, {
+                    key: key,
+                    location: record.location,
+                    club: club,
+                    workDate: record.workDate,
+                    version1Record: record,  // ✅ 改為通用名稱
+                    version2Record: null,    // ✅ 改為通用名稱
+                    hasDifferences: false,
+                    onlyOneVersion: true
+                });
+            } else {
+                const comparison = comparisonMap.get(key);
+                
+                // ✅ 如果已經有version1Record，需要合併或選擇最新的
+                if (comparison.version1Record) {
+                    // 如果已經有version1Record，比較updatedAt，保留最新的
+                    const existingUpdatedAt = comparison.version1Record.updatedAt || new Date(0);
+                    const newUpdatedAt = record.updatedAt || new Date(0);
+                    if (newUpdatedAt > existingUpdatedAt) {
+                        comparison.version1Record = record;
+                    }
+                } else {
+                    comparison.version1Record = record;
+                }
+                
+                // ✅ 只有當version1Record和version2Record都存在時，才設置onlyOneVersion為false並比較
+                // ⚠️ 關鍵：必須兩個版本都存在，才能進行對比
+                if (comparison.version1Record && comparison.version2Record) {
+                    comparison.onlyOneVersion = false;
+                    
+                    // ✅ 比較兩個版本的差異
+                    const version1Total = (comparison.version1Record.totalHours || 0);
+                    const version2Total = (comparison.version2Record.totalHours || 0);
+                    const version1Misc = (comparison.version1Record.miscellaneousFee || 0);
+                    const version2Misc = (comparison.version2Record.miscellaneousFee || 0);
+                    
+                    if (version1Total !== version2Total || version1Misc !== version2Misc) {
+                        comparison.hasDifferences = true;
+                        comparison.differences = {
+                            totalHours: version1Total !== version2Total,
+                            miscellaneousFee: version1Misc !== version2Misc
+                        };
+                    }
+                } else {
+                    // ⚠️ 如果只有version1版本，沒有version2版本，則保持onlyOneVersion=true
+                    comparison.onlyOneVersion = true;
+                    comparison.hasDifferences = false;
+                }
+            }
+        });
+        
+        // ✅ 處理version2記錄（主管/管理員幫員工編輯的記錄）
+        version2Records.forEach(record => {
+            const club = record.club || '';
+            const key = `${record.location}-${club}-${record.workDate}`;
+            if (!comparisonMap.has(key)) {
+                comparisonMap.set(key, {
+                    key: key,
+                    location: record.location,
+                    club: club,
+                    workDate: record.workDate,
+                    version1Record: null,   // ✅ 改為通用名稱
+                    version2Record: record,  // ✅ 改為通用名稱
+                    hasDifferences: false,
+                    onlyOneVersion: true
+                });
+            } else {
+                const comparison = comparisonMap.get(key);
+                
+                // ✅ 如果已經有version2Record，需要合併或選擇最新的
+                if (comparison.version2Record) {
+                    // 如果已經有version2Record，比較updatedAt，保留最新的
+                    const existingUpdatedAt = comparison.version2Record.updatedAt || new Date(0);
+                    const newUpdatedAt = record.updatedAt || new Date(0);
+                    if (newUpdatedAt > existingUpdatedAt) {
+                        comparison.version2Record = record;
+                    }
+                } else {
+                    comparison.version2Record = record;
+                }
+                
+                // ✅ 只有當version1Record和version2Record都存在時，才設置onlyOneVersion為false並比較
+                // ⚠️ 關鍵：必須兩個版本都存在，才能進行對比
+                if (comparison.version1Record && comparison.version2Record) {
+                    comparison.onlyOneVersion = false;
+                    
+                    // ✅ 比較兩個版本的差異
+                    const version1Total = (comparison.version1Record.totalHours || 0);
+                    const version2Total = (comparison.version2Record.totalHours || 0);
+                    const version1Misc = (comparison.version1Record.miscellaneousFee || 0);
+                    const version2Misc = (comparison.version2Record.miscellaneousFee || 0);
+                    
+                    if (version1Total !== version2Total || version1Misc !== version2Misc) {
+                        comparison.hasDifferences = true;
+                        comparison.differences = {
+                            totalHours: version1Total !== version2Total,
+                            miscellaneousFee: version1Misc !== version2Misc
+                        };
+                    }
+                } else {
+                    // ⚠️ 如果只有version2版本，沒有version1版本，則保持onlyOneVersion=true
+                    comparison.onlyOneVersion = true;
+                    comparison.hasDifferences = false;
+                }
+            }
+        });
+        
+        // 轉換為數組，並添加向後兼容的字段
+        const comparisonResults = Array.from(comparisonMap.values()).map(result => {
+            // ✅ 為了向後兼容，同時保留 coachRecord/adminRecord 和 version1Record/version2Record
+            if (employeeType === 'admin') {
+                // ✅ 對於admin員工：
+                // - version1Record: admin自己編輯的記錄
+                // - version2Record: 主管編輯的記錄
+                return {
+                    ...result,
+                    coachRecord: null, // admin員工沒有coach版本
+                    adminRecord: result.version1Record, // admin自己編輯的記錄
+                    supervisorRecord: result.version2Record // 主管編輯的記錄
+                };
+            } else {
+                // ✅ 對於coach員工：
+                // - version1Record: coach自己編輯的記錄
+                // - version2Record: 主管/管理員編輯的記錄
+                return {
+                    ...result,
+                    coachRecord: result.version1Record, // coach自己編輯的記錄
+                    adminRecord: result.version2Record, // 主管/管理員編輯的記錄
+                    supervisorRecord: null // coach員工沒有supervisor版本
+                };
+            }
+        });
         
         res.json({
             success: true,
-            comparisonResults: {
-                coach: coachRecords,
-                admin: adminRecords
-            }
+            comparisonResults: comparisonResults
         });
     } catch (error) {
         console.error('❌ 比較工時記錄失敗:', error);
@@ -1228,42 +1970,143 @@ app.put('/students/:id', validateApiKeys, async (req, res) => {
     }
 });
 
-// 刪除學生資料
+// 刪除學生資料（同時刪除Student_account、Student_bill和students_timeslot）
 app.delete('/students/:id', validateApiKeys, async (req, res) => {
     try {
         const { id } = req.params;
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
-        const collection = db.collection('Student_account');
+        const studentAccountCollection = db.collection('Student_account');
+        const studentBillCollection = db.collection('Student_bill');
+        const timeslotCollection = db.collection('students_timeslot');
         
+        // 確定查詢條件
         let query;
+        let studentId = null;
+        let phone = null;
+        
         if (id.match(/^[0-9a-fA-F]{24}$/)) {
             query = { _id: new ObjectId(id) };
+            // 先查找學生信息以獲取studentId和phone
+            const student = await studentAccountCollection.findOne(query);
+            if (student) {
+                studentId = student.studentId;
+                phone = student.phone;
+            }
         } else if (id.match(/^\d{8}$/)) {
             query = { studentId: id };
+            studentId = id;
+            // 先查找學生信息以獲取phone
+            const student = await studentAccountCollection.findOne(query);
+            if (student) {
+                phone = student.phone;
+            }
         } else {
             query = { phone: id };
+            phone = id;
+            // 先查找學生信息以獲取studentId
+            const student = await studentAccountCollection.findOne(query);
+            if (student) {
+                studentId = student.studentId;
+            }
         }
         
-        const result = await collection.deleteOne(query);
+        // 刪除Student_account
+        const accountResult = await studentAccountCollection.deleteOne(query);
         
-        if (result.deletedCount === 0) {
+        if (accountResult.deletedCount === 0) {
             return res.status(404).json({
                 success: false,
                 message: '未找到該學生記錄'
             });
         }
         
+        // 刪除Student_bill（如果studentId存在）
+        let billDeletedCount = 0;
+        if (studentId) {
+            const billResult = await studentBillCollection.deleteMany({ studentId: studentId });
+            billDeletedCount = billResult.deletedCount;
+        }
+        
+        // 刪除students_timeslot（如果studentId存在）
+        let timeslotDeletedCount = 0;
+        if (studentId) {
+            const timeslotResult = await timeslotCollection.deleteMany({ studentId: studentId });
+            timeslotDeletedCount = timeslotResult.deletedCount;
+        }
+        
+        console.log(`✅ 已刪除學生資料: Student_account=${accountResult.deletedCount}, Student_bill=${billDeletedCount}, students_timeslot=${timeslotDeletedCount}`);
+        
         res.json({
             success: true,
             message: '刪除成功',
-            deletedCount: result.deletedCount
+            deletedCount: {
+                account: accountResult.deletedCount,
+                bill: billDeletedCount,
+                timeslot: timeslotDeletedCount
+            }
         });
     } catch (error) {
         console.error('❌ 刪除學生資料失敗:', error);
         res.status(500).json({
             success: false,
             message: '刪除失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 清除學生的所有時段記錄（students_timeslot）
+app.delete('/students/:id/timeslots', validateApiKeys, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const studentAccountCollection = db.collection('Student_account');
+        const timeslotCollection = db.collection('students_timeslot');
+        
+        // 確定查詢條件
+        let query;
+        let studentId = null;
+        
+        if (id.match(/^[0-9a-fA-F]{24}$/)) {
+            query = { _id: new ObjectId(id) };
+            const student = await studentAccountCollection.findOne(query);
+            if (student) {
+                studentId = student.studentId;
+            }
+        } else if (id.match(/^\d{8}$/)) {
+            studentId = id;
+        } else {
+            query = { phone: id };
+            const student = await studentAccountCollection.findOne(query);
+            if (student) {
+                studentId = student.studentId;
+            }
+        }
+        
+        if (!studentId) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該學生記錄或缺少studentId'
+            });
+        }
+        
+        // 刪除該學生的所有時段記錄
+        const result = await timeslotCollection.deleteMany({ studentId: studentId });
+        
+        console.log(`✅ 已清除學生 ${studentId} 的所有時段記錄: ${result.deletedCount} 條`);
+        
+        res.json({
+            success: true,
+            message: '清除成功',
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('❌ 清除學生時段記錄失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '清除失敗',
             error: error.message
         });
     }
@@ -1277,10 +2120,25 @@ app.get('/class-formats', validateApiKeys, async (req, res) => {
         const { classType } = req.query;
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
-        const collection = db.collection('class_format');
+        const collection = db.collection('Pricing'); // ✅ 使用 Pricing 集合
         
         const query = classType ? { class_type: classType } : {};
-        const classFormats = await collection.find(query).toArray();
+        const pricingRecords = await collection.find(query).toArray();
+        
+        // ✅ 從 Pricing 集合中提取唯一的 class_format，並構建 classFormats 數組
+        const classFormatMap = new Map();
+        pricingRecords.forEach(record => {
+            const key = `${record.class_type}_${record.class_format}`;
+            if (!classFormatMap.has(key)) {
+                classFormatMap.set(key, {
+                    class_type: record.class_type,
+                    class_format: record.class_format,
+                    time_slot: record.time_slot || null // ✅ 包含 time_slot
+                });
+            }
+        });
+        
+        const classFormats = Array.from(classFormatMap.values());
         
         res.json({
             success: true,
@@ -1299,15 +2157,71 @@ app.get('/class-formats', validateApiKeys, async (req, res) => {
 // 獲取導師級別
 app.get('/instructor-levels', validateApiKeys, async (req, res) => {
     try {
+        const { classType, classFormat } = req.query;
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
-        const collection = db.collection('Instructor_type');
+        // ✅ 使用 Pricing 集合
+        const collection = db.collection('Pricing');
         
-        const instructorLevels = await collection.find({}).toArray();
+        // ✅ 如果提供了 classType 和 classFormat，則根據這些條件過濾
+        let query = {};
+        if (classType && classFormat) {
+            query = {
+                class_type: classType,
+                class_format: classFormat
+            };
+            console.log(`📋 查詢導師級別: classType="${classType}", classFormat="${classFormat}"`);
+            console.log(`📋 查詢條件:`, JSON.stringify(query, null, 2));
+        } else {
+            console.log('📋 查詢所有導師級別（未提供 classType 和 classFormat）');
+        }
+        
+        // ✅ 先檢查集合中是否有數據
+        const totalCount = await collection.countDocuments({});
+        console.log(`📊 Pricing 集合總記錄數: ${totalCount}`);
+        
+        // ✅ 如果集合為空，記錄警告
+        if (totalCount === 0) {
+            console.warn('⚠️ Pricing 集合為空！請運行 seed-pricing.js 腳本插入數據。');
+        }
+        
+        const pricingRecords = await collection.find(query).toArray();
+        
+        // ✅ 如果查詢結果為空，嘗試查找類似的記錄來幫助調試
+        if (pricingRecords.length === 0 && classType && classFormat) {
+            console.warn(`⚠️ 未找到匹配的記錄，嘗試查找類似的記錄...`);
+            const similarRecords = await collection.find({
+                $or: [
+                    { class_type: classType },
+                    { class_format: classFormat }
+                ]
+            }).limit(5).toArray();
+            
+            if (similarRecords.length > 0) {
+                console.warn(`📋 找到 ${similarRecords.length} 條類似的記錄（僅匹配 class_type 或 class_format）:`);
+                similarRecords.forEach(r => {
+                    console.warn(`  - class_type: "${r.class_type}", class_format: "${r.class_format}", instructor_level: "${r.instructor_level}"`);
+                });
+            } else {
+                console.warn(`⚠️ 集合中沒有任何與 "${classType}" 或 "${classFormat}" 相關的記錄`);
+            }
+        }
+        
+        // ✅ 從 Pricing 記錄中提取唯一的 instructor_level，並構建 instructorLevels 數組
+        const uniqueLevels = [...new Set(pricingRecords.map(r => r.instructor_level).filter(l => l))];
+        const instructorLevels = uniqueLevels.map(level => ({
+            class_type: classType || null,
+            class_format: classFormat || null,
+            level: level, // ✅ 保持向後兼容，使用 level 字段
+            instructor_level: level // ✅ 同時提供 instructor_level 字段
+        }));
+        
+        console.log(`✅ 找到 ${pricingRecords.length} 條記錄，${uniqueLevels.length} 個唯一導師級別:`, uniqueLevels);
         
         res.json({
             success: true,
-            instructorLevels: instructorLevels
+            instructorLevels: instructorLevels,
+            uniqueLevels: uniqueLevels  // ✅ 添加唯一級別列表，方便前端使用
         });
     } catch (error) {
         console.error('❌ 獲取導師級別失敗:', error);
@@ -1327,11 +2241,18 @@ app.get('/pricing', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Pricing');
         
+        // ✅ 修复：使用正确的字段名（class_type, class_format, instructor_level）
         const pricing = await collection.findOne({
-            classType: classType,
-            classFormat: classFormat,
-            instructorLevel: instructorLevel
+            class_type: classType,
+            class_format: classFormat,
+            instructor_level: instructorLevel
         });
+        
+        if (pricing) {
+            console.log(`✅ 找到價格: ${classType} - ${classFormat} - ${instructorLevel} = $${pricing.price}`);
+        } else {
+            console.warn(`⚠️ 未找到價格: ${classType} - ${classFormat} - ${instructorLevel}`);
+        }
         
         res.json({
             success: true,
@@ -1568,18 +2489,190 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
         const billData = req.body;
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
-        const collection = db.collection('Student_bill');
         
-        const result = await collection.insertOne({
-            ...billData,
+        // ✅ 保存 Student_bill 記錄
+        // ✅ 如果 studentId 為 null 或 undefined，不設置該字段（避免唯一索引衝突）
+        const billCollection = db.collection('Student_bill');
+        const billDataToInsert = { ...billData };
+        
+        // ✅ 如果 studentId 為 null 或 undefined，移除該字段（允許一個學生有多個賬單）
+        if (billDataToInsert.studentId === null || billDataToInsert.studentId === undefined) {
+            delete billDataToInsert.studentId;
+        }
+        
+        const billResult = await billCollection.insertOne({
+            ...billDataToInsert,
             createdAt: new Date(),
             updatedAt: new Date()
         });
         
+        // ✅ 處理 timeSlotData，創建 students_timeslot 記錄
+        if (billData.timeSlotData && Array.isArray(billData.timeSlotData) && billData.timeSlotData.length > 0) {
+            const timeslotCollection = db.collection('students_timeslot');
+            const timeslotRecords = [];
+            
+            for (const slot of billData.timeSlotData) {
+                const { classTime, selectedDates, pendingLessons, studentIds, receiptImageUrl, courseType, classFormat, instructorType, location } = slot;
+                
+                // ✅ 獲取基礎 time_slot（從 Pricing 集合）
+                const baseTimeSlot = await getTimeSlotForClassFormat(db, courseType || billData.courseType, classFormat || billData.classFormat);
+                
+                // 計算第一次的 time_slot（originalTimeSlot）
+                const firstDuration = extractDurationFromClassTime(classTime);
+                const originalTimeSlot = firstDuration && baseTimeSlot ? calculateTotalTimeSlot(baseTimeSlot, firstDuration) : 1;
+                
+                // 為每個學生創建記錄
+                if (studentIds && Array.isArray(studentIds)) {
+                    for (const studentPhone of studentIds) {
+                        // 查找學生信息
+                        const studentCollection = db.collection('Student_account');
+                        let student = await studentCollection.findOne({ phone: studentPhone });
+                        
+                        let studentId;
+                        if (student) {
+                            // ✅ 如果學生已存在，使用現有的 studentId
+                            studentId = student.studentId || student._id.toString();
+                        } else {
+                            // ✅ 如果學生不存在（新生），創建新的 Student_account 記錄並分配 studentId
+                            // 從 billData.students 中查找對應的學生資料
+                            const studentData = billData.students?.find(s => s.phone === studentPhone);
+                            
+                            if (!studentData) {
+                                console.warn(`⚠️ 未找到電話 ${studentPhone} 對應的學生資料，跳過`);
+                                continue;
+                            }
+                            
+                            // ✅ 生成唯一的 8 位數字 studentId
+                            // 查找現有最大的 studentId
+                            const maxStudentResult = await studentCollection.aggregate([
+                                {
+                                    $match: {
+                                        studentId: { $regex: /^\d{8}$/ } // 匹配8位數字
+                                    }
+                                },
+                                {
+                                    $project: {
+                                        studentId: 1,
+                                        number: {
+                                            $toInt: "$studentId"
+                                        }
+                                    }
+                                },
+                                {
+                                    $sort: { number: -1 }
+                                },
+                                {
+                                    $limit: 1
+                                }
+                            ]).toArray();
+                            
+                            let nextNumber = 1;
+                            if (maxStudentResult && maxStudentResult.length > 0 && maxStudentResult[0].number) {
+                                nextNumber = maxStudentResult[0].number + 1;
+                            }
+                            
+                            // 確保 studentId 唯一（檢查是否已存在）
+                            let newStudentId;
+                            let attempts = 0;
+                            do {
+                                newStudentId = String(nextNumber).padStart(8, '0');
+                                const existingCheck = await studentCollection.findOne({ studentId: newStudentId });
+                                if (!existingCheck) break;
+                                nextNumber++;
+                                attempts++;
+                                if (attempts > 100) {
+                                    throw new Error('無法生成唯一的 studentId');
+                                }
+                            } while (true);
+                            
+                            // ✅ 創建新的 Student_account 記錄
+                            const newStudentResult = await studentCollection.insertOne({
+                                name: studentData.name || '',
+                                phone: studentPhone,
+                                birthday: studentData.birthday || '',
+                                age: studentData.age || '',
+                                email: studentData.email || '',
+                                password: studentData.password || studentPhone.slice(-4), // 默認密碼為電話後4位
+                                studentId: newStudentId, // ✅ 分配唯一的 studentId
+                                createdAt: new Date(),
+                                updatedAt: new Date()
+                            });
+                            
+                            studentId = newStudentId;
+                            console.log(`✅ 已為新生創建 Student_account 記錄: ${studentData.name} (${studentPhone}) -> studentId: ${studentId}`);
+                        }
+                        
+                        // ✅ 處理已選日期（無論是新舊學生都需要創建 timeslot 記錄）
+                        if (selectedDates && Array.isArray(selectedDates)) {
+                            for (const date of selectedDates) {
+                                timeslotRecords.push({
+                                    studentId: studentId,
+                                    studentPhone: studentPhone,
+                                    classDate: date,
+                                    classTime: classTime,
+                                    courseType: courseType || billData.courseType,
+                                    classFormat: classFormat || billData.classFormat,
+                                    instructorType: instructorType || billData.instructorType,
+                                    location: location || billData.location,
+                                    receiptImageUrl: receiptImageUrl || billData.receiptImageUrl,
+                                    time_slot: baseTimeSlot || null, // ✅ 基礎時長（分鐘）
+                                    originalTimeSlot: originalTimeSlot, // ✅ 第一次的 time_slot（堂數）
+                                    total_time_slot: originalTimeSlot, // ✅ 當前的 time_slot（初始等於 originalTimeSlot）
+                                    isPending: false,
+                                    isAttended: null,
+                                    isLeave: null,
+                                    isChangeDate: false,
+                                    isChangeTime: false,
+                                    isChangeLocation: false,
+                                    createdAt: new Date(),
+                                    updatedAt: new Date()
+                                });
+                            }
+                        }
+                        
+                        // ✅ 處理待約堂數（無論是新舊學生都需要創建 timeslot 記錄）
+                        if (pendingLessons && typeof pendingLessons === 'object') {
+                            const pendingCount = Object.values(pendingLessons).reduce((sum, val) => sum + (typeof val === 'number' ? val : 0), 0);
+                            for (let i = 0; i < pendingCount; i++) {
+                                timeslotRecords.push({
+                                    studentId: studentId,
+                                    studentPhone: studentPhone,
+                                    classDate: '',
+                                    classTime: classTime,
+                                    courseType: courseType || billData.courseType,
+                                    classFormat: classFormat || billData.classFormat,
+                                    instructorType: instructorType || billData.instructorType,
+                                    location: location || billData.location,
+                                    receiptImageUrl: receiptImageUrl || billData.receiptImageUrl,
+                                    time_slot: baseTimeSlot || null, // ✅ 基礎時長（分鐘）
+                                    originalTimeSlot: originalTimeSlot, // ✅ 第一次的 time_slot（堂數）
+                                    total_time_slot: originalTimeSlot, // ✅ 當前的 time_slot（初始等於 originalTimeSlot）
+                                    isPending: true,
+                                    isAttended: null,
+                                    isLeave: null,
+                                    isChangeDate: false,
+                                    isChangeTime: false,
+                                    isChangeLocation: false,
+                                    createdAt: new Date(),
+                                    updatedAt: new Date()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 批量插入 students_timeslot 記錄
+            if (timeslotRecords.length > 0) {
+                await timeslotCollection.insertMany(timeslotRecords);
+                console.log(`✅ 已創建 ${timeslotRecords.length} 條 students_timeslot 記錄`);
+            }
+        }
+        
         res.json({
             success: true,
             message: '創建成功',
-            billId: result.insertedId
+            billId: billResult.insertedId
         });
     } catch (error) {
         console.error('❌ 創建學生賬單失敗:', error);
@@ -1824,6 +2917,178 @@ app.get('/student/:studentId/class-dates', validateApiKeys, async (req, res) => 
     }
 });
 
+// ✅ 獲取學生的剩餘時數詳細信息（包括 classFormat 和 total_time_slot）
+app.get('/student/:studentId/remaining-time-slots', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { semester, year } = req.query; // 可選的學期和年份過濾
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 構建查詢條件
+        const query = { studentId: studentId };
+        
+        // ✅ 獲取該學生的所有時段記錄（不排除 classDate 為空的記錄，因為待約記錄可能沒有 classDate）
+        let timeslots = await collection.find(query).toArray();
+        
+        // 如果指定了學期或年份，需要進一步過濾
+        let receiptDateMap = {};
+        if (semester || year) {
+            // 批量查詢 receiptImageUrl 對應的日期
+            const receiptUrls = [...new Set(timeslots
+                .filter(r => !r.classDate && r.receiptImageUrl)
+                .map(r => r.receiptImageUrl)
+                .filter(Boolean))];
+            
+            if (receiptUrls.length > 0) {
+                const relatedRecords = await collection.find({
+                    receiptImageUrl: { $in: receiptUrls },
+                    classDate: { $nin: [null, ''] }
+                }).toArray();
+                
+                for (const relatedRecord of relatedRecords) {
+                    if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                        receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                    }
+                }
+            }
+            
+            // 過濾記錄
+            const semesterFilter = semester ? semester.split(',').map(m => parseInt(m)) : null;
+            const yearFilter = year ? parseInt(year) : null;
+            
+            timeslots = timeslots.filter(slot => {
+                let classDate = slot.classDate;
+                
+                if (!classDate && slot.receiptImageUrl && receiptDateMap[slot.receiptImageUrl]) {
+                    classDate = receiptDateMap[slot.receiptImageUrl];
+                }
+                
+                if (!classDate) return false;
+                
+                const date = formatDateToYYYYMMDD(classDate) || classDate;
+                const dateObj = new Date(date);
+                if (isNaN(dateObj.getTime())) return false;
+                
+                const month = dateObj.getMonth() + 1;
+                const slotYear = dateObj.getFullYear();
+                
+                if (yearFilter && slotYear !== yearFilter) return false;
+                if (semesterFilter && !semesterFilter.includes(month)) return false;
+                
+                return true;
+            });
+        }
+        
+        // ✅ 篩選剩餘時數的記錄：仍可出席 + 仍可補約
+        // 仍可出席：有 classDate 但 isAttended === null 且 isLeave === null（藍色狀態）
+        const canStillAttendSlots = timeslots.filter(s => {
+            // 如果指定了學期/年份過濾，需要檢查日期是否匹配
+            if (semester || year) {
+                let classDate = s.classDate;
+                if (!classDate && s.receiptImageUrl && receiptDateMap[s.receiptImageUrl]) {
+                    classDate = receiptDateMap[s.receiptImageUrl];
+                }
+                if (!classDate) return false; // 如果沒有日期且無法通過 receiptImageUrl 查找，則排除
+            }
+            return s.classDate && s.classDate !== '' && 
+                   s.isAttended === null && 
+                   (s.isLeave === null || s.isLeave === false);
+        });
+        
+        // 仍可補約：classDate 為空或 isPending === true 或 isLeave === true
+        const canStillBookSlots = timeslots.filter(s => {
+            const isPending = (!s.classDate || s.classDate === '') || s.isPending === true;
+            const isLeave = s.isLeave === true;
+            
+            // ✅ 如果指定了學期/年份過濾，待約記錄需要通過 receiptImageUrl 查找日期來匹配
+            if ((isPending || isLeave) && (semester || year)) {
+                let classDate = s.classDate;
+                if (!classDate && s.receiptImageUrl && receiptDateMap[s.receiptImageUrl]) {
+                    classDate = receiptDateMap[s.receiptImageUrl];
+                }
+                // ✅ 如果找到了日期，需要檢查是否匹配學期/年份
+                if (classDate) {
+                    const date = formatDateToYYYYMMDD(classDate) || classDate;
+                    const dateObj = new Date(date);
+                    if (!isNaN(dateObj.getTime())) {
+                        const month = dateObj.getMonth() + 1;
+                        const slotYear = dateObj.getFullYear();
+                        const semesterFilter = semester ? semester.split(',').map(m => parseInt(m)) : null;
+                        const yearFilter = year ? parseInt(year) : null;
+                        
+                        if (yearFilter && slotYear !== yearFilter) return false;
+                        if (semesterFilter && !semesterFilter.includes(month)) return false;
+                    }
+                } else {
+                    // ✅ 如果沒有日期且無法通過 receiptImageUrl 查找，則排除（因為無法確定學期/年份）
+                    return false;
+                }
+            }
+            
+            return isPending || isLeave;
+        });
+        
+        // 合併所有剩餘時數記錄
+        const remainingSlots = [...canStillAttendSlots, ...canStillBookSlots];
+        
+        // ✅ 按 classFormat 分組統計
+        const formatGroups = {};
+        let totalTimeSlots = 0;
+        
+        for (const slot of remainingSlots) {
+            const classFormat = slot.classFormat || slot.class_format || '未知格式';
+            const timeSlot = slot.total_time_slot || 1;
+            
+            if (!formatGroups[classFormat]) {
+                formatGroups[classFormat] = {
+                    classFormat: classFormat,
+                    count: 0,
+                    totalTimeSlot: 0,
+                    records: []
+                };
+            }
+            
+            formatGroups[classFormat].count++;
+            formatGroups[classFormat].totalTimeSlot += timeSlot;
+            formatGroups[classFormat].records.push({
+                classDate: slot.classDate || '',
+                classTime: slot.classTime || '',
+                courseType: slot.courseType || slot.course_type || '',
+                classFormat: slot.classFormat || slot.class_format || '',
+                location: slot.location || '',
+                totalTimeSlot: timeSlot,
+                isPending: slot.isPending || false,
+                isLeave: slot.isLeave || false
+            });
+            
+            totalTimeSlots += timeSlot;
+        }
+        
+        // 轉換為數組並排序
+        const formatList = Object.values(formatGroups).sort((a, b) => {
+            return b.totalTimeSlot - a.totalTimeSlot; // 按總時數降序排列
+        });
+        
+        res.json({
+            success: true,
+            studentId: studentId,
+            totalTimeSlots: parseFloat(totalTimeSlots.toFixed(1)),
+            formatGroups: formatList,
+            totalRecords: remainingSlots.length
+        });
+    } catch (error) {
+        console.error('❌ 獲取剩餘時數詳細信息失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取剩餘時數詳細信息失敗',
+            error: error.message
+        });
+    }
+});
+
 // 獲取學生的所有補堂日期（已約補堂），按學期分類
 app.get('/student/:studentId/makeup-dates', validateApiKeys, async (req, res) => {
     try {
@@ -1832,12 +3097,11 @@ app.get('/student/:studentId/makeup-dates', validateApiKeys, async (req, res) =>
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('students_timeslot');
         
-        // 查詢該學生的所有補堂記錄（isChangeDate || isChangeTime || isChangeLocation 為 true）
+        // ✅ 查詢該學生的所有補堂記錄（isChangeDate || isChangeLocation 為 true，不包括 isChangeTime）
         const records = await collection.find({
             studentId: studentId,
             $or: [
                 { isChangeDate: true },
-                { isChangeTime: true },
                 { isChangeLocation: true }
             ]
         }).toArray();
@@ -2072,12 +3336,7 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             // 構建查詢條件
             const timeslotQuery = { studentId: studentId };
             
-            // 如果指定了學期或年份，需要過濾 classDate
-            if (semesterFilter || yearFilter) {
-                timeslotQuery.classDate = { $nin: [null, ''] };
-            }
-            
-            // 獲取該學生的所有時段記錄
+            // ✅ 獲取該學生的所有時段記錄（不排除 classDate 為空的記錄，因為可能通過 receiptImageUrl 查找）
             let timeslots = await timeslotCollection.find(timeslotQuery).toArray();
             
             // 如果指定了學期或年份，需要進一步過濾
@@ -2085,12 +3344,17 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 timeslots = timeslots.filter(slot => {
                     let classDate = slot.classDate;
                     
-                    // 如果 classDate 為空，嘗試通過 receiptImageUrl 查找
+                    // ✅ 如果 classDate 為空，嘗試通過 receiptImageUrl 查找
                     if (!classDate && slot.receiptImageUrl && receiptDateMapForPage[slot.receiptImageUrl]) {
                         classDate = receiptDateMapForPage[slot.receiptImageUrl];
                     }
                     
-                    if (!classDate) return false;
+                    // ✅ 如果仍然沒有 classDate，且指定了過濾條件，則排除該記錄
+                    // 但如果沒有指定過濾條件，則包含所有記錄（包括 classDate 為空的記錄）
+                    if (!classDate) {
+                        // 如果指定了過濾條件但找不到日期，則排除
+                        return false;
+                    }
                     
                     const date = formatDateToYYYYMMDD(classDate) || classDate;
                     const dateObj = new Date(date);
@@ -2113,67 +3377,343 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 });
             }
             
-            // 計算統計數據（基於過濾後的記錄）
-            const stats = {
-                purchasedClasses: timeslots.length,
-                scheduledClasses: timeslots.filter(s => s.classDate && s.classDate !== '' && s.isLeave !== true).length,
-                attendedBooked: timeslots.filter(s => s.isAttended === true).length,
-                absences: 0,
-                leaveRequests: timeslots.filter(s => s.isLeave === true).length,
-                bookedMakeup: timeslots.filter(s => s.isChangeDate === true || s.isChangeTime === true || s.isChangeLocation === true).length,
-                attendedMakeup: timeslots.filter(s => (s.isChangeDate === true || s.isChangeTime === true || s.isChangeLocation === true) && s.isAttended === true).length
+            // ✅ 計算統計數據（基於過濾後的記錄）
+            // 已定日子課堂：有 classDate 且不是請假的記錄
+            const scheduledClasses = timeslots.filter(s => s.classDate && s.classDate !== '' && s.isLeave !== true).length;
+            
+            // ✅ 補堂已出席：已約補堂且已出席的記錄（需要先計算，因為它是已出席的子集）
+            const attendedMakeup = timeslots.filter(s => (s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true).length;
+            
+            // ✅ 已出席：isAttended === true 的記錄（包括普通已出席和補堂已出席）
+            const attendedBooked = timeslots.filter(s => s.isAttended === true).length;
+            
+            // ✅ 本期請假堂數：本期資料格對應學生的isLeave為true的數量
+            const currentPeriodLeaveRequests = timeslots.filter(s => s.isLeave === true).length;
+            
+            // ✅ 計算缺席：isAttended === false 的記錄
+            const absences = timeslots.filter(s => s.isAttended === false).length;
+            
+            // ✅ 計算本期已購堂數（根據學期/年份過濾後的記錄數量）
+            const currentPurchasedClasses = timeslots.length;
+            
+            // ✅ 本期剩餘堂數 = 本期已購堂數 - 本期已出席 - 本期已缺席
+            // 注意：attendedBooked 已經包含了所有 isAttended === true 的記錄（包括補堂已出席），
+            // 所以不需要再減去 attendedMakeup，否則會重複扣除
+            const currentPeriodRemaining = Math.max(0, currentPurchasedClasses - attendedBooked - absences);
+            
+            // ✅ 待約：isPending === true 的記錄
+            // 需要通過 receiptImageUrl 查找其他相同 receiptImageUrl 的資料格的學期/年份
+            // 如果指定了學期/年份過濾，需要根據 receiptImageUrl 關聯的記錄來判斷
+            let allPendingRecords = await timeslotCollection.find({
+                studentId: studentId,
+                isPending: true
+            }).toArray();
+            
+            // 如果指定了學期或年份過濾，需要過濾待約記錄
+            if (semesterFilter || yearFilter) {
+                // 獲取所有待約記錄的 receiptImageUrl
+                const pendingReceiptUrls = [...new Set(allPendingRecords
+                    .map(r => r.receiptImageUrl)
+                    .filter(Boolean))];
+                
+                // 批量查詢這些 receiptImageUrl 對應的有 classDate 的記錄
+                const receiptDateMapForPending = {};
+                if (pendingReceiptUrls.length > 0) {
+                    const relatedRecords = await timeslotCollection.find({
+                        receiptImageUrl: { $in: pendingReceiptUrls },
+                        classDate: { $nin: [null, ''] }
+                    }).toArray();
+                    
+                    for (const relatedRecord of relatedRecords) {
+                        if (!receiptDateMapForPending[relatedRecord.receiptImageUrl]) {
+                            receiptDateMapForPending[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                        }
+                    }
+                }
+                
+                // 過濾待約記錄：根據 receiptImageUrl 關聯的 classDate 判斷是否屬於指定學期/年份
+                allPendingRecords = allPendingRecords.filter(pendingRecord => {
+                    let classDate = null;
+                    
+                    // 如果待約記錄本身有 classDate，直接使用
+                    if (pendingRecord.classDate && pendingRecord.classDate !== '') {
+                        classDate = pendingRecord.classDate;
+                    } 
+                    // 如果沒有 classDate，嘗試通過 receiptImageUrl 查找
+                    else if (pendingRecord.receiptImageUrl && receiptDateMapForPending[pendingRecord.receiptImageUrl]) {
+                        classDate = receiptDateMapForPending[pendingRecord.receiptImageUrl];
+                    }
+                    
+                    // 如果仍然沒有 classDate，無法確定學期/年份，根據過濾條件決定是否包含
+                    // 如果指定了過濾條件但無法確定日期，則排除該記錄
+                    if (!classDate) {
+                        return false; // 無法確定學期/年份，排除
+                    }
+                    
+                    const date = formatDateToYYYYMMDD(classDate) || classDate;
+                    const dateObj = new Date(date);
+                    if (isNaN(dateObj.getTime())) return false;
+                    
+                    const month = dateObj.getMonth() + 1;
+                    const slotYear = dateObj.getFullYear();
+                    
+                    // 檢查年份
+                    if (yearFilter && slotYear !== yearFilter) {
+                        return false;
+                    }
+                    
+                    // 檢查學期
+                    if (semesterFilter && !semesterFilter.includes(month)) {
+                        return false;
+                    }
+                    
+                    return true;
+                });
+            }
+            
+            const pendingClasses = allPendingRecords.length;
+            
+            // ✅ 已約補堂：isChangeDate 或 isChangeLocation 為 true 的記錄（不包括 isChangeTime）
+            const bookedMakeup = timeslots.filter(s => s.isChangeDate === true || s.isChangeLocation === true).length;
+            
+            // ✅ 計算上期剩餘堂數：上期已購堂數 - 上期已出席 - 上期補堂已出席 - 上期已缺席
+            // 需要確定"上一期"是哪個學期
+            let lastPeriodRemaining = 0;
+            let lastPeriodTimeslots = [];
+            
+            if (semesterFilter && yearFilter) {
+                // 確定上一期
+                const semesterMonths = {
+                    '1-2月': [1, 2],
+                    '3-4月': [3, 4],
+                    '5-6月': [5, 6],
+                    '7-8月': [7, 8],
+                    '9-10月': [9, 10],
+                    '11-12月': [11, 12]
+                };
+                
+                // 找到當前學期的索引
+                const currentSemester = Object.keys(semesterMonths).find(key => 
+                    JSON.stringify(semesterMonths[key]) === JSON.stringify(semesterFilter)
+                );
+                const semesterKeys = Object.keys(semesterMonths);
+                const currentIndex = semesterKeys.indexOf(currentSemester);
+                
+                // 確定上一期
+                let lastSemesterFilter = null;
+                let lastYearFilter = yearFilter;
+                
+                if (currentIndex > 0) {
+                    // 同一年的上一期
+                    lastSemesterFilter = semesterMonths[semesterKeys[currentIndex - 1]];
+                } else {
+                    // 上一年的最後一期（11-12月）
+                    lastSemesterFilter = semesterMonths['11-12月'];
+                    lastYearFilter = yearFilter - 1;
+                }
+                
+                // 查詢上一期的記錄
+                const lastPeriodQuery = { studentId: studentId };
+                if (lastSemesterFilter) {
+                    lastPeriodQuery.classDate = { $nin: [null, ''] };
+                }
+                
+                lastPeriodTimeslots = await timeslotCollection.find(lastPeriodQuery).toArray();
+                
+                // 過濾上一期的記錄
+                if (lastSemesterFilter && lastYearFilter) {
+                    // 批量查詢 receiptImageUrl 對應的日期
+                    const lastPeriodReceiptUrls = [...new Set(lastPeriodTimeslots
+                        .filter(r => !r.classDate && r.receiptImageUrl)
+                        .map(r => r.receiptImageUrl)
+                        .filter(Boolean))];
+                    
+                    const lastPeriodReceiptDateMap = {};
+                    if (lastPeriodReceiptUrls.length > 0) {
+                        const relatedRecords = await timeslotCollection.find({
+                            receiptImageUrl: { $in: lastPeriodReceiptUrls },
+                            classDate: { $nin: [null, ''] }
+                        }).toArray();
+                        
+                        for (const relatedRecord of relatedRecords) {
+                            if (!lastPeriodReceiptDateMap[relatedRecord.receiptImageUrl]) {
+                                lastPeriodReceiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                            }
+                        }
+                    }
+                    
+                    lastPeriodTimeslots = lastPeriodTimeslots.filter(slot => {
+                        let classDate = slot.classDate;
+                        
+                        if (!classDate && slot.receiptImageUrl && lastPeriodReceiptDateMap[slot.receiptImageUrl]) {
+                            classDate = lastPeriodReceiptDateMap[slot.receiptImageUrl];
+                        }
+                        
+                        if (!classDate) return false;
+                        
+                        const date = formatDateToYYYYMMDD(classDate) || classDate;
+                        const dateObj = new Date(date);
+                        if (isNaN(dateObj.getTime())) return false;
+                        
+                        const month = dateObj.getMonth() + 1;
+                        const slotYear = dateObj.getFullYear();
+                        
+                        if (lastYearFilter && slotYear !== lastYearFilter) return false;
+                        if (lastSemesterFilter && !lastSemesterFilter.includes(month)) return false;
+                        
+                        return true;
+                    });
+                }
+                
+                // 計算上一期的待約數量（通過 receiptImageUrl 確定學期/年份）
+                const lastPeriodPendingRecords = await timeslotCollection.find({
+                    studentId: studentId,
+                    isPending: true
+                }).toArray();
+                
+                const lastPeriodPendingReceiptUrls = [...new Set(lastPeriodPendingRecords
+                    .map(r => r.receiptImageUrl)
+                    .filter(Boolean))];
+                
+                const lastPeriodPendingReceiptDateMap = {};
+                if (lastPeriodPendingReceiptUrls.length > 0) {
+                    const relatedRecords = await timeslotCollection.find({
+                        receiptImageUrl: { $in: lastPeriodPendingReceiptUrls },
+                        classDate: { $nin: [null, ''] }
+                    }).toArray();
+                    
+                    for (const relatedRecord of relatedRecords) {
+                        if (!lastPeriodPendingReceiptDateMap[relatedRecord.receiptImageUrl]) {
+                            lastPeriodPendingReceiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                        }
+                    }
+                }
+                
+                const lastPeriodPendingFiltered = lastPeriodPendingRecords.filter(pendingRecord => {
+                    let classDate = null;
+                    
+                    if (pendingRecord.classDate && pendingRecord.classDate !== '') {
+                        classDate = pendingRecord.classDate;
+                    } else if (pendingRecord.receiptImageUrl && lastPeriodPendingReceiptDateMap[pendingRecord.receiptImageUrl]) {
+                        classDate = lastPeriodPendingReceiptDateMap[pendingRecord.receiptImageUrl];
+                    }
+                    
+                    if (!classDate) return false;
+                    
+                    const date = formatDateToYYYYMMDD(classDate) || classDate;
+                    const dateObj = new Date(date);
+                    if (isNaN(dateObj.getTime())) return false;
+                    
+                    const month = dateObj.getMonth() + 1;
+                    const slotYear = dateObj.getFullYear();
+                    
+                    if (lastYearFilter && slotYear !== lastYearFilter) return false;
+                    if (lastSemesterFilter && !lastSemesterFilter.includes(month)) return false;
+                    
+                    return true;
+                });
+                
+                lastPeriodPending = lastPeriodPendingFiltered.length;
+                lastPeriodLeaveRequests = lastPeriodTimeslots.filter(s => s.isLeave === true).length;
+                
+                // ✅ 計算上期的統計數據
+                const lastPeriodAttendedBooked = lastPeriodTimeslots.filter(s => s.isAttended === true).length;
+                const lastPeriodAttendedMakeup = lastPeriodTimeslots.filter(s => 
+                    (s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true
+                ).length;
+                const lastPeriodAbsences = lastPeriodTimeslots.filter(s => s.isAttended === false).length;
+                const lastPeriodPurchasedClasses = lastPeriodTimeslots.length;
+                
+                // ✅ 上期剩餘堂數 = 上期已購堂數 - 上期已出席 - 上期已缺席
+                // 注意：lastPeriodAttendedBooked 已經包含了所有 isAttended === true 的記錄（包括補堂已出席），
+                // 所以不需要再減去 lastPeriodAttendedMakeup，否則會重複扣除
+                lastPeriodRemaining = Math.max(0, lastPeriodPurchasedClasses - lastPeriodAttendedBooked - lastPeriodAbsences);
+            } else {
+                // 如果沒有指定學期/年份，上期剩餘堂數為 0
+                lastPeriodRemaining = 0;
+            }
+            
+            // ✅ 可約補堂 = 上期剩餘堂數 + 本期請假堂數 + 待約
+            const bookableMakeup = lastPeriodRemaining + currentPeriodLeaveRequests + pendingClasses;
+            
+            // ✅ 計算本期剩餘時數：（本期已購堂數 - 本期已出席 - 本期補堂已出席 - 本期已缺席）的剩餘資料格的total_time_slot的總和
+            // 剩餘記錄 = 本期已購堂數 - 已出席 - 補堂已出席 - 已缺席
+            const remainingRecords = timeslots.filter(s => {
+                // 排除已出席的記錄
+                if (s.isAttended === true) return false;
+                // 排除補堂已出席的記錄
+                if ((s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true) return false;
+                // 排除已缺席的記錄（isAttended === false）
+                if (s.isAttended === false) return false;
+                return true;
+            });
+            
+            const currentPeriodRemainingTimeSlots = remainingRecords.reduce((sum, slot) => {
+                const timeSlot = slot.total_time_slot || 1;
+                return sum + timeSlot;
+            }, 0);
+            
+            // ✅ 計算可補時數：（上期剩餘堂數 + 本期請假堂數 + 待約）的對應資料格的total_time_slot的總和
+            // 需要找出對應的記錄：
+            // 1. 上期剩餘的記錄（需要查詢上一期的記錄）
+            // 2. 本期請假的記錄（isLeave === true）
+            // 3. 待約的記錄（isPending === true）
+            let bookableMakeupSlots = [];
+            
+            // 本期請假的記錄
+            const currentLeaveSlots = timeslots.filter(s => s.isLeave === true);
+            bookableMakeupSlots.push(...currentLeaveSlots);
+            
+            // 待約的記錄
+            bookableMakeupSlots.push(...allPendingRecords);
+            
+            // 上期剩餘的記錄（如果有上一期數據）
+            if (semesterFilter && yearFilter && lastPeriodRemaining > 0) {
+                // 查詢上一期的剩餘記錄
+                const lastPeriodRemainingRecords = lastPeriodTimeslots.filter(s => {
+                    // 排除已出席的記錄
+                    if (s.isAttended === true) return false;
+                    // 排除補堂已出席的記錄
+                    if ((s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true) return false;
+                    // 排除已缺席的記錄（isAttended === false）
+                    if (s.isAttended === false) return false;
+                    return true;
+                });
+                bookableMakeupSlots.push(...lastPeriodRemainingRecords);
+            }
+            
+            const bookableMakeupTimeSlots = bookableMakeupSlots.reduce((sum, slot) => {
+                const timeSlot = slot.total_time_slot || 1;
+                return sum + timeSlot;
+            }, 0);
+            
+            // ✅ 剩餘堂數已在上面計算：remainingClasses = canStillAttend + canStillBook
+            
+            const studentData = {
+                studentId: studentId,
+                name: student.name || '',
+                purchasedClasses: currentPurchasedClasses, // ✅ 本期已購堂數：根據學期/年份過濾後的記錄數量
+                lastPeriodRemaining: lastPeriodRemaining, // ✅ 上期剩餘堂數：上期已購堂數 - 上期已出席 - 上期補堂已出席 - 上期已缺席
+                currentPeriodRemaining: currentPeriodRemaining, // ✅ 本期剩餘堂數：本期已購堂數 - 本期已出席 - 本期補堂已出席 - 本期已缺席
+                scheduledClasses: scheduledClasses, // 已定日子課堂
+                attendedBooked: attendedBooked, // 已出席
+                absences: absences, // 缺席
+                currentPeriodLeaveRequests: currentPeriodLeaveRequests, // ✅ 本期請假堂數：本期isLeave為true的數量
+                pendingClasses: pendingClasses, // ✅ 待約：isPending === true 的記錄
+                bookableMakeup: bookableMakeup, // ✅ 可約補堂：上期剩餘堂數 + 本期請假堂數 + 待約
+                bookedMakeup: bookedMakeup, // 已約補堂
+                attendedMakeup: attendedMakeup, // 補堂已出席
+                // ✅ 時數相關字段
+                currentPeriodRemainingTimeSlots: parseFloat(currentPeriodRemainingTimeSlots.toFixed(1)), // ✅ 本期剩餘時數：（本期已購堂數 - 本期已出席 - 本期補堂已出席 - 本期已缺席）的剩餘資料格的total_time_slot的總和
+                bookableMakeupTimeSlots: parseFloat(bookableMakeupTimeSlots.toFixed(1)) // ✅ 可補時數：（上期剩餘堂數 + 本期請假堂數 + 待約）的對應資料格的total_time_slot的總和
             };
             
-            // 計算缺席（過去日期 && isAttended 不為 true）
-            const todayString = new Date().toISOString().split('T')[0];
-            stats.absences = timeslots.filter(s => {
-                if (!s.classDate) return false;
-                const classDateStr = formatDateToYYYYMMDD(s.classDate) || s.classDate;
-                return classDateStr < todayString && s.isAttended !== true;
-            }).length;
-            
-            // ✅ 如果指定了學期或年份，只包含有數據的學生（至少有一條記錄）
-            // 如果沒有指定篩選條件，包含所有學生（即使數據為0）
-            const hasData = stats.purchasedClasses > 0 || 
-                           stats.scheduledClasses > 0 || 
-                           stats.attendedBooked > 0 || 
-                           stats.absences > 0 || 
-                           stats.leaveRequests > 0 || 
-                           stats.bookedMakeup > 0 || 
-                           stats.attendedMakeup > 0;
-            
-            // ✅ 如果指定了篩選條件，studentIdsForPage 已經只包含有數據的學生
-            // 所以這裡直接添加即可（因為已經在分頁前過濾過了）
             if (!semesterFilter && !yearFilter) {
                 // 沒有篩選條件，包含所有學生
-                formattedStudents.push({
-                    studentId: studentId,
-                    name: student.name || '',
-                    totalClasses: stats.purchasedClasses,
-                    purchasedClasses: stats.purchasedClasses,
-                    lastPeriodRemaining: stats.purchasedClasses - stats.scheduledClasses,
-                    scheduledClasses: stats.scheduledClasses,
-                    attendedBooked: stats.attendedBooked,
-                    absences: stats.absences,
-                    leaveRequests: stats.leaveRequests,
-                    bookedMakeup: stats.bookedMakeup,
-                    attendedMakeup: stats.attendedMakeup
-                });
+                formattedStudents.push(studentData);
             } else {
                 // 有篩選條件，studentIdsForPage 已經只包含有數據的學生，直接添加
-                formattedStudents.push({
-                    studentId: studentId,
-                    name: student.name || '',
-                    totalClasses: stats.purchasedClasses,
-                    purchasedClasses: stats.purchasedClasses,
-                    lastPeriodRemaining: stats.purchasedClasses - stats.scheduledClasses,
-                    scheduledClasses: stats.scheduledClasses,
-                    attendedBooked: stats.attendedBooked,
-                    absences: stats.absences,
-                    leaveRequests: stats.leaveRequests,
-                    bookedMakeup: stats.bookedMakeup,
-                    attendedMakeup: stats.attendedMakeup
-                });
+                formattedStudents.push(studentData);
             }
         }
         

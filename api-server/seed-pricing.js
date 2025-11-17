@@ -50,30 +50,35 @@ const pricingData = [
     // 全年親子嬰兒班 - 恆常泳班1:4-7
     { class_type: '全年親子嬰兒班', class_format: '恆常泳班1:4-7', instructor_level: '固定泳班導師', price: 200 },
     
-    // 指定導師課程（全年） - 各課堂形式（統一定價）
-    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '資深導師', price: 300 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '主管導師', price: 280 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '女導師', price: 280 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '高級導師', price: 260 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '初級導師', price: 240 },
+    // 指定導師課程（全年） - 各課堂形式（統一定價，根據圖片1價格表）
+    // ✅ 修改：所有班級（小組班/中班/高班/泳隊）統一價格
+    // 小組班
+    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '資深導師', price: 250 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '主管導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '女導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '高級導師', price: 195 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師小組班1:2-4', instructor_level: '初級導師', price: 175 },
     
-    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '資深導師', price: 280 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '主管導師', price: 260 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '女導師', price: 260 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '高級導師', price: 240 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '初級導師', price: 220 },
+    // 中班
+    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '資深導師', price: 250 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '主管導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '女導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '高級導師', price: 195 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師中班1:4-6', instructor_level: '初級導師', price: 175 },
     
-    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '資深導師', price: 260 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '主管導師', price: 240 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '女導師', price: 240 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '高級導師', price: 220 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '初級導師', price: 200 },
+    // 高班
+    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '資深導師', price: 250 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '主管導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '女導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '高級導師', price: 195 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師高班1:5-8', instructor_level: '初級導師', price: 175 },
     
-    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '資深導師', price: 240 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '主管導師', price: 220 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '女導師', price: 220 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '高級導師', price: 200 },
-    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '初級導師', price: 180 },
+    // 泳隊
+    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '資深導師', price: 250 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '主管導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '女導師', price: 225 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '高級導師', price: 195 },
+    { class_type: '指定導師課程（全年）', class_format: '指定導師泳隊1:6-12', instructor_level: '初級導師', price: 175 },
     
     // 全年團體泳班
     { class_type: '全年團體泳班', class_format: '全年團體泳班 初班 1:3-5', instructor_level: '團體泳班導師', price: 180 },

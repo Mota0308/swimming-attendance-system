@@ -199,11 +199,12 @@ async function createIndexes() {
         // 8. Student_bill 集合索引
         console.log('8. 創建 Student_bill 索引...');
         try {
+            // ✅ 創建非唯一索引（一個學生可以有多個賬單）
             await db.collection('Student_bill').createIndex(
                 { studentId: 1 },
-                { unique: true, name: 'idx_studentId_unique' }
+                { unique: false, name: 'idx_studentId' }
             );
-            console.log('   ✅ studentId 唯一索引已創建（以 studentId 為唯一索引）');
+            console.log('   ✅ studentId 非唯一索引已創建（允許一個學生有多個賬單）');
         } catch (error) {
             if (error.code === 85) {
                 console.log('   ℹ️  索引已存在，跳過');
