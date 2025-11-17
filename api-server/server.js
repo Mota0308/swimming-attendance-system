@@ -1595,9 +1595,9 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
         let version2Records = [];
         
         if (employeeType === 'admin') {
-            // ✅ 如果員工是admin，則比較：
+            // ✅ 如果員工是文書職員（admin），則比較：
             // - version1: admin自己編輯的記錄（editorType: 'admin'）
-            // - version2: 主管幫admin編輯的記錄（editorType: 'supervisor'）
+            // - version2: 主管/管理員幫admin編輯的記錄（editorType: 'supervisor' 或 'manager'）
             version1Records = await collection.find({
                 phone,
                 year: parseInt(year),
@@ -1610,6 +1610,47 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                             { $or: [
                                 { submittedByType: 'admin' },
                                 { type: 'admin' }
+                            ]}
+                        ]
+                    }
+                ]
+            }).toArray();
+            
+            version2Records = await collection.find({
+                phone,
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: { $in: ['supervisor', 'manager'] } },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: { $in: ['supervisor', 'manager'] } },
+                                { type: { $in: ['supervisor', 'manager'] } }
+                            ]}
+                        ]
+                    }
+                ]
+            }).toArray();
+            
+            console.log(`📊 比較查詢結果（文書職員）: 自己編輯=${version1Records.length}條, 主管/管理員編輯=${version2Records.length}條`);
+        } else if (employeeType === 'manager') {
+            // ✅ 如果員工是管理員（manager），則比較：
+            // - version1: manager自己編輯的記錄（editorType: 'manager'）
+            // - version2: 主管幫manager編輯的記錄（editorType: 'supervisor'）
+            version1Records = await collection.find({
+                phone,
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'manager' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'manager' },
+                                { type: 'manager' }
                             ]}
                         ]
                     }
@@ -1634,11 +1675,11 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                 ]
             }).toArray();
             
-            console.log(`📊 比較查詢結果（admin）: admin自己編輯=${version1Records.length}條, 主管編輯=${version2Records.length}條`);
+            console.log(`📊 比較查詢結果（管理員）: 自己編輯=${version1Records.length}條, 主管編輯=${version2Records.length}條`);
         } else {
             // ✅ 如果員工是coach，則比較：
             // - version1: coach自己編輯的記錄（editorType: 'coach'）
-            // - version2: 主管/管理員幫coach編輯的記錄（editorType: 'admin' 或 'supervisor'）
+            // - version2: 主管/文書職員/管理員幫coach編輯的記錄（editorType: 'admin'、'supervisor' 或 'manager'）
             version1Records = await collection.find({
                 phone,
                 year: parseInt(year),
@@ -1662,7 +1703,7 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                 year: parseInt(year),
                 month: parseInt(month),
                 $or: [
-                    { editorType: { $in: ['admin', 'supervisor'] } },
+                    { editorType: { $in: ['admin', 'supervisor', 'manager'] } },
                     { 
                         $and: [
                             { editorType: { $in: [null, ''] } },
@@ -1798,23 +1839,33 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
         const comparisonResults = Array.from(comparisonMap.values()).map(result => {
             // ✅ 為了向後兼容，同時保留 coachRecord/adminRecord 和 version1Record/version2Record
             if (employeeType === 'admin') {
-                // ✅ 對於admin員工：
+                // ✅ 對於文書職員（admin）員工：
                 // - version1Record: admin自己編輯的記錄
-                // - version2Record: 主管編輯的記錄
+                // - version2Record: 主管/管理員編輯的記錄
                 return {
                     ...result,
                     coachRecord: null, // admin員工沒有coach版本
                     adminRecord: result.version1Record, // admin自己編輯的記錄
+                    supervisorRecord: result.version2Record // 主管/管理員編輯的記錄
+                };
+            } else if (employeeType === 'manager') {
+                // ✅ 對於管理員（manager）員工：
+                // - version1Record: manager自己編輯的記錄
+                // - version2Record: 主管編輯的記錄
+                return {
+                    ...result,
+                    coachRecord: null, // manager員工沒有coach版本
+                    adminRecord: result.version1Record, // manager自己編輯的記錄
                     supervisorRecord: result.version2Record // 主管編輯的記錄
                 };
             } else {
                 // ✅ 對於coach員工：
                 // - version1Record: coach自己編輯的記錄
-                // - version2Record: 主管/管理員編輯的記錄
+                // - version2Record: 主管/文書職員/管理員編輯的記錄
                 return {
                     ...result,
                     coachRecord: result.version1Record, // coach自己編輯的記錄
-                    adminRecord: result.version2Record, // 主管/管理員編輯的記錄
+                    adminRecord: result.version2Record, // 主管/文書職員/管理員編輯的記錄
                     supervisorRecord: null // coach員工沒有supervisor版本
                 };
             }
