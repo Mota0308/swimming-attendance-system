@@ -765,7 +765,40 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
             if (s.phone) phoneMap[s.phone] = s;
         });
         
-        // ==================== 5. 按 classDate + location 分組 ====================
+        // ==================== 5. 批量獲取學生的可約補堂數 ====================
+        // ✅ 為了優化性能，批量查詢所有學生的可約補堂數
+        const studentBookableMakeupMap = {};
+        const uniqueStudentIds = [...new Set(allRecords.map(r => r.studentId).filter(Boolean))];
+        
+        // ✅ 並行查詢每個學生的可約補堂數（簡化版本：只查詢當前記錄相關的數據）
+        const bookableMakeupPromises = uniqueStudentIds.map(async (studentId) => {
+            try {
+                // ✅ 查詢該學生的待約記錄、請假記錄和上期剩餘記錄
+                const pendingCount = await timeslotCollection.countDocuments({
+                    studentId: studentId,
+                    isPending: true
+                });
+                
+                const leaveCount = await timeslotCollection.countDocuments({
+                    studentId: studentId,
+                    isLeave: true
+                });
+                
+                // ✅ 簡化計算：可約補堂 = 待約 + 請假（上期剩餘需要更複雜的計算，暫時省略）
+                const bookableMakeup = pendingCount + leaveCount;
+                return { studentId, bookableMakeup };
+            } catch (error) {
+                console.error(`❌ 查詢學生 ${studentId} 的可約補堂數失敗:`, error);
+                return { studentId, bookableMakeup: 0 };
+            }
+        });
+        
+        const bookableMakeupResults = await Promise.all(bookableMakeupPromises);
+        bookableMakeupResults.forEach(({ studentId, bookableMakeup }) => {
+            studentBookableMakeupMap[studentId] = bookableMakeup;
+        });
+        
+        // ==================== 6. 按 classDate + location 分組 ====================
         const dateLocationGroups = {};
         
         allRecords.forEach(record => {
@@ -794,6 +827,19 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
             const student = record.studentId ? studentMap[record.studentId] : 
                            record.studentPhone ? phoneMap[record.studentPhone] : null;
             
+            // ✅ 計算 isEdited：在isChangeDate，isChangeTime，isChangeLocation都為false情況下，isEdited為false
+            const isChangeDate = record.isChangeDate || false;
+            const isChangeTime = record.isChangeTime || false;
+            const isChangeLocation = record.isChangeLocation || false;
+            const isEdited = isChangeDate || isChangeTime || isChangeLocation;
+            
+            // ✅ 獲取 totalTimeSlot 和 originalTimeSlot
+            const totalTimeSlot = record.total_time_slot || record.totalTimeSlot || 0;
+            const originalTimeSlot = record.originalTimeSlot || record.original_time_slot || 0;
+            
+            // ✅ 獲取可約補堂數（從預先計算的映射中獲取）
+            const bookableMakeup = studentBookableMakeupMap[record.studentId] || 0;
+            
             dateLocationGroups[key].groups[groupKey].students.push({
                 recordId: record._id.toString(),
                 studentId: record.studentId || '',
@@ -807,9 +853,15 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
                 originalLocation: record.location,
                 originalClassFormat: record.classFormat,
                 originalInstructorType: record.instructorType,
-                isChangeDate: record.isChangeDate || false,
-                isChangeTime: record.isChangeTime || false,
-                isChangeLocation: record.isChangeLocation || false
+                instructorType: record.instructorType || '',
+                instructorName: record.instructorName || '',
+                isChangeDate: isChangeDate,
+                isChangeTime: isChangeTime,
+                isChangeLocation: isChangeLocation,
+                isEdited: isEdited,
+                totalTimeSlot: totalTimeSlot,
+                originalTimeSlot: originalTimeSlot,
+                bookableMakeup: bookableMakeup
             });
         });
         
@@ -1057,6 +1109,12 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
             }
         }
         
+        // ✅ 計算並更新 isEdited：在isChangeDate，isChangeTime，isChangeLocation都為false情況下，isEdited為false
+        const finalIsChangeDate = updateData.isChangeDate !== undefined ? updateData.isChangeDate : (originalRecord.isChangeDate || false);
+        const finalIsChangeTime = updateData.isChangeTime !== undefined ? updateData.isChangeTime : (originalRecord.isChangeTime || false);
+        const finalIsChangeLocation = updateData.isChangeLocation !== undefined ? updateData.isChangeLocation : (originalRecord.isChangeLocation || false);
+        updateData.isEdited = finalIsChangeDate || finalIsChangeTime || finalIsChangeLocation;
+        
         const result = await collection.updateOne(
             { _id: new ObjectId(recordId) },
             { $set: updateData }
@@ -1140,6 +1198,12 @@ app.put('/attendance/timeslot/date-location', validateApiKeys, async (req, res) 
                 updateData.isChangeLocation = false;
             }
         }
+        
+        // ✅ 計算並更新 isEdited：在isChangeDate，isChangeTime，isChangeLocation都為false情況下，isEdited為false
+        const finalIsChangeDate = updateData.isChangeDate !== undefined ? updateData.isChangeDate : (originalRecord.isChangeDate || false);
+        const finalIsChangeTime = originalRecord.isChangeTime || false; // 這個API不修改時間
+        const finalIsChangeLocation = updateData.isChangeLocation !== undefined ? updateData.isChangeLocation : (originalRecord.isChangeLocation || false);
+        updateData.isEdited = finalIsChangeDate || finalIsChangeTime || finalIsChangeLocation;
         
         const result = await collection.updateOne(
             { _id: new ObjectId(recordId) },
