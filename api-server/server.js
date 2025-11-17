@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const { MongoClient, ObjectId } = require('mongodb');
 const multer = require('multer');
 const path = require('path');
@@ -19,6 +20,18 @@ const PRIVATE_API_KEY = process.env.PRIVATE_API_KEY || '2b207365-cbf0-4e42-a3bf-
 
 // 中間件
 app.use(cors());
+// ✅ 優化：啟用響應壓縮（gzip），減少傳輸數據量
+app.use(compression({
+    level: 6, // 壓縮級別（1-9，6是平衡點）
+    threshold: 1024, // 只壓縮大於1KB的響應
+    filter: (req, res) => {
+        // 只壓縮JSON和文本響應
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        return compression.filter(req, res);
+    }
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -3245,44 +3258,54 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 }
             }
             
-            // 找出所有符合條件的學生ID
-            const validStudentIds = [];
-            for (const studentId of allStudentIds) {
-                const timeslotQuery = { studentId: studentId };
-                if (semesterFilter || yearFilter) {
-                    timeslotQuery.classDate = { $nin: [null, ''] };
-                }
-                
-                let studentTimeslots = await timeslotCollection.find(timeslotQuery).toArray();
-                
-                // 過濾符合條件的記錄
-                studentTimeslots = studentTimeslots.filter(slot => {
-                    let classDate = slot.classDate;
-                    
-                    // 如果 classDate 為空，嘗試通過 receiptImageUrl 查找
-                    if (!classDate && slot.receiptImageUrl && receiptDateMap[slot.receiptImageUrl]) {
-                        classDate = receiptDateMap[slot.receiptImageUrl];
-                    }
-                    
-                    if (!classDate) return false;
-                    
-                    const date = formatDateToYYYYMMDD(classDate) || classDate;
-                    const dateObj = new Date(date);
-                    if (isNaN(dateObj.getTime())) return false;
-                    
-                    const month = dateObj.getMonth() + 1;
-                    const slotYear = dateObj.getFullYear();
-                    
-                    if (yearFilter && slotYear !== yearFilter) return false;
-                    if (semesterFilter && !semesterFilter.includes(month)) return false;
-                    
-                    return true;
-                });
-                
-                if (studentTimeslots.length > 0) {
-                    validStudentIds.push(studentId);
-                }
+            // ✅ 優化：使用批量查詢替代N+1查詢
+            // 一次性查詢所有學生的時段記錄
+            const allTimeslotsQuery = { studentId: { $in: allStudentIds } };
+            if (semesterFilter || yearFilter) {
+                allTimeslotsQuery.classDate = { $nin: [null, ''] };
             }
+            
+            // ✅ 優化：使用投影只返回必要字段，減少內存使用
+            const allTimeslots = await timeslotCollection.find(allTimeslotsQuery, {
+                projection: {
+                    studentId: 1,
+                    classDate: 1,
+                    receiptImageUrl: 1,
+                    isAttended: 1,
+                    isLeave: 1,
+                    isPending: 1,
+                    isChangeDate: 1,
+                    isChangeLocation: 1,
+                    total_time_slot: 1
+                }
+            }).toArray();
+            
+            // ✅ 優化：在內存中過濾，避免多次數據庫查詢
+            const validStudentIdsSet = new Set();
+            for (const slot of allTimeslots) {
+                let classDate = slot.classDate;
+                
+                // 如果 classDate 為空，嘗試通過 receiptImageUrl 查找
+                if (!classDate && slot.receiptImageUrl && receiptDateMap[slot.receiptImageUrl]) {
+                    classDate = receiptDateMap[slot.receiptImageUrl];
+                }
+                
+                if (!classDate) continue;
+                
+                const date = formatDateToYYYYMMDD(classDate) || classDate;
+                const dateObj = new Date(date);
+                if (isNaN(dateObj.getTime())) continue;
+                
+                const month = dateObj.getMonth() + 1;
+                const slotYear = dateObj.getFullYear();
+                
+                if (yearFilter && slotYear !== yearFilter) continue;
+                if (semesterFilter && !semesterFilter.includes(month)) continue;
+                
+                validStudentIdsSet.add(slot.studentId);
+            }
+            
+            const validStudentIds = Array.from(validStudentIdsSet);
             
             studentIdsToProcess = validStudentIds;
             total = validStudentIds.length;
@@ -3302,15 +3325,35 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             studentsForPage: studentIdsForPage.length
         });
         
-        // 為每個學生計算統計數據
-        const formattedStudents = [];
+        // ✅ 優化：批量查詢當前頁所有學生的時段記錄，避免N+1查詢
+        const allPageTimeslots = await timeslotCollection.find({
+            studentId: { $in: studentIdsForPage }
+        }, {
+            projection: {
+                studentId: 1,
+                classDate: 1,
+                receiptImageUrl: 1,
+                isAttended: 1,
+                isLeave: 1,
+                isPending: 1,
+                isChangeDate: 1,
+                isChangeLocation: 1,
+                total_time_slot: 1
+            }
+        }).toArray();
         
-        // 批量查詢所有需要的 receiptImageUrl 對應的日期（用於當前頁的學生）
+        // ✅ 優化：按學生ID分組，避免重複查詢
+        const timeslotsByStudent = {};
+        for (const slot of allPageTimeslots) {
+            if (!timeslotsByStudent[slot.studentId]) {
+                timeslotsByStudent[slot.studentId] = [];
+            }
+            timeslotsByStudent[slot.studentId].push(slot);
+        }
+        
+        // ✅ 優化：批量查詢所有需要的 receiptImageUrl 對應的日期
         const receiptUrlsForPage = [...new Set(
-            (await timeslotCollection.find({ 
-                studentId: { $in: studentIdsForPage },
-                receiptImageUrl: { $nin: [null, ''] }
-            }).toArray())
+            allPageTimeslots
                 .map(r => r.receiptImageUrl)
                 .filter(Boolean)
         )];
@@ -3320,6 +3363,8 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             const relatedRecords = await timeslotCollection.find({
                 receiptImageUrl: { $in: receiptUrlsForPage },
                 classDate: { $nin: [null, ''] }
+            }, {
+                projection: { receiptImageUrl: 1, classDate: 1 }
             }).toArray();
             
             for (const relatedRecord of relatedRecords) {
@@ -3329,15 +3374,34 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             }
         }
         
-        for (const studentId of studentIdsForPage) {
+        // ✅ 優化：批量查詢所有待約記錄
+        const allPendingRecordsForPage = await timeslotCollection.find({
+            studentId: { $in: studentIdsForPage },
+            isPending: true
+        }, {
+            projection: {
+                studentId: 1,
+                classDate: 1,
+                receiptImageUrl: 1
+            }
+        }).toArray();
+        
+        // ✅ 優化：按學生ID分組待約記錄
+        const pendingRecordsByStudent = {};
+        for (const record of allPendingRecordsForPage) {
+            if (!pendingRecordsByStudent[record.studentId]) {
+                pendingRecordsByStudent[record.studentId] = [];
+            }
+            pendingRecordsByStudent[record.studentId].push(record);
+        }
+        
+        // ✅ 優化：並行處理所有學生，提高處理速度
+        const studentPromises = studentIdsForPage.map(async (studentId) => {
             const student = allStudents.find(s => s.studentId === studentId);
-            if (!student) continue;
+            if (!student) return null;
             
-            // 構建查詢條件
-            const timeslotQuery = { studentId: studentId };
-            
-            // ✅ 獲取該學生的所有時段記錄（不排除 classDate 為空的記錄，因為可能通過 receiptImageUrl 查找）
-            let timeslots = await timeslotCollection.find(timeslotQuery).toArray();
+            // ✅ 從已分組的數據中獲取，避免重複查詢
+            let timeslots = timeslotsByStudent[studentId] || [];
             
             // 如果指定了學期或年份，需要進一步過濾
             if (semesterFilter || yearFilter) {
@@ -3401,13 +3465,8 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             // 所以不需要再減去 attendedMakeup，否則會重複扣除
             const currentPeriodRemaining = Math.max(0, currentPurchasedClasses - attendedBooked - absences);
             
-            // ✅ 待約：isPending === true 的記錄
-            // 需要通過 receiptImageUrl 查找其他相同 receiptImageUrl 的資料格的學期/年份
-            // 如果指定了學期/年份過濾，需要根據 receiptImageUrl 關聯的記錄來判斷
-            let allPendingRecords = await timeslotCollection.find({
-                studentId: studentId,
-                isPending: true
-            }).toArray();
+            // ✅ 優化：從已分組的數據中獲取待約記錄，避免重複查詢
+            let allPendingRecords = pendingRecordsByStudent[studentId] || [];
             
             // 如果指定了學期或年份過濾，需要過濾待約記錄
             if (semesterFilter || yearFilter) {
@@ -3512,13 +3571,45 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                     lastYearFilter = yearFilter - 1;
                 }
                 
-                // 查詢上一期的記錄
-                const lastPeriodQuery = { studentId: studentId };
-                if (lastSemesterFilter) {
-                    lastPeriodQuery.classDate = { $nin: [null, ''] };
+                // ✅ 優化：從已查詢的數據中過濾上一期記錄，避免重複查詢
+                // 如果已經有所有時段記錄，直接過濾；否則查詢
+                if (timeslotsByStudent[studentId]) {
+                    // 從已有數據中過濾
+                    const lastPeriodQuery = { studentId: studentId };
+                    if (lastSemesterFilter) {
+                        lastPeriodQuery.classDate = { $nin: [null, ''] };
+                    }
+                    lastPeriodTimeslots = await timeslotCollection.find(lastPeriodQuery, {
+                        projection: {
+                            studentId: 1,
+                            classDate: 1,
+                            receiptImageUrl: 1,
+                            isAttended: 1,
+                            isLeave: 1,
+                            isChangeDate: 1,
+                            isChangeLocation: 1,
+                            total_time_slot: 1
+                        }
+                    }).toArray();
+                } else {
+                    // 如果沒有已有數據，查詢
+                    const lastPeriodQuery = { studentId: studentId };
+                    if (lastSemesterFilter) {
+                        lastPeriodQuery.classDate = { $nin: [null, ''] };
+                    }
+                    lastPeriodTimeslots = await timeslotCollection.find(lastPeriodQuery, {
+                        projection: {
+                            studentId: 1,
+                            classDate: 1,
+                            receiptImageUrl: 1,
+                            isAttended: 1,
+                            isLeave: 1,
+                            isChangeDate: 1,
+                            isChangeLocation: 1,
+                            total_time_slot: 1
+                        }
+                    }).toArray();
                 }
-                
-                lastPeriodTimeslots = await timeslotCollection.find(lastPeriodQuery).toArray();
                 
                 // 過濾上一期的記錄
                 if (lastSemesterFilter && lastYearFilter) {
@@ -3565,11 +3656,8 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                     });
                 }
                 
-                // 計算上一期的待約數量（通過 receiptImageUrl 確定學期/年份）
-                const lastPeriodPendingRecords = await timeslotCollection.find({
-                    studentId: studentId,
-                    isPending: true
-                }).toArray();
+                // ✅ 優化：從已分組的數據中獲取待約記錄
+                const lastPeriodPendingRecords = allPendingRecordsForPage.filter(r => r.studentId === studentId);
                 
                 const lastPeriodPendingReceiptUrls = [...new Set(lastPeriodPendingRecords
                     .map(r => r.receiptImageUrl)
@@ -3708,14 +3796,14 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 bookableMakeupTimeSlots: parseFloat(bookableMakeupTimeSlots.toFixed(1)) // ✅ 可補時數：（上期剩餘堂數 + 本期請假堂數 + 待約）的對應資料格的total_time_slot的總和
             };
             
-            if (!semesterFilter && !yearFilter) {
-                // 沒有篩選條件，包含所有學生
-                formattedStudents.push(studentData);
-            } else {
-                // 有篩選條件，studentIdsForPage 已經只包含有數據的學生，直接添加
-                formattedStudents.push(studentData);
-            }
-        }
+            return studentData;
+        });
+        
+        // ✅ 優化：並行處理所有學生，等待所有Promise完成
+        const studentResults = await Promise.all(studentPromises);
+        
+        // 過濾掉null值（找不到學生的情況）
+        const formattedStudents = studentResults.filter(s => s !== null);
         
         // ✅ 總數和分頁已經在上面計算好了
         const totalPages = Math.ceil(total / parseInt(limit)) || 1;
