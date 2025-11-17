@@ -567,13 +567,14 @@ app.get('/roster', validateApiKeys, async (req, res) => {
         const collection = db.collection('Coach_roster');
         
         const query = {};
-        if (month) {
+        if (month && month.trim() !== '') {
             const targetMonth = parseInt(month);
             const year = new Date().getFullYear();
             const startDate = new Date(year, targetMonth - 1, 1);
             const endDate = new Date(year, targetMonth, 0, 23, 59, 59);
             query.date = { $gte: startDate, $lte: endDate };
         }
+        // ✅ 如果沒有指定月份，獲取全年數據
         if (phone) {
             query.phone = phone;
         }
@@ -584,7 +585,10 @@ app.get('/roster', validateApiKeys, async (req, res) => {
             time: item.time || item.timeRange || '',
             location: item.location || item.place || '',
             phone: item.phone || item.coachPhone || '',
-            name: item.name || item.coachName || ''
+            name: item.name || item.coachName || '',
+            slot: item.slot || 1, // ✅ 添加時段字段
+            unavailable: item.unavailable || false, // ✅ 添加請假字段
+            isSubmitted: item.isSubmitted || false // ✅ 添加提交狀態字段
         }));
         
         res.json({
