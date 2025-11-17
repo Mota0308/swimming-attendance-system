@@ -3198,6 +3198,99 @@ app.get('/student/:studentId/makeup-dates', validateApiKeys, async (req, res) =>
     }
 });
 
+// 獲取學生的所有請假日期（本期請假堂數），按學期分類
+app.get('/student/:studentId/leave-dates', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // ✅ 查詢該學生的所有請假記錄（isLeave === true）
+        const records = await collection.find({
+            studentId: studentId,
+            isLeave: true
+        }).toArray();
+        
+        // 批量查詢所有需要的 receiptImageUrl 對應的日期
+        const receiptUrls = [...new Set(records
+            .filter(r => !r.classDate && r.receiptImageUrl)
+            .map(r => r.receiptImageUrl)
+            .filter(Boolean))];
+        
+        const receiptDateMap = {};
+        if (receiptUrls.length > 0) {
+            const relatedRecords = await collection.find({
+                receiptImageUrl: { $in: receiptUrls },
+                classDate: { $nin: [null, ''] }
+            }).toArray();
+            
+            for (const relatedRecord of relatedRecords) {
+                if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                    receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                }
+            }
+        }
+        
+        // 按學期分類日期
+        const semesterGroups = {};
+        
+        for (const record of records) {
+            // 獲取月份
+            let month = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                month = extractMonthFromDate(record.classDate);
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                month = extractMonthFromDate(receiptDateMap[record.receiptImageUrl]);
+            }
+            
+            if (!month) continue; // 跳過無法確定月份的記錄
+            
+            // 確定學期
+            const semester = getSemesterFromMonth(month);
+            
+            // 提取日期
+            let classDate = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                classDate = formatDateToYYYYMMDD(record.classDate) || record.classDate;
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                classDate = formatDateToYYYYMMDD(receiptDateMap[record.receiptImageUrl]) || receiptDateMap[record.receiptImageUrl];
+            }
+            
+            if (!classDate) continue;
+            
+            // 初始化學期組
+            if (!semesterGroups[semester]) {
+                semesterGroups[semester] = [];
+            }
+            
+            // 添加日期（去重）
+            if (!semesterGroups[semester].includes(classDate)) {
+                semesterGroups[semester].push(classDate);
+            }
+        }
+        
+        // 對每個學期的日期進行排序
+        for (const semester in semesterGroups) {
+            semesterGroups[semester].sort();
+        }
+        
+        res.json({
+            success: true,
+            leaveDates: semesterGroups,
+            // 為了向後兼容，也提供平鋪的日期列表
+            allDates: Object.values(semesterGroups).flat().sort()
+        });
+    } catch (error) {
+        console.error('❌ 獲取學生請假日期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取學生請假日期失敗',
+            error: error.message
+        });
+    }
+});
+
 // 獲取學生堂數數據（支持分頁、按學期和年份篩選）
 app.get('/student-classes', validateApiKeys, async (req, res) => {
     try {
