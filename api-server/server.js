@@ -1912,8 +1912,58 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         const phone = employeeData.phone || '';
         const password = employeeData.password || (phone.length >= 4 ? phone.slice(-4) : phone);
         
+        // ✅ 生成唯一的 employeeId（8位數字，類似 studentId）
+        // 查找當前最大的 employeeId（如果存在 number 字段）或從 employeeId 推斷
+        const maxEmployeeResult = await collection.aggregate([
+            {
+                $match: {
+                    $or: [
+                        { employeeId: { $exists: true, $ne: null } },
+                        { number: { $exists: true, $ne: null } }
+                    ]
+                }
+            },
+            {
+                $project: {
+                    number: {
+                        $cond: {
+                            if: { $and: [{ $ne: ['$employeeId', null] }, { $ne: ['$employeeId', ''] }] },
+                            then: { $toInt: '$employeeId' },
+                            else: '$number'
+                        }
+                    }
+                }
+            },
+            {
+                $sort: { number: -1 }
+            },
+            {
+                $limit: 1
+            }
+        ]).toArray();
+        
+        let nextNumber = 1;
+        if (maxEmployeeResult && maxEmployeeResult.length > 0 && maxEmployeeResult[0].number) {
+            nextNumber = maxEmployeeResult[0].number + 1;
+        }
+        
+        // 確保 employeeId 唯一（檢查是否已存在）
+        let newEmployeeId;
+        let attempts = 0;
+        do {
+            newEmployeeId = String(nextNumber).padStart(8, '0');
+            const existingCheck = await collection.findOne({ employeeId: newEmployeeId });
+            if (!existingCheck) break;
+            nextNumber++;
+            attempts++;
+            if (attempts > 100) {
+                throw new Error('無法生成唯一的 employeeId');
+            }
+        } while (true);
+        
         const result = await collection.insertOne({
             ...employeeData,
+            employeeId: newEmployeeId, // ✅ 分配唯一的 employeeId
             password: password, // ✅ 使用電話號碼後四位作為密碼
             createdAt: new Date(),
             updatedAt: new Date()
