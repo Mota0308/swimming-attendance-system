@@ -2466,12 +2466,65 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('trail_bill');
         
-        const result = await collection.insertMany(payload.records || [payload]);
+        // ✅ 生成唯一的 TrailID（8位數字，類似 studentId）
+        // 查找現有最大的 TrailID
+        const maxTrailResult = await collection.aggregate([
+            {
+                $match: {
+                    TrailID: { $exists: true, $ne: null, $regex: /^\d{8}$/ } // 匹配8位數字
+                }
+            },
+            {
+                $project: {
+                    TrailID: 1,
+                    number: {
+                        $toInt: "$TrailID"
+                    }
+                }
+            },
+            {
+                $sort: { number: -1 }
+            },
+            {
+                $limit: 1
+            }
+        ]).toArray();
+        
+        let nextNumber = 1;
+        if (maxTrailResult && maxTrailResult.length > 0 && maxTrailResult[0].number) {
+            nextNumber = maxTrailResult[0].number + 1;
+        }
+        
+        // 確保 TrailID 唯一（檢查是否已存在）
+        let newTrailId;
+        let attempts = 0;
+        do {
+            newTrailId = String(nextNumber).padStart(8, '0');
+            const existingCheck = await collection.findOne({ TrailID: newTrailId });
+            if (!existingCheck) break;
+            nextNumber++;
+            attempts++;
+            if (attempts > 100) {
+                throw new Error('無法生成唯一的 TrailID');
+            }
+        } while (true);
+        
+        // ✅ 為所有記錄添加相同的 TrailID（批量創建時共享同一個 TrailID）
+        const records = Array.isArray(payload.records) ? payload.records : [payload];
+        const recordsWithTrailId = records.map(record => ({
+            ...record,
+            TrailID: newTrailId,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        }));
+        
+        const result = await collection.insertMany(recordsWithTrailId);
         
         res.json({
             success: true,
             message: '創建成功',
             count: result.insertedCount,
+            trailId: newTrailId, // ✅ 返回生成的 TrailID
             recordIds: Object.values(result.insertedIds)
         });
     } catch (error) {
