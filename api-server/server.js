@@ -1908,8 +1908,13 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
             });
         }
         
+        // ✅ 如果沒有提供密碼，使用電話號碼的後四位作為密碼
+        const phone = employeeData.phone || '';
+        const password = employeeData.password || (phone.length >= 4 ? phone.slice(-4) : phone);
+        
         const result = await collection.insertOne({
             ...employeeData,
+            password: password, // ✅ 使用電話號碼後四位作為密碼
             createdAt: new Date(),
             updatedAt: new Date()
         });
@@ -1919,7 +1924,8 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
             message: '創建成功',
             employee: {
                 id: result.insertedId,
-                ...employeeData
+                ...employeeData,
+                password: password // ✅ 返回生成的密碼給前端顯示
             }
         });
     } catch (error) {
