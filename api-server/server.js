@@ -1708,8 +1708,8 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                         $and: [
                             { editorType: { $in: [null, ''] } },
                             { $or: [
-                                { submittedByType: { $in: ['admin', 'supervisor'] } },
-                                { type: { $in: ['admin', 'supervisor'] } }
+                                { submittedByType: { $in: ['admin', 'supervisor', 'manager'] } },
+                                { type: { $in: ['admin', 'supervisor', 'manager'] } }
                             ]}
                         ]
                     }
