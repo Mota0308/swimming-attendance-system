@@ -2503,20 +2503,33 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('trail_bill');
         
-        // ✅ 生成唯一的 TrailID（8位數字，類似 studentId）
-        // 查找現有最大的 TrailID
+        // ✅ 生成唯一的 trailId（8位數字，類似 studentId）
+        // 查找現有最大的 trailId（支持舊的 TrailID 格式以保持兼容性）
         const maxTrailResult = await collection.aggregate([
             {
                 $match: {
-                    TrailID: { $exists: true, $ne: null, $regex: /^\d{8}$/ } // 匹配8位數字
+                    $or: [
+                        { trailId: { $exists: true, $ne: null, $regex: /^\d{8}$/ } },
+                        { TrailID: { $exists: true, $ne: null, $regex: /^\d{8}$/ } }  // ✅ 兼容舊格式
+                    ]
                 }
             },
             {
                 $project: {
+                    trailId: 1,
                     TrailID: 1,
                     number: {
-                        $toInt: "$TrailID"
+                        $cond: {
+                            if: { $and: [{ $ne: ['$trailId', null] }, { $ne: ['$trailId', ''] }] },
+                            then: { $toInt: "$trailId" },
+                            else: { $toInt: "$TrailID" }  // ✅ 兼容舊格式
+                        }
                     }
+                }
+            },
+            {
+                $match: {
+                    number: { $ne: null, $type: 'number' }
                 }
             },
             {
@@ -2532,21 +2545,26 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
             nextNumber = maxTrailResult[0].number + 1;
         }
         
-        // 確保 TrailID 唯一（檢查是否已存在）
+        // 確保 trailId 唯一（檢查是否已存在）
         let newTrailId;
         let attempts = 0;
         do {
             newTrailId = String(nextNumber).padStart(8, '0');
-            const existingCheck = await collection.findOne({ TrailID: newTrailId });
+            const existingCheck = await collection.findOne({ 
+                $or: [
+                    { trailId: newTrailId },
+                    { TrailID: newTrailId }  // ✅ 兼容舊格式
+                ]
+            });
             if (!existingCheck) break;
             nextNumber++;
             attempts++;
             if (attempts > 100) {
-                throw new Error('無法生成唯一的 TrailID');
+                throw new Error('無法生成唯一的 trailId');
             }
         } while (true);
         
-        // ✅ 為所有記錄添加相同的 TrailID（批量創建時共享同一個 TrailID）
+        // ✅ 為所有記錄添加相同的 trailId（批量創建時共享同一個 trailId）
         // ✅ 支持兩種數據格式：{ students: [...] } 或 { records: [...] } 或直接數組
         let records = [];
         if (Array.isArray(payload.records)) {
@@ -2559,12 +2577,35 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
             records = [payload];
         }
         
-        const recordsWithTrailId = records.map(record => ({
-            ...record,
-            TrailID: newTrailId,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        }));
+        // ✅ 處理 trialTime 格式：確保保存為 1500-1700 格式（24小時制，無冒號）
+        const recordsWithTrailId = records.map(record => {
+            let trialTime = record.trialTime || '';
+            // ✅ 如果 trialTime 包含冒號（如 "15:00-17:00"），轉換為 "1500-1700"
+            if (trialTime && trialTime.includes(':')) {
+                trialTime = trialTime.replace(/:/g, '');
+            }
+            // ✅ 如果 trialTime 是單個時間（如 "1500"），轉換為 "1500-1600"（假設1小時課程）
+            if (trialTime && /^\d{4}$/.test(trialTime)) {
+                const startHour = parseInt(trialTime.substring(0, 2));
+                const startMin = parseInt(trialTime.substring(2, 4));
+                let endHour = startHour;
+                let endMin = startMin + 30;  // 假設30分鐘課程
+                if (endMin >= 60) {
+                    endHour++;
+                    endMin -= 60;
+                }
+                const endTime = String(endHour).padStart(2, '0') + String(endMin).padStart(2, '0');
+                trialTime = `${trialTime}-${endTime}`;
+            }
+            
+            return {
+                ...record,
+                trailId: newTrailId,  // ✅ 使用小寫 trailId
+                trialTime: trialTime,  // ✅ 確保格式為 1500-1700
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+        });
         
         const result = await collection.insertMany(recordsWithTrailId);
         
@@ -2632,7 +2673,7 @@ app.get('/trial-bill/all', validateApiKeys, async (req, res) => {
     }
 });
 
-// 根據 TrailID 查詢試堂資料
+// 根據 trailId 查詢試堂資料
 app.get('/trial-bill/:trailId', validateApiKeys, async (req, res) => {
     try {
         const { trailId } = req.params;
@@ -2640,7 +2681,13 @@ app.get('/trial-bill/:trailId', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('trail_bill');
         
-        const trials = await collection.find({ TrailID: trailId }).toArray();
+        // ✅ 支持新的 trailId 和舊的 TrailID 格式
+        const trials = await collection.find({ 
+            $or: [
+                { trailId: trailId },
+                { TrailID: trailId }  // ✅ 兼容舊格式
+            ]
+        }).toArray();
         
         res.json({
             success: true,
