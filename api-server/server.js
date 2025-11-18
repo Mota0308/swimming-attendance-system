@@ -2033,11 +2033,18 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         
         // ✅ 生成唯一的 employeeId（8位數字，類似 studentId）
         // 查找當前最大的 employeeId（如果存在 number 字段）或從 employeeId 推斷
+        // ✅ 只處理純數字的 employeeId，忽略包含字母的值（如 'A0002'）
         const maxEmployeeResult = await collection.aggregate([
             {
                 $match: {
                     $or: [
-                        { employeeId: { $exists: true, $ne: null } },
+                        { 
+                            employeeId: { 
+                                $exists: true, 
+                                $ne: null,
+                                $regex: /^\d+$/  // ✅ 只匹配純數字
+                            } 
+                        },
                         { number: { $exists: true, $ne: null } }
                     ]
                 }
@@ -2046,11 +2053,29 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
                 $project: {
                     number: {
                         $cond: {
-                            if: { $and: [{ $ne: ['$employeeId', null] }, { $ne: ['$employeeId', ''] }] },
-                            then: { $toInt: '$employeeId' },
+                            if: { 
+                                $and: [
+                                    { $ne: ['$employeeId', null] }, 
+                                    { $ne: ['$employeeId', ''] },
+                                    { $regexMatch: { input: { $toString: '$employeeId' }, regex: /^\d+$/ } }  // ✅ 再次驗證是純數字
+                                ] 
+                            },
+                            then: { 
+                                $convert: {
+                                    input: '$employeeId',
+                                    to: 'int',
+                                    onError: null,  // ✅ 如果轉換失敗，返回 null
+                                    onNull: null
+                                }
+                            },
                             else: '$number'
                         }
                     }
+                }
+            },
+            {
+                $match: {
+                    number: { $ne: null, $type: 'number' }  // ✅ 只保留有效的數字
                 }
             },
             {
@@ -3582,7 +3607,7 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             // ✅ 優化：使用批量查詢替代N+1查詢
             // 一次性查詢所有學生的時段記錄
             const allTimeslotsQuery = { studentId: { $in: allStudentIds } };
-            if (semesterFilter || yearFilter) {
+                if (semesterFilter || yearFilter) {
                 allTimeslotsQuery.classDate = { $nin: [null, ''] };
             }
             
@@ -3604,22 +3629,22 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             // ✅ 優化：在內存中過濾，避免多次數據庫查詢
             const validStudentIdsSet = new Set();
             for (const slot of allTimeslots) {
-                let classDate = slot.classDate;
-                
-                // 如果 classDate 為空，嘗試通過 receiptImageUrl 查找
-                if (!classDate && slot.receiptImageUrl && receiptDateMap[slot.receiptImageUrl]) {
-                    classDate = receiptDateMap[slot.receiptImageUrl];
-                }
-                
+                    let classDate = slot.classDate;
+                    
+                    // 如果 classDate 為空，嘗試通過 receiptImageUrl 查找
+                    if (!classDate && slot.receiptImageUrl && receiptDateMap[slot.receiptImageUrl]) {
+                        classDate = receiptDateMap[slot.receiptImageUrl];
+                    }
+                    
                 if (!classDate) continue;
-                
-                const date = formatDateToYYYYMMDD(classDate) || classDate;
-                const dateObj = new Date(date);
+                    
+                    const date = formatDateToYYYYMMDD(classDate) || classDate;
+                    const dateObj = new Date(date);
                 if (isNaN(dateObj.getTime())) continue;
-                
-                const month = dateObj.getMonth() + 1;
-                const slotYear = dateObj.getFullYear();
-                
+                    
+                    const month = dateObj.getMonth() + 1;
+                    const slotYear = dateObj.getFullYear();
+                    
                 if (yearFilter && slotYear !== yearFilter) continue;
                 if (semesterFilter && !semesterFilter.includes(month)) continue;
                 
@@ -3896,9 +3921,9 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 // 如果已經有所有時段記錄，直接過濾；否則查詢
                 if (timeslotsByStudent[studentId]) {
                     // 從已有數據中過濾
-                    const lastPeriodQuery = { studentId: studentId };
-                    if (lastSemesterFilter) {
-                        lastPeriodQuery.classDate = { $nin: [null, ''] };
+                const lastPeriodQuery = { studentId: studentId };
+                if (lastSemesterFilter) {
+                    lastPeriodQuery.classDate = { $nin: [null, ''] };
                     }
                     lastPeriodTimeslots = await timeslotCollection.find(lastPeriodQuery, {
                         projection: {
