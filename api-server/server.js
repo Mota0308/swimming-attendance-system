@@ -2168,6 +2168,8 @@ app.put('/students/:id', validateApiKeys, async (req, res) => {
             updateData.birthday = new Date(updateData.birthday);
         }
         
+        // ✅ 如果更新數據中包含phone字段，允許phone重複（不檢查唯一性）
+        // 直接執行更新操作，MongoDB會自動處理（因為phone索引不是唯一的）
         const result = await collection.updateOne(
             query,
             { $set: { ...updateData, updatedAt: new Date() } }
@@ -2187,6 +2189,16 @@ app.put('/students/:id', validateApiKeys, async (req, res) => {
         });
     } catch (error) {
         console.error('❌ 更新學生資料失敗:', error);
+        
+        // ✅ 如果是唯一索引錯誤（E11000），提示用戶phone可以重複
+        if (error.code === 11000 && error.message.includes('phone')) {
+            return res.status(400).json({
+                success: false,
+                message: '電話號碼可以重複，但更新時發生錯誤。請檢查數據庫索引設置。',
+                error: error.message
+            });
+        }
+        
         res.status(500).json({
             success: false,
             message: '更新失敗',

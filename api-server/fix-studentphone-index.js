@@ -67,13 +67,23 @@ async function fixStudentPhoneIndex() {
             }
         }
         
-        // 創建或重新創建 phone 索引（稀疏索引，允許 null）
+        // ✅ 創建或重新創建 phone 索引（非唯一索引，允許 null 和重複值）
         try {
+            // 如果存在唯一索引，先刪除
+            if (phoneIndex && phoneIndex.unique === true) {
+                try {
+                    await collection.dropIndex(phoneIndex.name);
+                    console.log(`   ✅ 已刪除舊的唯一索引: ${phoneIndex.name}`);
+                } catch (error) {
+                    console.warn(`   ⚠️  刪除舊索引失敗: ${error.message}`);
+                }
+            }
+            
             await collection.createIndex(
                 { phone: 1 },
-                { name: 'idx_phone', unique: true, sparse: true }
+                { name: 'idx_phone', unique: false, sparse: true }
             );
-            console.log('   ✅ phone 唯一索引已創建/更新（稀疏索引，允許null）');
+            console.log('   ✅ phone 非唯一索引已創建/更新（稀疏索引，允許null和重複值）');
         } catch (error) {
             if (error.code === 85 || error.message.includes('already exists')) {
                 console.log('   ℹ️  phone 索引已存在且正確配置');

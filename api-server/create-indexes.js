@@ -88,18 +88,24 @@ async function createIndexes() {
         // 4. Student_account 集合索引
         console.log('4. 創建 Student_account 索引...');
         try {
-            // ✅ 刪除可能存在的舊 studentPhone_1 索引
+            // ✅ 刪除可能存在的舊 studentPhone_1 索引和唯一索引
             try {
                 await db.collection('Student_account').dropIndex('studentPhone_1').catch(() => {});
             } catch (e) {
                 // 索引不存在，忽略錯誤
             }
+            try {
+                await db.collection('Student_account').dropIndex('idx_phone').catch(() => {});
+            } catch (e) {
+                // 索引不存在，忽略錯誤
+            }
             
+            // ✅ 創建非唯一索引（允許phone重複）
             await db.collection('Student_account').createIndex(
                 { phone: 1 },
-                { name: 'idx_phone', unique: true, sparse: true }
+                { name: 'idx_phone', unique: false, sparse: true }
             );
-            console.log('   ✅ phone 唯一索引已創建（稀疏索引，允許null）');
+            console.log('   ✅ phone 非唯一索引已創建（稀疏索引，允許null和重複值）');
             
             await db.collection('Student_account').createIndex(
                 { studentId: 1 },
