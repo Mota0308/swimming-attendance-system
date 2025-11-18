@@ -2503,14 +2503,16 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('trail_bill');
         
-        // ✅ 生成唯一的 trailId（8位數字，類似 studentId）
+        // ✅ 生成唯一的 trailId（格式：T + 6位數字，如 T000010）
         // 查找現有最大的 trailId（支持舊的 TrailID 格式以保持兼容性）
         const maxTrailResult = await collection.aggregate([
             {
                 $match: {
                     $or: [
-                        { trailId: { $exists: true, $ne: null, $regex: /^\d{8}$/ } },
-                        { TrailID: { $exists: true, $ne: null, $regex: /^\d{8}$/ } }  // ✅ 兼容舊格式
+                        { trailId: { $exists: true, $ne: null, $regex: /^T\d{6}$/ } },  // ✅ 匹配 T + 6位數字
+                        { TrailID: { $exists: true, $ne: null, $regex: /^T\d{6}$/ } },  // ✅ 兼容舊格式
+                        { trailId: { $exists: true, $ne: null, $regex: /^\d{8}$/ } },  // ✅ 兼容純數字格式
+                        { TrailID: { $exists: true, $ne: null, $regex: /^\d{8}$/ } }   // ✅ 兼容舊的純數字格式
                     ]
                 }
             },
@@ -2520,9 +2522,51 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
                     TrailID: 1,
                     number: {
                         $cond: {
-                            if: { $and: [{ $ne: ['$trailId', null] }, { $ne: ['$trailId', ''] }] },
-                            then: { $toInt: "$trailId" },
-                            else: { $toInt: "$TrailID" }  // ✅ 兼容舊格式
+                            if: { 
+                                $and: [
+                                    { $ne: ['$trailId', null] }, 
+                                    { $ne: ['$trailId', ''] },
+                                    { $regexMatch: { input: { $toString: '$trailId' }, regex: /^T\d{6}$/ } }
+                                ] 
+                            },
+                            then: { 
+                                $toInt: { $substr: ['$trailId', 1, -1] }  // ✅ 去掉 T，提取數字部分
+                            },
+                            else: {
+                                $cond: {
+                                    if: { 
+                                        $and: [
+                                            { $ne: ['$TrailID', null] }, 
+                                            { $ne: ['$TrailID', ''] },
+                                            { $regexMatch: { input: { $toString: '$TrailID' }, regex: /^T\d{6}$/ } }
+                                        ] 
+                                    },
+                                    then: { 
+                                        $toInt: { $substr: ['$TrailID', 1, -1] }  // ✅ 去掉 T，提取數字部分
+                                    },
+                                    else: {
+                                        $cond: {
+                                            if: { $and: [{ $ne: ['$trailId', null] }, { $ne: ['$trailId', ''] }] },
+                                            then: { 
+                                                $convert: {
+                                                    input: '$trailId',
+                                                    to: 'int',
+                                                    onError: null,
+                                                    onNull: null
+                                                }
+                                            },
+                                            else: { 
+                                                $convert: {
+                                                    input: '$TrailID',
+                                                    to: 'int',
+                                                    onError: null,
+                                                    onNull: null
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2549,7 +2593,8 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
         let newTrailId;
         let attempts = 0;
         do {
-            newTrailId = String(nextNumber).padStart(8, '0');
+            const numberPart = String(nextNumber).padStart(6, '0');  // ✅ 6位數字
+            newTrailId = `T${numberPart}`;  // ✅ 格式：T000010
             const existingCheck = await collection.findOne({ 
                 $or: [
                     { trailId: newTrailId },
