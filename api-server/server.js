@@ -2547,7 +2547,18 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
         } while (true);
         
         // ✅ 為所有記錄添加相同的 TrailID（批量創建時共享同一個 TrailID）
-        const records = Array.isArray(payload.records) ? payload.records : [payload];
+        // ✅ 支持兩種數據格式：{ students: [...] } 或 { records: [...] } 或直接數組
+        let records = [];
+        if (Array.isArray(payload.records)) {
+            records = payload.records;
+        } else if (Array.isArray(payload.students)) {
+            records = payload.students;  // ✅ 支持前端發送的 students 格式
+        } else if (Array.isArray(payload)) {
+            records = payload;
+        } else {
+            records = [payload];
+        }
+        
         const recordsWithTrailId = records.map(record => ({
             ...record,
             TrailID: newTrailId,
