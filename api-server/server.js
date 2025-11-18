@@ -2893,7 +2893,28 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
             const timeslotRecords = [];
             
             for (const slot of billData.timeSlotData) {
-                const { classTime, selectedDates, pendingLessons, studentIds, receiptImageUrl, courseType, classFormat, instructorType, location } = slot;
+                let { classTime, selectedDates, pendingLessons, studentIds, receiptImageUrl, courseType, classFormat, instructorType, location } = slot;
+                
+                // ✅ 處理 classTime 格式：確保保存為 1500-1700 格式（24小時制，無冒號）
+                if (classTime) {
+                    // ✅ 如果 classTime 包含冒號（如 "15:00-17:00"），轉換為 "1500-1700"
+                    if (classTime.includes(':')) {
+                        classTime = classTime.replace(/:/g, '');
+                    }
+                    // ✅ 如果 classTime 是單個時間（如 "1500"），轉換為 "1500-1600"（假設1小時課程）
+                    if (/^\d{4}$/.test(classTime)) {
+                        const startHour = parseInt(classTime.substring(0, 2));
+                        const startMin = parseInt(classTime.substring(2, 4));
+                        let endHour = startHour;
+                        let endMin = startMin + 30;  // 假設30分鐘課程
+                        if (endMin >= 60) {
+                            endHour++;
+                            endMin -= 60;
+                        }
+                        const endTime = String(endHour).padStart(2, '0') + String(endMin).padStart(2, '0');
+                        classTime = `${classTime}-${endTime}`;
+                    }
+                }
                 
                 // ✅ 獲取基礎 time_slot（從 Pricing 集合）
                 const baseTimeSlot = await getTimeSlotForClassFormat(db, courseType || billData.courseType, classFormat || billData.classFormat);
