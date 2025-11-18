@@ -2031,44 +2031,55 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         const phone = employeeData.phone || '';
         const password = employeeData.password || (phone.length >= 4 ? phone.slice(-4) : phone);
         
-        // ✅ 生成唯一的 employeeId（8位數字，類似 studentId）
-        // 查找當前最大的 employeeId（如果存在 number 字段）或從 employeeId 推斷
-        // ✅ 只處理純數字的 employeeId，忽略包含字母的值（如 'A0002'）
+        // ✅ 根據員工類型確定首字母
+        const employeeType = employeeData.type || 'coach';
+        let typePrefix = '';
+        if (employeeType === 'supervisor') {
+            typePrefix = 'S';
+        } else if (employeeType === 'manager') {
+            typePrefix = 'M';
+        } else if (employeeType === 'admin') {
+            typePrefix = 'A';
+        } else if (employeeType === 'coach') {
+            typePrefix = 'C';
+        }
+        
+        // ✅ 生成唯一的 employeeId（首字母 + 7位數字）
+        // 只查找同類型員工的最大 employeeId
         const maxEmployeeResult = await collection.aggregate([
             {
                 $match: {
-                    $or: [
-                        { 
-                            employeeId: { 
-                                $exists: true, 
-                                $ne: null,
-                                $regex: /^\d+$/  // ✅ 只匹配純數字
-                            } 
-                        },
-                        { number: { $exists: true, $ne: null } }
-                    ]
+                    type: employeeType,  // ✅ 只查找同類型的員工
+                    employeeId: { 
+                        $exists: true, 
+                        $ne: null,
+                        $regex: new RegExp(`^${typePrefix}\\d+$`)  // ✅ 匹配以首字母開頭的數字
+                    }
                 }
             },
             {
                 $project: {
+                    employeeId: 1,
                     number: {
                         $cond: {
                             if: { 
                                 $and: [
                                     { $ne: ['$employeeId', null] }, 
                                     { $ne: ['$employeeId', ''] },
-                                    { $regexMatch: { input: { $toString: '$employeeId' }, regex: /^\d+$/ } }  // ✅ 再次驗證是純數字
+                                    { $regexMatch: { input: { $toString: '$employeeId' }, regex: new RegExp(`^${typePrefix}\\d+$`) } }
                                 ] 
                             },
                             then: { 
                                 $convert: {
-                                    input: '$employeeId',
+                                    input: {
+                                        $substr: ['$employeeId', 1, -1]  // ✅ 去掉首字母，提取數字部分
+                                    },
                                     to: 'int',
-                                    onError: null,  // ✅ 如果轉換失敗，返回 null
+                                    onError: null,
                                     onNull: null
                                 }
                             },
-                            else: '$number'
+                            else: null
                         }
                     }
                 }
@@ -2095,7 +2106,8 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         let newEmployeeId;
         let attempts = 0;
         do {
-            newEmployeeId = String(nextNumber).padStart(8, '0');
+            const numberPart = String(nextNumber).padStart(7, '0');  // ✅ 7位數字（因為有首字母）
+            newEmployeeId = `${typePrefix}${numberPart}`;
             const existingCheck = await collection.findOne({ employeeId: newEmployeeId });
             if (!existingCheck) break;
             nextNumber++;
