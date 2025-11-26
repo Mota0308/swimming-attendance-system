@@ -558,6 +558,249 @@ app.get('/coaches', validateApiKeys, async (req, res) => {
 
 // ==================== 更表相關端點 ====================
 
+// ✅ 批量保存请假记录
+app.post('/coach-roster/batch-leave', validateApiKeys, async (req, res) => {
+    try {
+        const { phone, leaveEntries } = req.body;
+        
+        if (!phone || !leaveEntries || !Array.isArray(leaveEntries) || leaveEntries.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: '請提供有效的電話號碼和請假記錄'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('Coach_roster');
+        
+        const operations = leaveEntries.map(entry => {
+            const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
+            const dateObj = new Date(dateStr);
+            
+            return {
+                updateOne: {
+                    filter: {
+                        phone: phone,
+                        date: {
+                            $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
+                            $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
+                        }
+                    },
+                    update: {
+                        $set: {
+                            phone: phone,
+                            name: entry.name || '',
+                            date: dateObj,
+                            unavailable: entry.unavailable !== undefined ? entry.unavailable : true,
+                            isClicked: entry.isClicked !== undefined ? entry.isClicked : true,
+                            leaveType: entry.leaveType || null, // ✅ 保存假期类型
+                            isSubmitted: entry.isSubmitted !== undefined ? entry.isSubmitted : false,
+                            isConfirmed: entry.isConfirmed !== undefined ? entry.isConfirmed : false,
+                            supervisorApproved: entry.supervisorApproved !== undefined ? entry.supervisorApproved : false,
+                            submittedBy: entry.submittedBy || 'supervisor',
+                            updatedAt: entry.updatedAt || new Date()
+                        }
+                    },
+                    upsert: true
+                }
+            };
+        });
+        
+        const result = await collection.bulkWrite(operations);
+        
+        res.json({
+            success: true,
+            message: '批量請假保存成功',
+            insertedCount: result.upsertedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('❌ 批量請假保存失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '批量請假保存失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 批量保存更表数据
+app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
+    try {
+        const { phone, name, entries, supervisorApproved, submittedBy, isSubmitted, isConfirmed } = req.body;
+        
+        if (!phone || !entries || !Array.isArray(entries) || entries.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: '請提供有效的電話號碼和更表記錄'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('Coach_roster');
+        
+        const operations = entries.map(entry => {
+            const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
+            const dateObj = new Date(dateStr);
+            
+            // ✅ 處理 time 和 location：如果是數組，保持數組格式；否則轉為數組
+            let timeValue = entry.time || '';
+            let locationValue = entry.location || '';
+            
+            // 如果 time 或 location 是字符串，根據 slot 轉換為數組
+            if (entry.slot && typeof timeValue === 'string' && timeValue !== '') {
+                // 如果已有數組格式的記錄，需要合併；否則創建新數組
+                // 這裡簡化處理：如果 slot 存在，創建對應位置的數組
+                const slotIndex = entry.slot - 1;
+                const timeArray = Array.isArray(timeValue) ? [...timeValue] : ['', '', ''];
+                const locationArray = Array.isArray(locationValue) ? [...locationValue] : ['', '', ''];
+                timeArray[slotIndex] = timeValue;
+                locationArray[slotIndex] = locationValue;
+                timeValue = timeArray;
+                locationValue = locationArray;
+            }
+            
+            return {
+                updateOne: {
+                    filter: {
+                        phone: phone,
+                        date: {
+                            $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
+                            $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
+                        }
+                    },
+                    update: {
+                        $set: {
+                            phone: phone,
+                            name: name || entry.name || '',
+                            date: dateObj,
+                            time: timeValue,
+                            location: locationValue,
+                            slot: entry.slot || 1,
+                            unavailable: entry.unavailable !== undefined ? entry.unavailable : false,
+                            isClicked: entry.isClicked !== undefined ? entry.isClicked : false,
+                            leaveType: entry.leaveType || null,
+                            isSubmitted: isSubmitted !== undefined ? isSubmitted : (entry.isSubmitted !== undefined ? entry.isSubmitted : false),
+                            isConfirmed: isConfirmed !== undefined ? isConfirmed : (entry.isConfirmed !== undefined ? entry.isConfirmed : false),
+                            supervisorApproved: supervisorApproved !== undefined ? supervisorApproved : (entry.supervisorApproved !== undefined ? entry.supervisorApproved : false),
+                            submittedBy: submittedBy || entry.submittedBy || 'supervisor',
+                            updatedAt: new Date()
+                        }
+                    },
+                    upsert: true
+                }
+            };
+        });
+        
+        const result = await collection.bulkWrite(operations);
+        
+        res.json({
+            success: true,
+            message: '批量更表保存成功',
+            insertedCount: result.upsertedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('❌ 批量更表保存失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '批量更表保存失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 批量清除更表数据
+app.post('/coach-roster/batch-clear', validateApiKeys, async (req, res) => {
+    try {
+        const { phone, clearEntries } = req.body;
+        
+        if (!phone || !clearEntries || !Array.isArray(clearEntries) || clearEntries.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: '請提供有效的電話號碼和清除記錄'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('Coach_roster');
+        
+        const operations = clearEntries.map(entry => {
+            const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
+            const dateObj = new Date(dateStr);
+            
+            // 构建更新对象
+            const updateFields = {
+                updatedAt: new Date()
+            };
+            
+            // 根据清除选项设置字段
+            if (entry.clearTime) {
+                updateFields.time = '';
+            }
+            if (entry.clearLocation) {
+                updateFields.location = '';
+            }
+            if (entry.clearLeave) {
+                updateFields.unavailable = false;
+                updateFields.isClicked = false;
+                updateFields.leaveType = null;
+            }
+            
+            // 如果指定了时段，只清除特定时段
+            if (entry.slot1 || entry.slot2 || entry.slot3) {
+                // 需要先获取现有数据，然后只清除指定时段
+                // 这里简化处理：如果指定了时段，清除对应时段的数据
+                if (entry.slot1) {
+                    updateFields['time.0'] = '';
+                    updateFields['location.0'] = '';
+                }
+                if (entry.slot2) {
+                    updateFields['time.1'] = '';
+                    updateFields['location.1'] = '';
+                }
+                if (entry.slot3) {
+                    updateFields['time.2'] = '';
+                    updateFields['location.2'] = '';
+                }
+            }
+            
+            return {
+                updateOne: {
+                    filter: {
+                        phone: phone,
+                        date: {
+                            $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
+                            $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
+                        }
+                    },
+                    update: {
+                        $set: updateFields
+                    }
+                }
+            };
+        });
+        
+        const result = await collection.bulkWrite(operations);
+        
+        res.json({
+            success: true,
+            message: '批量清除成功',
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('❌ 批量清除失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '批量清除失敗',
+            error: error.message
+        });
+    }
+});
+
 // 獲取更表數據
 app.get('/roster', validateApiKeys, async (req, res) => {
     try {
@@ -568,28 +811,88 @@ app.get('/roster', validateApiKeys, async (req, res) => {
         
         const query = {};
         if (month && month.trim() !== '') {
-            const targetMonth = parseInt(month);
-            const year = new Date().getFullYear();
-            const startDate = new Date(year, targetMonth - 1, 1);
-            const endDate = new Date(year, targetMonth, 0, 23, 59, 59);
+            let targetMonth, targetYear;
+            
+            // ✅ 支持两种格式：1) "10" (只有月份) 2) "2025-10" (年份-月份)
+            if (month.includes('-')) {
+                // 格式: "2025-10"
+                const parts = month.split('-');
+                targetYear = parseInt(parts[0]);
+                targetMonth = parseInt(parts[1]);
+            } else {
+                // 格式: "10" (只有月份)
+                targetMonth = parseInt(month);
+                targetYear = new Date().getFullYear();
+            }
+            
+            // ✅ 验证月份有效性
+            if (isNaN(targetMonth) || targetMonth < 1 || targetMonth > 12) {
+                return res.status(400).json({
+                    success: false,
+                    message: '無效的月份參數',
+                    error: `月份必須在 1-12 之間，收到: ${month}`
+                });
+            }
+            
+            const startDate = new Date(targetYear, targetMonth - 1, 1);
+            const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
             query.date = { $gte: startDate, $lte: endDate };
         }
         // ✅ 如果沒有指定月份，獲取全年數據
-        if (phone) {
-            query.phone = phone;
+        // ✅ 處理 phone 參數：空字符串表示獲取所有教練的數據，不添加查詢條件
+        if (phone && phone.trim() !== '') {
+            query.phone = phone.trim();
         }
         
         const roster = await collection.find(query).toArray();
-        const formattedRoster = roster.map(item => ({
-            date: item.date,
-            time: item.time || item.timeRange || '',
-            location: item.location || item.place || '',
-            phone: item.phone || item.coachPhone || '',
-            name: item.name || item.coachName || '',
-            slot: item.slot || 1, // ✅ 添加時段字段
-            unavailable: item.unavailable || false, // ✅ 添加請假字段
-            isSubmitted: item.isSubmitted || false // ✅ 添加提交狀態字段
-        }));
+        const formattedRoster = [];
+        
+        // ✅ 處理每個記錄：如果 location 和 time 是數組，需要根據 slot 展開為多條記錄
+        roster.forEach(item => {
+            const slot = item.slot || 1;
+            const timeValue = item.time || item.timeRange || '';
+            const locationValue = item.location || item.place || '';
+            
+            // ✅ 檢查 time 和 location 是否為數組
+            const isTimeArray = Array.isArray(timeValue);
+            const isLocationArray = Array.isArray(locationValue);
+            
+            if (isTimeArray || isLocationArray) {
+                // ✅ 如果是數組，需要根據 slot 展開為多條記錄
+                // 如果 slot 是 1，取 [0]；如果 slot 是 2，取 [1]；如果 slot 是 3，取 [2]
+                const arrayIndex = slot - 1;
+                
+                const time = isTimeArray ? (timeValue[arrayIndex] || '') : timeValue;
+                const location = isLocationArray ? (locationValue[arrayIndex] || '') : locationValue;
+                
+                formattedRoster.push({
+                    date: item.date,
+                    time: time || '',
+                    location: location || '',
+                    phone: item.phone || item.coachPhone || '',
+                    name: item.name || item.coachName || '',
+                    slot: slot,
+                    unavailable: item.unavailable || false,
+                    isSubmitted: item.isSubmitted || false,
+                    isClicked: item.isClicked || false,
+                    leaveType: item.leaveType || null
+                });
+            } else {
+                // ✅ 如果不是數組，直接使用
+                formattedRoster.push({
+                    date: item.date,
+                    time: timeValue || '',
+                    location: locationValue || '',
+                    phone: item.phone || item.coachPhone || '',
+                    name: item.name || item.coachName || '',
+                    slot: slot,
+                    unavailable: item.unavailable || false,
+                    isSubmitted: item.isSubmitted || false,
+                    isClicked: item.isClicked || false,
+                    leaveType: item.leaveType || null
+                });
+            }
+        });
         
         res.json({
             success: true,

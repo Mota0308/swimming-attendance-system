@@ -5,6 +5,7 @@
  * - slot: 時段（1=上午，2=中午，3=下午），如果不存在則默認為1
  * - unavailable: 請假標記，如果不存在則默認為false
  * - isSubmitted: 提交狀態，如果不存在則默認為false
+ * - isClicked: 點擊標記（標記希望不上班的日期），如果不存在則根據 location 和 unavailable 推斷
  */
 
 const { MongoClient } = require('mongodb');
@@ -75,6 +76,26 @@ async function migrateCoachRosterFields() {
             if (record.isSubmitted === undefined || record.isSubmitted === null) {
                 updateFields.isSubmitted = false; // 默認為未提交
                 needsUpdate = true;
+            }
+            
+            // ✅ 檢查並添加 isClicked 字段
+            if (record.isClicked === undefined || record.isClicked === null) {
+                // 推斷邏輯：
+                // 1. 如果 location 為空且 unavailable 為 false，且 submittedBy 為 "admin"，則可能是標記的不上班日期
+                // 2. 如果 time 和 location 都為空，且 unavailable 為 false，則可能是標記的不上班日期
+                const location = (record.location || record.place || '').toString().trim();
+                const time = (record.time || record.timeRange || '').toString().trim();
+                const submittedBy = record.submittedBy || '';
+                const unavailable = record.unavailable === true || record.unavailable === 'true' || record.unavailable === 1;
+                
+                // 如果 location 和 time 都為空，且 unavailable 為 false，且 submittedBy 為 "admin"，則設為 true
+                const isClicked = !location && !time && !unavailable && submittedBy === 'admin';
+                updateFields.isClicked = isClicked;
+                needsUpdate = true;
+                
+                if (isClicked) {
+                    console.log(`✅ 推斷記錄 ${record._id} 的 isClicked 為 true (location=${location}, time=${time}, unavailable=${unavailable}, submittedBy=${submittedBy})`);
+                }
             }
             
             if (needsUpdate) {
