@@ -4058,6 +4058,96 @@ app.delete('/user-preferences/work-hours-collapse', validateApiKeys, async (req,
     }
 });
 
+// 保存工時管理篩選狀態
+app.post('/user-preferences/work-hours-filter', validateApiKeys, async (req, res) => {
+    try {
+        const { accountPhone, employeePhone, filterStates } = req.body;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('User_preferences');
+        
+        await collection.updateOne(
+            { accountPhone, employeePhone },
+            {
+                $set: {
+                    filterStates: filterStates,
+                    updatedAt: new Date()
+                }
+            },
+            { upsert: true }
+        );
+        
+        res.json({
+            success: true,
+            message: '保存成功'
+        });
+    } catch (error) {
+        console.error('❌ 保存工時管理篩選狀態失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '保存失敗',
+            error: error.message
+        });
+    }
+});
+
+// 獲取工時管理篩選狀態
+app.get('/user-preferences/work-hours-filter', validateApiKeys, async (req, res) => {
+    try {
+        const { accountPhone, employeePhone } = req.query;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('User_preferences');
+        
+        const preference = await collection.findOne({ accountPhone, employeePhone });
+        
+        res.json({
+            success: true,
+            filterStates: preference ? (preference.filterStates || {}) : {}
+        });
+    } catch (error) {
+        console.error('❌ 獲取工時管理篩選狀態失敗:', error);
+        res.json({
+            success: true,
+            filterStates: {}
+        });
+    }
+});
+
+// 清除工時管理篩選狀態
+app.delete('/user-preferences/work-hours-filter', validateApiKeys, async (req, res) => {
+    try {
+        const { accountPhone, employeePhone } = req.query;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('User_preferences');
+        
+        await collection.updateOne(
+            { accountPhone, employeePhone },
+            {
+                $unset: {
+                    filterStates: ""
+                },
+                $set: {
+                    updatedAt: new Date()
+                }
+            }
+        );
+        
+        res.json({
+            success: true,
+            message: '清除成功'
+        });
+    } catch (error) {
+        console.error('❌ 清除工時管理篩選狀態失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '清除失敗',
+            error: error.message
+        });
+    }
+});
+
 // ==================== 學生堂數相關端點 ====================
 
 // 輔助函數：根據月份確定學期（1-2月、3-4月、5-6月、7-8月、9-10月、11-12月）
