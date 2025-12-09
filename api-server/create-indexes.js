@@ -42,9 +42,9 @@ async function createIndexes() {
         // 2. Staff_work_hours 集合索引
         console.log('2. 創建 Staff_work_hours 索引...');
         const workHoursIndexes = [
-            { phone: 1, year: 1, month: 1 },
-            { phone: 1, location: 1, club: 1, workDate: 1 },
-            { phone: 1, editorType: 1, year: 1, month: 1 }
+            { employeeId: 1, year: 1, month: 1 },
+            { employeeId: 1, location: 1, club: 1, workDate: 1 },
+            { employeeId: 1, editorType: 1, year: 1, month: 1 }
         ];
         
         for (const index of workHoursIndexes) {

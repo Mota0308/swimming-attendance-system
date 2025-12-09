@@ -43,7 +43,12 @@ async function getMongoClient() {
         mongoClient = new MongoClient(MONGO_BASE_URI, {
             maxPoolSize: 10,
             minPoolSize: 5,
-            maxIdleTimeMS: 30000
+            maxIdleTimeMS: 30000,
+            serverSelectionTimeoutMS: 10000, // 10秒超时
+            connectTimeoutMS: 10000,
+            socketTimeoutMS: 30000,
+            retryWrites: true,
+            retryReads: true
         });
         await mongoClient.connect();
         console.log('✅ MongoDB 連接池已創建');
@@ -383,6 +388,12 @@ app.put('/update-user/:phone', validateApiKeys, async (req, res) => {
         const { phone } = req.params;
         const updateData = req.body;
         
+        // ✅ 禁止修改 employeeId（這是系統自動生成的唯一標識符）
+        if (updateData.employeeId !== undefined) {
+            delete updateData.employeeId;
+            console.warn(`⚠️ 嘗試修改 employeeId 被阻止 (phone: ${phone})`);
+        }
+        
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Admin_account');
@@ -578,20 +589,35 @@ app.post('/coach-roster/batch-leave', validateApiKeys, async (req, res) => {
             const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
             const dateObj = new Date(dateStr);
             
-            return {
-                updateOne: {
-                    filter: {
-                        phone: phone,
+            // ✅ 格式化 date 為 "YYYY-MM-DD" 字符串
+            const dateString = formatDateToYYYYMMDD(dateObj) || dateStr;
+            
+            // ✅ 構建查詢條件：同時支持字符串和 Date 對象格式的 date
+            const dateFilter = {
+                phone: phone,
+                $or: [
+                    // Date 對象格式
+                    {
                         date: {
                             $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
                             $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
                         }
                     },
+                    // 字符串格式 "YYYY-MM-DD"（精確匹配）
+                    {
+                        date: dateString
+                    }
+                ]
+            };
+            
+            return {
+                updateOne: {
+                    filter: dateFilter,
                     update: {
                         $set: {
                             phone: phone,
                             name: entry.name || '',
-                            date: dateObj,
+                            date: dateString, // ✅ 使用 "YYYY-MM-DD" 字符串格式
                             unavailable: entry.unavailable !== undefined ? entry.unavailable : true,
                             isClicked: entry.isClicked !== undefined ? entry.isClicked : true,
                             leaveType: entry.leaveType || null, // ✅ 保存假期类型
@@ -600,6 +626,7 @@ app.post('/coach-roster/batch-leave', validateApiKeys, async (req, res) => {
                             supervisorApproved: entry.supervisorApproved !== undefined ? entry.supervisorApproved : false,
                             submittedBy: entry.submittedBy || 'supervisor',
                             updatedAt: entry.updatedAt || new Date()
+                            // ✅ 假期類型不保存 location 和 time 字段
                         }
                     },
                     upsert: true
@@ -641,58 +668,289 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Coach_roster');
         
-        const operations = entries.map(entry => {
+        // ✅ 先按日期分組，合併同一日期的多個 entry（不同 slot）
+        const entriesByDate = new Map();
+        
+        // ✅ 添加調試日志
+        console.log('📊 批量保存更表 - 接收到的 entries:', JSON.stringify(entries.slice(0, 3), null, 2));
+        
+        entries.forEach(entry => {
             const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
-            const dateObj = new Date(dateStr);
-            
-            // ✅ 處理 time 和 location：如果是數組，保持數組格式；否則轉為數組
-            let timeValue = entry.time || '';
-            let locationValue = entry.location || '';
-            
-            // 如果 time 或 location 是字符串，根據 slot 轉換為數組
-            if (entry.slot && typeof timeValue === 'string' && timeValue !== '') {
-                // 如果已有數組格式的記錄，需要合併；否則創建新數組
-                // 這裡簡化處理：如果 slot 存在，創建對應位置的數組
-                const slotIndex = entry.slot - 1;
-                const timeArray = Array.isArray(timeValue) ? [...timeValue] : ['', '', ''];
-                const locationArray = Array.isArray(locationValue) ? [...locationValue] : ['', '', ''];
-                timeArray[slotIndex] = timeValue;
-                locationArray[slotIndex] = locationValue;
-                timeValue = timeArray;
-                locationValue = locationArray;
+            // ✅ 修复：使用本地时区创建日期对象，避免时区问题导致分组失败
+            let dateObj;
+            if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                // ✅ 如果是 YYYY-MM-DD 格式，直接解析为本地日期
+                const [year, month, day] = dateStr.split('-').map(Number);
+                dateObj = new Date(year, month - 1, day);
+            } else {
+                dateObj = new Date(dateStr);
             }
             
-            return {
-                updateOne: {
-                    filter: {
-                        phone: phone,
+            // ✅ 修复：确保日期对象有效
+            if (isNaN(dateObj.getTime())) {
+                console.error(`❌ 无效的日期格式: ${entry.date}, dateStr: ${dateStr}`);
+                return; // 跳过无效日期
+            }
+            
+            const dateKey = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
+            
+            // ✅ 添加调试日志
+            if (!entriesByDate.has(dateKey)) {
+                console.log(`📅 创建新的日期组: ${dateKey}, dateStr: ${dateStr}, entry.date: ${entry.date}`);
+            }
+            
+            if (!entriesByDate.has(dateKey)) {
+                // ✅ 初始化：每次都從空數組開始，完全替換舊數據
+                entriesByDate.set(dateKey, {
+                    date: dateObj,
+                    dateStr: dateStr,
+                    entries: [],
+                    timeArray: ['', '', ''],
+                    locationArray: ['', '', ''], // ✅ 從空數組開始，完全替換
+                    slot: entry.slot || 1,
+                    unavailable: entry.unavailable !== undefined ? entry.unavailable : false,
+                    isClicked: entry.isClicked !== undefined ? entry.isClicked : false,
+                    leaveType: entry.leaveType || null,
+                    isSubmitted: isSubmitted !== undefined ? isSubmitted : (entry.isSubmitted !== undefined ? entry.isSubmitted : false),
+                    isConfirmed: isConfirmed !== undefined ? isConfirmed : (entry.isConfirmed !== undefined ? entry.isConfirmed : false),
+                    supervisorApproved: supervisorApproved !== undefined ? supervisorApproved : (entry.supervisorApproved !== undefined ? entry.supervisorApproved : false),
+                    submittedBy: submittedBy || entry.submittedBy || 'supervisor'
+                });
+            }
+            
+            const dateGroup = entriesByDate.get(dateKey);
+            dateGroup.entries.push(entry);
+            
+            // ✅ 添加調試日志
+            console.log(`📊 處理 entry:`, {
+                date: dateStr,
+                dateKey: dateKey,
+                slot: entry.slot,
+                location: entry.location,
+                locationType: typeof entry.location,
+                dateGroupEntriesCount: dateGroup.entries.length,
+                currentLocationArray: [...dateGroup.locationArray]
+            });
+            
+            if (entry.location === null || entry.location === undefined) {
+                console.log(`⚠️ 發現 location 為 null/undefined 的 entry:`, {
+                    date: dateStr,
+                    slot: entry.slot,
+                    location: entry.location,
+                    locationType: typeof entry.location
+                });
+            }
+            
+            // ✅ 合併 time 和 location 到數組中
+            // ✅ 即使 entry 沒有 time 字段，只要有 slot，就應該處理 location
+            // ✅ 重要：這裡會完全替換對應 slot 的值，包括空字符串
+            if (entry.slot) {
+                const slotIndex = entry.slot - 1;
+                // ✅ 處理 time：如果為 undefined 或 null，設為空字符串
+                let timeValue = '';
+                if (entry.time !== undefined && entry.time !== null) {
+                    timeValue = entry.time;
+                }
+                
+                // ✅ 處理 location：如果為 undefined 或 null，設為空字符串
+                let locationValue = '';
+                if (entry.location !== undefined && entry.location !== null) {
+                    locationValue = entry.location;
+                }
+                
+                // ✅ 如果 time 或 location 已經是數組，提取對應 slot 的值
+                if (Array.isArray(timeValue)) {
+                    dateGroup.timeArray[slotIndex] = timeValue[slotIndex] || '';
+                } else {
+                    dateGroup.timeArray[slotIndex] = timeValue || '';
+                }
+                
+                if (Array.isArray(locationValue)) {
+                    // ✅ 如果前端發送的是數組，提取對應 slot 的值
+                    dateGroup.locationArray[slotIndex] = locationValue[slotIndex] || '';
+                } else {
+                    // ✅ 完全替換：即使 locationValue 是空字符串，也要替換
+                    // 這確保了前端發送的空字符串會清除舊數據
+                    dateGroup.locationArray[slotIndex] = (locationValue !== null && locationValue !== undefined) ? locationValue : '';
+                }
+            } else if (entry.location !== undefined && entry.location !== null) {
+                // ✅ 如果沒有 slot 但有 location，可能是舊格式，設置到 slot 1
+                if (Array.isArray(entry.location)) {
+                    dateGroup.locationArray[0] = entry.location[0] || '';
+                } else {
+                    dateGroup.locationArray[0] = entry.location || '';
+                }
+            }
+            
+            // ✅ 更新其他字段（使用最後一個 entry 的值，或合併邏輯）
+            if (entry.unavailable !== undefined) {
+                dateGroup.unavailable = entry.unavailable;
+            }
+            if (entry.isClicked !== undefined) {
+                dateGroup.isClicked = entry.isClicked;
+            }
+            if (entry.leaveType !== null && entry.leaveType !== undefined) {
+                dateGroup.leaveType = entry.leaveType;
+            }
+        });
+        
+        // ✅ 將分組後的數據轉換為 operations（異步處理，需要先查詢現有記錄）
+        const operationsPromises = Array.from(entriesByDate.values()).map(async dateGroup => {
+            // ✅ 判斷是工作類型還是假期類型
+            const isLeave = dateGroup.leaveType !== null && dateGroup.leaveType !== undefined;
+            
+            // ✅ 格式化 date 為 "YYYY-MM-DD" 字符串
+            const dateString = formatDateToYYYYMMDD(dateGroup.date) || dateGroup.dateStr;
+            
+            // ✅ 構建查詢條件：同時支持字符串和 Date 對象格式的 date
+            const dateFilter = {
+                phone: phone,
+                $or: [
+                    // Date 對象格式
+                    {
                         date: {
-                            $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
-                            $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
+                            $gte: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate()),
+                            $lt: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate() + 1)
                         }
                     },
-                    update: {
-                        $set: {
-                            phone: phone,
-                            name: name || entry.name || '',
-                            date: dateObj,
-                            time: timeValue,
-                            location: locationValue,
-                            slot: entry.slot || 1,
-                            unavailable: entry.unavailable !== undefined ? entry.unavailable : false,
-                            isClicked: entry.isClicked !== undefined ? entry.isClicked : false,
-                            leaveType: entry.leaveType || null,
-                            isSubmitted: isSubmitted !== undefined ? isSubmitted : (entry.isSubmitted !== undefined ? entry.isSubmitted : false),
-                            isConfirmed: isConfirmed !== undefined ? isConfirmed : (entry.isConfirmed !== undefined ? entry.isConfirmed : false),
-                            supervisorApproved: supervisorApproved !== undefined ? supervisorApproved : (entry.supervisorApproved !== undefined ? entry.supervisorApproved : false),
-                            submittedBy: submittedBy || entry.submittedBy || 'supervisor',
-                            updatedAt: new Date()
+                    // 字符串格式 "YYYY-MM-DD"（精確匹配）
+                    {
+                        date: dateString
+                    }
+                ]
+            };
+            
+            // ✅ 在更新之前，先查詢數據庫中是否存在相同 date 的記錄
+            const existingRecord = await collection.findOne(dateFilter);
+            
+            console.log(`🔍 查詢現有記錄:`, {
+                date: dateString,
+                phone: phone,
+                found: !!existingRecord,
+                existingLocation: existingRecord?.location,
+                existingLocationType: existingRecord?.location ? (Array.isArray(existingRecord.location) ? 'array' : typeof existingRecord.location) : 'N/A'
+            });
+            
+            // ✅ 工作類型：處理 location 數組
+            let cleanLocationArray = ['', '', ''];
+            if (!isLeave) {
+                // ✅ 如果存在現有記錄，先讀取現有的 location 數組
+                if (existingRecord && existingRecord.location) {
+                    if (Array.isArray(existingRecord.location)) {
+                        // ✅ 複製現有數組，確保長度為 3
+                        cleanLocationArray = [...existingRecord.location];
+                        while (cleanLocationArray.length < 3) {
+                            cleanLocationArray.push('');
                         }
+                        if (cleanLocationArray.length > 3) {
+                            cleanLocationArray.splice(3);
+                        }
+                    } else if (typeof existingRecord.location === 'string' && existingRecord.location.trim() !== '') {
+                        // ✅ 舊格式：字符串轉換為數組（根據 slot 設置）
+                        const slot = existingRecord.slot || 1;
+                        const slotIndex = slot - 1;
+                        cleanLocationArray[slotIndex] = existingRecord.location;
+                    }
+                }
+                
+                // ✅ 然後用前端發送的數據覆蓋對應的 slot
+                dateGroup.entries.forEach(entry => {
+                    if (entry.slot) {
+                        const slotIndex = entry.slot - 1;
+                        let locationValue = '';
+                        if (entry.location !== undefined && entry.location !== null) {
+                            locationValue = entry.location;
+                        }
+                        
+                        // ✅ 如果前端發送的是數組，提取對應 slot 的值
+                        if (Array.isArray(locationValue)) {
+                            cleanLocationArray[slotIndex] = locationValue[slotIndex] || '';
+                        } else {
+                            // ✅ 完全覆蓋：即使 locationValue 是空字符串，也要覆蓋
+                            cleanLocationArray[slotIndex] = locationValue || '';
+                        }
+                    }
+                });
+                
+                // ✅ 確保 locationArray 中沒有 null 值
+                cleanLocationArray = cleanLocationArray.map(loc => {
+                    if (loc === null || loc === undefined) {
+                        console.log(`⚠️ 清理 locationArray 中的 null/undefined 值，設為空字符串`);
+                        return '';
+                    }
+                    return loc;
+                });
+                
+                // ✅ 確保 cleanLocationArray 是數組且長度為 3
+                if (!Array.isArray(cleanLocationArray)) {
+                    console.error(`❌ cleanLocationArray 不是數組:`, cleanLocationArray);
+                    cleanLocationArray = ['', '', ''];
+                }
+                
+                // ✅ 確保數組長度為 3
+                while (cleanLocationArray.length < 3) {
+                    cleanLocationArray.push('');
+                }
+                if (cleanLocationArray.length > 3) {
+                    cleanLocationArray.splice(3);
+                }
+                
+                // ✅ 添加調試日志
+                if (cleanLocationArray.some(loc => loc === null || loc === undefined)) {
+                    console.log(`❌ locationArray 中仍有 null/undefined 值:`, cleanLocationArray);
+                }
+            }
+            
+            // ✅ 構建更新對象
+            const updateData = {
+                phone: phone,
+                name: name || dateGroup.entries[0]?.name || '',
+                date: dateString, // ✅ 使用 "YYYY-MM-DD" 字符串格式
+                slot: dateGroup.slot,
+                unavailable: dateGroup.unavailable !== undefined ? dateGroup.unavailable : false,
+                isClicked: dateGroup.isClicked !== undefined ? dateGroup.isClicked : false,
+                leaveType: dateGroup.leaveType || null,
+                isSubmitted: dateGroup.isSubmitted !== undefined ? dateGroup.isSubmitted : false,
+                isConfirmed: dateGroup.isConfirmed !== undefined ? dateGroup.isConfirmed : false,
+                supervisorApproved: dateGroup.supervisorApproved !== undefined ? dateGroup.supervisorApproved : false,
+                submittedBy: dateGroup.submittedBy || 'supervisor',
+                updatedAt: new Date()
+            };
+            
+            // ✅ 工作類型：添加 location（數組格式），不添加 time
+            if (!isLeave) {
+                updateData.location = Array.isArray(cleanLocationArray) ? cleanLocationArray : ['', '', ''];
+                // ✅ 工作類型不保存 time 字段
+            } else {
+                // ✅ 假期類型：不保存 location 和 time 字段
+            }
+            
+            console.log(`📊 保存更表記錄:`, {
+                date: dateString,
+                phone: phone,
+                isLeave: isLeave,
+                leaveType: dateGroup.leaveType,
+                location: isLeave ? 'N/A (假期)' : cleanLocationArray,
+                locationType: isLeave ? 'N/A' : (Array.isArray(cleanLocationArray) ? 'array' : typeof cleanLocationArray),
+                entriesCount: dateGroup.entries.length,
+                entriesSlots: dateGroup.entries.map(e => e.slot),
+                hadExistingRecord: !!existingRecord
+            });
+            
+            // ✅ 返回操作對象（bulkWrite 格式）
+            return {
+                updateOne: {
+                    filter: dateFilter,
+                    update: {
+                        $set: updateData
                     },
                     upsert: true
                 }
             };
         });
+        
+        // ✅ 等待所有查詢完成
+        const operations = await Promise.all(operationsPromises);
         
         const result = await collection.bulkWrite(operations);
         
@@ -728,55 +986,165 @@ app.post('/coach-roster/batch-clear', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Coach_roster');
         
-        const operations = clearEntries.map(entry => {
+        // ✅ 先按日期分组，获取现有记录
+        const clearEntriesByDate = new Map();
+        const datePromises = clearEntries.map(async entry => {
             const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
             const dateObj = new Date(dateStr);
+            const dateKey = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
             
-            // 构建更新对象
+            if (!clearEntriesByDate.has(dateKey)) {
+                // ✅ 获取现有记录
+                const existingRecord = await collection.findOne({
+                    phone: phone,
+                    date: {
+                        $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
+                        $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
+                    }
+                });
+                
+                // ✅ 获取现有的 time 和 location 数组（如果存在）
+                let existingTimeArray = ['', '', ''];
+                let existingLocationArray = ['', '', ''];
+                
+                if (existingRecord) {
+                    if (Array.isArray(existingRecord.time)) {
+                        existingTimeArray = [...existingRecord.time];
+                        while (existingTimeArray.length < 3) existingTimeArray.push('');
+                        if (existingTimeArray.length > 3) existingTimeArray.splice(3);
+                    } else if (existingRecord.time) {
+                        existingTimeArray = [existingRecord.time, '', ''];
+                    }
+                    
+                    if (Array.isArray(existingRecord.location)) {
+                        existingLocationArray = [...existingRecord.location];
+                        while (existingLocationArray.length < 3) existingLocationArray.push('');
+                        if (existingLocationArray.length > 3) existingLocationArray.splice(3);
+                    } else if (existingRecord.location) {
+                        existingLocationArray = [existingRecord.location, '', ''];
+                    }
+                }
+                
+                clearEntriesByDate.set(dateKey, {
+                    date: dateObj,
+                    dateStr: dateStr,
+                    entries: [],
+                    timeArray: existingTimeArray,
+                    locationArray: existingLocationArray,
+                    clearTime: false,
+                    clearLocation: false,
+                    clearLeave: false
+                });
+            }
+            
+            const dateGroup = clearEntriesByDate.get(dateKey);
+            dateGroup.entries.push(entry);
+            
+            // ✅ 合并清除选项
+            if (entry.clearTime) {
+                dateGroup.clearTime = true;
+            }
+            if (entry.clearLocation) {
+                dateGroup.clearLocation = true;
+            }
+            if (entry.clearLeave) {
+                dateGroup.clearLeave = true;
+            }
+            
+            // ✅ 如果指定了时段，只清除特定时段
+            if (entry.slot1 || entry.slot2 || entry.slot3) {
+                if (entry.slot1) {
+                    dateGroup.timeArray[0] = '';
+                    dateGroup.locationArray[0] = '';
+                }
+                if (entry.slot2) {
+                    dateGroup.timeArray[1] = '';
+                    dateGroup.locationArray[1] = '';
+                }
+                if (entry.slot3) {
+                    dateGroup.timeArray[2] = '';
+                    dateGroup.locationArray[2] = '';
+                }
+            }
+        });
+        
+        await Promise.all(datePromises);
+        
+        // ✅ 构建 operations
+        const operations = Array.from(clearEntriesByDate.values()).map(dateGroup => {
             const updateFields = {
                 updatedAt: new Date()
             };
             
             // 根据清除选项设置字段
-            if (entry.clearTime) {
-                updateFields.time = '';
+            if (dateGroup.clearTime) {
+                // ✅ 清除所有时段的 time，但保持数组格式
+                updateFields.time = ['', '', ''];
+            } else {
+                // ✅ 保持现有数组格式
+                updateFields.time = dateGroup.timeArray;
             }
-            if (entry.clearLocation) {
-                updateFields.location = '';
+            
+            if (dateGroup.clearLocation) {
+                // ✅ 清除所有时段的 location，但保持数组格式
+                updateFields.location = ['', '', ''];
+            } else {
+                // ✅ 保持现有数组格式（可能部分清除），确保是数组
+                const locationArray = Array.isArray(dateGroup.locationArray) ? dateGroup.locationArray : ['', '', ''];
+                while (locationArray.length < 3) locationArray.push('');
+                if (locationArray.length > 3) locationArray.splice(3);
+                updateFields.location = locationArray;
             }
-            if (entry.clearLeave) {
+            
+            if (dateGroup.clearLeave) {
                 updateFields.unavailable = false;
                 updateFields.isClicked = false;
                 updateFields.leaveType = null;
             }
             
-            // 如果指定了时段，只清除特定时段
-            if (entry.slot1 || entry.slot2 || entry.slot3) {
-                // 需要先获取现有数据，然后只清除指定时段
-                // 这里简化处理：如果指定了时段，清除对应时段的数据
-                if (entry.slot1) {
-                    updateFields['time.0'] = '';
-                    updateFields['location.0'] = '';
-                }
-                if (entry.slot2) {
-                    updateFields['time.1'] = '';
-                    updateFields['location.1'] = '';
-                }
-                if (entry.slot3) {
-                    updateFields['time.2'] = '';
-                    updateFields['location.2'] = '';
-                }
+            // ✅ 验证：确保 location 是数组格式
+            if (!Array.isArray(updateFields.location)) {
+                console.error(`❌ 批量清除：location 不是数组格式！`, {
+                    type: typeof updateFields.location,
+                    value: updateFields.location,
+                    dateGroup: dateGroup
+                });
+                updateFields.location = ['', '', ''];
             }
+            
+            console.log(`📊 批量清除更表記錄:`, {
+                date: dateGroup.dateStr,
+                phone: phone,
+                location: updateFields.location,
+                locationType: Array.isArray(updateFields.location) ? 'array' : typeof updateFields.location,
+                clearLocation: dateGroup.clearLocation,
+                clearTime: dateGroup.clearTime
+            });
+            
+            // ✅ 格式化 date 為 "YYYY-MM-DD" 字符串（用於查詢）
+            const dateStringForQuery = formatDateToYYYYMMDD(dateGroup.date) || dateGroup.dateStr;
+            
+            // ✅ 構建查詢條件：同時支持字符串和 Date 對象格式的 date
+            const dateFilter = {
+                phone: phone,
+                $or: [
+                    // Date 對象格式
+                    {
+                        date: {
+                            $gte: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate()),
+                            $lt: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate() + 1)
+                        }
+                    },
+                    // 字符串格式 "YYYY-MM-DD"（精確匹配）
+                    {
+                        date: dateStringForQuery
+                    }
+                ]
+            };
             
             return {
                 updateOne: {
-                    filter: {
-                        phone: phone,
-                        date: {
-                            $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
-                            $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
-                        }
-                    },
+                    filter: dateFilter,
                     update: {
                         $set: updateFields
                     }
@@ -834,9 +1202,32 @@ app.get('/roster', validateApiKeys, async (req, res) => {
                 });
             }
             
+            // ✅ 支持查询字符串格式的 date 和 Date 对象格式的 date
             const startDate = new Date(targetYear, targetMonth - 1, 1);
             const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
-            query.date = { $gte: startDate, $lte: endDate };
+            
+            // ✅ 计算字符串格式的日期范围
+            const startDateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+            const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+            const endDateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            
+            // ✅ 查询条件：支持 Date 对象和字符串格式的 date
+            query.$or = [
+                // Date 对象格式
+                {
+                    date: {
+                        $gte: startDate,
+                        $lte: endDate
+                    }
+                },
+                // 字符串格式 "YYYY-MM-DD"（使用字符串比较）
+                {
+                    date: {
+                        $gte: startDateStr,
+                        $lte: endDateStr
+                    }
+                }
+            ];
         }
         // ✅ 如果沒有指定月份，獲取全年數據
         // ✅ 處理 phone 參數：空字符串表示獲取所有教練的數據，不添加查詢條件
@@ -847,49 +1238,102 @@ app.get('/roster', validateApiKeys, async (req, res) => {
         const roster = await collection.find(query).toArray();
         const formattedRoster = [];
         
-        // ✅ 處理每個記錄：如果 location 和 time 是數組，需要根據 slot 展開為多條記錄
+        // ✅ 處理每個記錄：如果 location 是數組，需要展開為多條記錄（每個 slot 一條）
         roster.forEach(item => {
-            const slot = item.slot || 1;
             const timeValue = item.time || item.timeRange || '';
             const locationValue = item.location || item.place || '';
             
-            // ✅ 檢查 time 和 location 是否為數組
-            const isTimeArray = Array.isArray(timeValue);
-            const isLocationArray = Array.isArray(locationValue);
+            // ✅ 格式化 date：如果是 Date 對象，轉換為 "YYYY-MM-DD" 字符串；如果已經是字符串，直接使用
+            let dateStr;
+            if (item.date instanceof Date) {
+                dateStr = formatDateToYYYYMMDD(item.date);
+            } else if (typeof item.date === 'string') {
+                dateStr = item.date;
+            } else {
+                dateStr = formatDateToYYYYMMDD(item.date) || '';
+            }
             
-            if (isTimeArray || isLocationArray) {
-                // ✅ 如果是數組，需要根據 slot 展開為多條記錄
-                // 如果 slot 是 1，取 [0]；如果 slot 是 2，取 [1]；如果 slot 是 3，取 [2]
-                const arrayIndex = slot - 1;
-                
-                const time = isTimeArray ? (timeValue[arrayIndex] || '') : timeValue;
-                const location = isLocationArray ? (locationValue[arrayIndex] || '') : locationValue;
+            // ✅ 檢查 location 是否為數組
+            const isLocationArray = Array.isArray(locationValue);
+            const isTimeArray = Array.isArray(timeValue);
+            
+            // ✅ 判斷是工作類型還是假期類型
+            const isLeave = item.leaveType !== null && item.leaveType !== undefined;
+            
+            if (isLeave) {
+                // ✅ 假期類型：需要返回 location，如果 location 是數組，根據 slot 提取對應元素
+                let location = '';
+                if (isLocationArray) {
+                    const slot = item.slot || 1;
+                    const arrayIndex = slot - 1; // slot 1 -> index 0, slot 2 -> index 1, slot 3 -> index 2
+                    location = locationValue[arrayIndex] || '';
+                    
+                    // ✅ 如果當前 slot 對應的 location 為空，嘗試從數組中找第一個非空元素
+                    if (!location || location.trim() === '') {
+                        const nonEmptyLocation = locationValue.find(loc => loc && String(loc).trim() !== '');
+                        if (nonEmptyLocation) {
+                            location = String(nonEmptyLocation).trim();
+                        }
+                    }
+                } else {
+                    location = locationValue || '';
+                }
+                location = String(location || '').trim();
                 
                 formattedRoster.push({
-                    date: item.date,
-                    time: time || '',
-                    location: location || '',
+                    date: dateStr,
+                    location: location,
                     phone: item.phone || item.coachPhone || '',
                     name: item.name || item.coachName || '',
-                    slot: slot,
-                    unavailable: item.unavailable || false,
-                    isSubmitted: item.isSubmitted || false,
-                    isClicked: item.isClicked || false,
-                    leaveType: item.leaveType || null
+                    slot: item.slot || 1,
+                    unavailable: item.unavailable !== undefined ? item.unavailable : true,
+                    isSubmitted: item.isSubmitted !== undefined ? item.isSubmitted : false,
+                    isConfirmed: item.isConfirmed !== undefined ? item.isConfirmed : false,
+                    isClicked: item.isClicked !== undefined ? item.isClicked : true,
+                    leaveType: item.leaveType || null,
+                    supervisorApproved: item.supervisorApproved !== undefined ? item.supervisorApproved : false,
+                    submittedBy: item.submittedBy || 'supervisor'
+                    // ✅ 假期類型也返回 location，但不返回 time
                 });
+            } else if (isLocationArray) {
+                // ✅ 工作類型且 location 是數組：展開為3條記錄（每個 slot 一條）
+                for (let slotIndex = 0; slotIndex < 3; slotIndex++) {
+                    const slot = slotIndex + 1;
+                    const location = locationValue[slotIndex] || '';
+                    
+                    // ✅ 工作類型不返回 time 字段
+                    formattedRoster.push({
+                        date: dateStr,
+                        location: location,
+                        phone: item.phone || item.coachPhone || '',
+                        name: item.name || item.coachName || '',
+                        slot: slot,
+                        unavailable: item.unavailable !== undefined ? item.unavailable : false,
+                        isSubmitted: item.isSubmitted !== undefined ? item.isSubmitted : false,
+                        isConfirmed: item.isConfirmed !== undefined ? item.isConfirmed : false,
+                        isClicked: item.isClicked !== undefined ? item.isClicked : false,
+                        leaveType: null,
+                        supervisorApproved: item.supervisorApproved !== undefined ? item.supervisorApproved : false,
+                        submittedBy: item.submittedBy || 'supervisor'
+                        // ✅ 工作類型不返回 time 字段
+                    });
+                }
             } else {
-                // ✅ 如果不是數組，直接使用
+                // ✅ 工作類型但 location 不是數組（舊格式兼容）：直接使用
                 formattedRoster.push({
-                    date: item.date,
-                    time: timeValue || '',
+                    date: dateStr,
                     location: locationValue || '',
                     phone: item.phone || item.coachPhone || '',
                     name: item.name || item.coachName || '',
-                    slot: slot,
-                    unavailable: item.unavailable || false,
-                    isSubmitted: item.isSubmitted || false,
-                    isClicked: item.isClicked || false,
-                    leaveType: item.leaveType || null
+                    slot: item.slot || 1,
+                    unavailable: item.unavailable !== undefined ? item.unavailable : false,
+                    isSubmitted: item.isSubmitted !== undefined ? item.isSubmitted : false,
+                    isConfirmed: item.isConfirmed !== undefined ? item.isConfirmed : false,
+                    isClicked: item.isClicked !== undefined ? item.isClicked : false,
+                    leaveType: null,
+                    supervisorApproved: item.supervisorApproved !== undefined ? item.supervisorApproved : false,
+                    submittedBy: item.submittedBy || 'supervisor'
+                    // ✅ 工作類型不返回 time 字段
                 });
             }
         });
@@ -1849,8 +2293,13 @@ app.get('/staff-work-hours/:phone/:year/:month', validateApiKeys, async (req, re
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Staff_work_hours');
         
+        // ✅ 修復：同時支持使用 phone 或 employeeId 查詢
+        // 因為數據庫中的記錄可能使用 phone 或 employeeId 字段
         const query = {
-            phone: phone,
+            $or: [
+                { phone: phone },
+                { employeeId: phone }  // 如果傳入的是 employeeId，也能匹配
+            ],
             year: parseInt(year),
             month: parseInt(month)
         };
@@ -1858,7 +2307,29 @@ app.get('/staff-work-hours/:phone/:year/:month', validateApiKeys, async (req, re
         if (club) query.club = club;
         if (editorType) query.editorType = editorType;
         
+        console.log('🔍 查詢工時記錄:', {
+            phoneOrEmployeeId: phone.substring(0, 3) + '***',
+            year: parseInt(year),
+            month: parseInt(month),
+            location,
+            club,
+            editorType,
+            query: JSON.stringify(query).substring(0, 200)
+        });
+        
         const workHours = await collection.find(query).toArray();
+        
+        console.log(`✅ 獲取到 ${workHours.length} 條工時記錄`);
+        if (workHours.length > 0) {
+            console.log('📋 第一條記錄示例:', {
+                employeeId: workHours[0].employeeId,
+                phone: workHours[0].phone,
+                name: workHours[0].name,
+                workDate: workHours[0].workDate,
+                totalHours: workHours[0].totalHours,
+                editorType: workHours[0].editorType
+            });
+        }
         
         res.json({
             success: true,
@@ -1890,25 +2361,43 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Staff_work_hours');
         
-        const operations = records.map(record => ({
-            updateOne: {
-                filter: {
-                    phone: record.phone,
-                    workDate: record.workDate,
-                    editorType: record.editorType
-                },
-                update: {
-                    $set: {
-                        ...record,
-                        submittedBy,
-                        submittedByName,
-                        submittedByType,
-                        updatedAt: new Date()
-                    }
-                },
-                upsert: true
+        const operations = records.map(record => {
+            // ✅ 修復：同時支持使用 phone 或 employeeId 作為 filter
+            // 因為數據庫中的記錄可能使用 phone 或 employeeId 字段
+            const orConditions = [];
+            if (record.phone) {
+                orConditions.push({ phone: record.phone });
             }
-        }));
+            if (record.employeeId) {
+                orConditions.push({ employeeId: record.employeeId });
+            }
+            // 如果都沒有，使用 phone 作為後備
+            if (orConditions.length === 0 && record.phone) {
+                orConditions.push({ phone: record.phone });
+            }
+            
+            const filter = {
+                $or: orConditions.length > 0 ? orConditions : [{ phone: record.phone }],
+                workDate: record.workDate,
+                editorType: record.editorType
+            };
+            
+            return {
+                updateOne: {
+                    filter: filter,
+                    update: {
+                        $set: {
+                            ...record,
+                            submittedBy,
+                            submittedByName,
+                            submittedByType,
+                            updatedAt: new Date()
+                        }
+                    },
+                    upsert: true
+                }
+            };
+        });
         
         const result = await collection.bulkWrite(operations);
         
@@ -2281,27 +2770,74 @@ app.get('/admins', validateApiKeys, async (req, res) => {
     }
 });
 
-// 刪除用戶（員工）
+// 刪除用戶（員工）- 級聯刪除相關數據
 app.delete('/admins/:phone', validateApiKeys, async (req, res) => {
     try {
         const { phone } = req.params;
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
-        const collection = db.collection('Admin_account');
+        const adminCollection = db.collection('Admin_account');
         
-        const result = await collection.deleteOne({ phone: phone });
-        
-        if (result.deletedCount === 0) {
+        // ✅ 先查找員工信息以獲取 employeeId
+        const employee = await adminCollection.findOne({ phone: phone });
+        if (!employee) {
             return res.status(404).json({
                 success: false,
                 message: '未找到該用戶記錄'
             });
         }
         
+        const employeeId = employee.employeeId || phone;
+        const deletedCounts = {};
+        
+        // 1. 刪除 Admin_account
+        const adminResult = await adminCollection.deleteOne({ phone: phone });
+        deletedCounts.Admin_account = adminResult.deletedCount;
+        
+        // 2. 刪除 Coach_roster（使用 phone）
+        const rosterCollection = db.collection('Coach_roster');
+        const rosterResult = await rosterCollection.deleteMany({ phone: phone });
+        deletedCounts.Coach_roster = rosterResult.deletedCount;
+        
+        // 3. 刪除 Staff_work_hours（使用 phone 或 employeeId）
+        const workHoursCollection = db.collection('Staff_work_hours');
+        const workHoursResult = await workHoursCollection.deleteMany({
+            $or: [
+                { phone: phone },
+                { employeeId: employeeId }
+            ]
+        });
+        deletedCounts.Staff_work_hours = workHoursResult.deletedCount;
+        
+        // 4. 刪除 Attendance（使用 phone 或 employeeId）
+        const attendanceCollection = db.collection('Attendance');
+        const attendanceResult = await attendanceCollection.deleteMany({
+            $or: [
+                { phone: phone },
+                { employeeId: employeeId }
+            ]
+        });
+        deletedCounts.Attendance = attendanceResult.deletedCount;
+        
+        // 5. 刪除 User_preferences（使用 accountPhone 或 employeeId）
+        const preferencesCollection = db.collection('User_preferences');
+        const preferencesResult = await preferencesCollection.deleteMany({
+            $or: [
+                { accountPhone: phone },
+                { employeeId: employeeId }
+            ]
+        });
+        deletedCounts.User_preferences = preferencesResult.deletedCount;
+        
+        const totalDeleted = Object.values(deletedCounts).reduce((sum, count) => sum + count, 0);
+        
+        console.log(`✅ 已刪除員工資料 (phone=${phone}, employeeId=${employeeId}):`, deletedCounts);
+        
         res.json({
             success: true,
             message: '刪除成功',
-            deletedCount: result.deletedCount
+            deletedCount: deletedCounts,
+            totalDeleted: totalDeleted
         });
     } catch (error) {
         console.error('❌ 刪除用戶失敗:', error);
@@ -2347,7 +2883,7 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
             typePrefix = 'C';
         }
         
-        // ✅ 生成唯一的 employeeId（首字母 + 7位數字）
+        // ✅ 生成唯一的 employeeId（首字母 + 4位數字）
         // 只查找同類型員工的最大 employeeId
         const maxEmployeeResult = await collection.aggregate([
             {
@@ -2409,7 +2945,7 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         let newEmployeeId;
         let attempts = 0;
         do {
-            const numberPart = String(nextNumber).padStart(7, '0');  // ✅ 7位數字（因為有首字母）
+            const numberPart = String(nextNumber).padStart(4, '0');  // ✅ 4位數字（統一格式）
             newEmployeeId = `${typePrefix}${numberPart}`;
             const existingCheck = await collection.findOne({ employeeId: newEmployeeId });
             if (!existingCheck) break;
@@ -3100,7 +3636,7 @@ app.put('/trial-bill/:id', validateApiKeys, async (req, res) => {
     }
 });
 
-// 刪除試堂資料
+// 刪除試堂資料 - 支持通過 trialId 或 _id 刪除，並級聯刪除相關數據
 app.delete('/trial-bill/:id', validateApiKeys, async (req, res) => {
     try {
         const { id } = req.params;
@@ -3108,7 +3644,36 @@ app.delete('/trial-bill/:id', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('trail_bill');
         
-        const result = await collection.deleteOne({ _id: new ObjectId(id) });
+        // ✅ 確定查詢條件：支持 ObjectId、trialId（T + 6位數字）或舊格式 TrailID
+        let query;
+        let trialId = null;
+        
+        if (ObjectId.isValid(id) && id.match(/^[0-9a-fA-F]{24}$/)) {
+            // ObjectId 格式
+            query = { _id: new ObjectId(id) };
+            // 先查找試堂信息以獲取 trialId
+            const trial = await collection.findOne(query);
+            if (trial) {
+                trialId = trial.trailId || trial.TrailID;
+            }
+        } else if (id.match(/^T\d{6}$/) || id.match(/^\d{8}$/)) {
+            // trialId 格式（T + 6位數字 或 8位數字）
+            query = {
+                $or: [
+                    { trailId: id },
+                    { TrailID: id }  // ✅ 兼容舊格式
+                ]
+            };
+            trialId = id;
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: '無效的ID格式（支持 ObjectId、trialId 格式：T + 6位數字 或 8位數字）'
+            });
+        }
+        
+        // ✅ 刪除 trail_bill
+        const result = await collection.deleteMany(query);
         
         if (result.deletedCount === 0) {
             return res.status(404).json({
@@ -3117,10 +3682,19 @@ app.delete('/trial-bill/:id', validateApiKeys, async (req, res) => {
             });
         }
         
+        const deletedCounts = {
+            trail_bill: result.deletedCount
+        };
+        
+        const totalDeleted = Object.values(deletedCounts).reduce((sum, count) => sum + count, 0);
+        
+        console.log(`✅ 已刪除試堂資料 (id=${id}, trialId=${trialId}):`, deletedCounts);
+        
         res.json({
             success: true,
             message: '刪除成功',
-            deletedCount: result.deletedCount
+            deletedCount: deletedCounts,
+            totalDeleted: totalDeleted
         });
     } catch (error) {
         console.error('❌ 刪除試堂資料失敗:', error);
