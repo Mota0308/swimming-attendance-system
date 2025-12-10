@@ -1849,9 +1849,6 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
             } else {
                 // 同時修改了日期或地點，isChangeTime 為 false
                 updateData.isChangeTime = false;
-                if (timeChanged) {
-                    console.log(`⚠️ 修改了時間但同時也修改了日期或地點，設置 isChangeTime = false (時間改變: ${timeChanged}, 日期改變: ${dateChanged}, 地點改變: ${locationChanged})`);
-                }
             }
         }
         if (classFormat !== undefined) {
@@ -2100,7 +2097,6 @@ app.delete('/attendance/timeslot/delete', validateApiKeys, async (req, res) => {
             });
         }
         
-        console.log(`✅ 已刪除學生時段記錄: ${recordId}`);
         res.json({
             success: true,
             message: '刪除成功',
@@ -2149,7 +2145,6 @@ app.delete('/attendance/trial-bill/delete', validateApiKeys, async (req, res) =>
             });
         }
         
-        console.log(`✅ 已刪除試堂記錄: ${recordId}`);
         res.json({
             success: true,
             message: '刪除成功',
@@ -2285,7 +2280,6 @@ app.post('/attendance/pending-class/create', validateApiKeys, async (req, res) =
             });
         }
         
-        console.log(`✅ 已更新待補課程: 學生ID=${studentId}, 日期=${classDate}, 課程類型=${courseType}, 時間=${classTime}, 地點=${location}`);
         
         res.json({
             success: true,
@@ -2451,7 +2445,6 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
                     const employeeInfoByPhone = employeeInfoCache.get(phoneToUse);
                     if (employeeInfoByPhone && employeeInfoByPhone.employeeId && !/^\d{8}$/.test(employeeInfoByPhone.employeeId)) {
                         employeeIdToUse = employeeInfoByPhone.employeeId;
-                        console.log(`✅ 從緩存中找到正確的 employeeId: ${employeeIdToUse} (phone: ${phoneToUse})`);
                     } else {
                         // ⚠️ 如果緩存中沒有，記錄警告（應該在預先查詢階段已經處理）
                         console.warn(`⚠️ 記錄缺少 employeeId，且緩存中沒有找到 (phone: ${phoneToUse})`, {
@@ -2473,7 +2466,6 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
                     const lastTryEmployee = employeeInfoCache.get(phoneToUse);
                     if (lastTryEmployee && lastTryEmployee.employeeId && !/^\d{8}$/.test(lastTryEmployee.employeeId)) {
                         employeeIdToUse = lastTryEmployee.employeeId;
-                        console.log(`✅ 最後一次嘗試找到正確的 employeeId: ${employeeIdToUse}`);
                     }
                 }
             }
@@ -2609,7 +2601,7 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
             // ✅ 更新 employeePhone 和 employeeId（使用第一個非空值）
             employeePhone = Array.from(allPhones)[0] || phone;
             employeeId = Array.from(allEmployeeIds)[0] || phone;
-        } else {
+            } else {
             // ✅ 如果沒有從 Admin_account 找到，只使用第一次查詢的結果
             if (allRelatedRecords && allRelatedRecords.length > 0) {
                 allRelatedRecords.forEach(record => {
@@ -2625,7 +2617,6 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
         // ✅ 如果 Admin_account 中沒有找到，或者類型不確定，從 Staff_work_hours 記錄中推斷
         if (!employeeType && allRelatedRecords && allRelatedRecords.length > 0) {
             employeeType = allRelatedRecords[0].type || 'coach';
-                console.log(`⚠️ Admin_account 中未找到員工，從 Staff_work_hours 推斷類型: ${employeeType}`);
         } else if (!employeeType) {
                 employeeType = 'coach';
         }
@@ -3073,7 +3064,6 @@ app.delete('/admins/:phone', validateApiKeys, async (req, res) => {
         
         const totalDeleted = Object.values(deletedCounts).reduce((sum, count) => sum + count, 0);
         
-        console.log(`✅ 已刪除員工資料 (phone=${phone}, employeeId=${employeeId}):`, deletedCounts);
         
         res.json({
             success: true,
@@ -3353,7 +3343,6 @@ app.delete('/students/:id', validateApiKeys, async (req, res) => {
             timeslotDeletedCount = timeslotResult.deletedCount;
         }
         
-        console.log(`✅ 已刪除學生資料: Student_account=${accountResult.deletedCount}, Student_bill=${billDeletedCount}, students_timeslot=${timeslotDeletedCount}`);
         
         res.json({
             success: true,
@@ -3413,7 +3402,6 @@ app.delete('/students/:id/timeslots', validateApiKeys, async (req, res) => {
         // 刪除該學生的所有時段記錄
         const result = await timeslotCollection.deleteMany({ studentId: studentId });
         
-        console.log(`✅ 已清除學生 ${studentId} 的所有時段記錄: ${result.deletedCount} 條`);
         
         res.json({
             success: true,
@@ -3918,7 +3906,6 @@ app.delete('/trial-bill/:id', validateApiKeys, async (req, res) => {
         
         const totalDeleted = Object.values(deletedCounts).reduce((sum, count) => sum + count, 0);
         
-        console.log(`✅ 已刪除試堂資料 (id=${id}, trialId=${trialId}):`, deletedCounts);
         
         res.json({
             success: true,
@@ -4120,7 +4107,6 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
                             });
                             
                             studentId = newStudentId;
-                            console.log(`✅ 已為新生創建 Student_account 記錄: ${studentData.name} (${studentPhone}) -> studentId: ${studentId}`);
                         }
                         
                         // ✅ 處理已選日期（無論是新舊學生都需要創建 timeslot 記錄）
@@ -4186,7 +4172,6 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
             // 批量插入 students_timeslot 記錄
             if (timeslotRecords.length > 0) {
                 await timeslotCollection.insertMany(timeslotRecords);
-                console.log(`✅ 已創建 ${timeslotRecords.length} 條 students_timeslot 記錄`);
             }
         }
         
