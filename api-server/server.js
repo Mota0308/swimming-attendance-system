@@ -2361,38 +2361,160 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Staff_work_hours');
         
-        const operations = records.map(record => {
-            // ✅ 修復：同時支持使用 phone 或 employeeId 作為 filter
-            // 因為數據庫中的記錄可能使用 phone 或 employeeId 字段
-            const orConditions = [];
-            if (record.phone) {
-                orConditions.push({ phone: record.phone });
+        // ✅ 統一數據格式：確保所有記錄都同時包含 phone 和 employeeId
+        // 從 Admin_account 中查找員工信息，補充缺失的字段
+        const adminCollection = db.collection('Admin_account');
+        const employeeInfoCache = new Map(); // 緩存員工信息，避免重複查詢
+        
+        // ✅ 預先查詢所有需要的員工信息
+        const uniqueIdentifiers = new Set();
+        records.forEach(record => {
+            if (record.phone) uniqueIdentifiers.add(record.phone);
+            if (record.employeeId) uniqueIdentifiers.add(record.employeeId);
+        });
+        
+        // 批量查詢員工信息
+        const employeeQueries = Array.from(uniqueIdentifiers).map(identifier => 
+            adminCollection.findOne({
+                $or: [
+                    { phone: identifier },
+                    { employeeId: identifier }
+                ]
+            })
+        );
+        const employeeResults = await Promise.all(employeeQueries);
+        
+        // 建立緩存映射
+        employeeResults.forEach(emp => {
+            if (emp) {
+                if (emp.phone) employeeInfoCache.set(emp.phone, emp);
+                if (emp.employeeId) employeeInfoCache.set(emp.employeeId, emp);
             }
-            if (record.employeeId) {
-                orConditions.push({ employeeId: record.employeeId });
+        });
+        
+        // ✅ 預先查詢所有缺少 employeeId 的記錄對應的員工信息
+        const missingEmployeeIdRecords = records.filter(r => {
+            const hasPhone = r.phone && !/^[A-Z]\d{4}$/.test(r.phone);
+            const hasEmployeeId = r.employeeId && !/^\d{8}$/.test(r.employeeId);
+            return hasPhone && !hasEmployeeId;
+        });
+        
+        if (missingEmployeeIdRecords.length > 0) {
+            const phonesToQuery = [...new Set(missingEmployeeIdRecords.map(r => r.phone).filter(Boolean))];
+            console.log(`📊 發現 ${missingEmployeeIdRecords.length} 條記錄缺少正確的 employeeId，需要查詢 ${phonesToQuery.length} 個員工信息`);
+            
+            // 批量查詢缺少的員工信息
+            const missingEmployeeQueries = phonesToQuery.map(phone => 
+                adminCollection.findOne({ phone: phone })
+            );
+            const missingEmployeeResults = await Promise.all(missingEmployeeQueries);
+            
+            // 更新緩存
+            missingEmployeeResults.forEach(emp => {
+                if (emp) {
+                    if (emp.phone) employeeInfoCache.set(emp.phone, emp);
+                    if (emp.employeeId) employeeInfoCache.set(emp.employeeId, emp);
+                }
+            });
+        }
+        
+        const operations = records.map(record => {
+            // ✅ 統一數據格式：確保同時包含 phone 和 employeeId
+            let phoneToUse = record.phone;
+            let employeeIdToUse = record.employeeId;
+            
+            // 如果缺少某個字段，從緩存中查找
+            if (!phoneToUse || !employeeIdToUse) {
+                const identifier = phoneToUse || employeeIdToUse;
+                if (identifier) {
+                    const employeeInfo = employeeInfoCache.get(identifier);
+                    if (employeeInfo) {
+                        if (!phoneToUse && employeeInfo.phone) phoneToUse = employeeInfo.phone;
+                        if (!employeeIdToUse && employeeInfo.employeeId) employeeIdToUse = employeeInfo.employeeId;
+                    }
+                }
+            }
+            
+            // ✅ 如果仍然缺少，嘗試從記錄中推斷（向後兼容）
+            if (!phoneToUse && employeeIdToUse) {
+                // 如果 employeeId 是電話號碼格式（8位數字），使用它作為 phone
+                const phonePattern = /^\d{8}$/;
+                if (phonePattern.test(employeeIdToUse)) {
+                    phoneToUse = employeeIdToUse;
+                }
+            }
+            if (!employeeIdToUse && phoneToUse) {
+                // ✅ 修復：如果 phone 是 employeeId 格式（如 C0002），使用它作為 employeeId
+                const employeeIdPattern = /^[A-Z]\d{4}$/;
+                if (employeeIdPattern.test(phoneToUse)) {
+                    employeeIdToUse = phoneToUse;
+                } else {
+                    // ⚠️ 重要：如果 phone 不是 employeeId 格式，從緩存中查找正確的 employeeId
+                    const employeeInfoByPhone = employeeInfoCache.get(phoneToUse);
+                    if (employeeInfoByPhone && employeeInfoByPhone.employeeId && !/^\d{8}$/.test(employeeInfoByPhone.employeeId)) {
+                        employeeIdToUse = employeeInfoByPhone.employeeId;
+                        console.log(`✅ 從緩存中找到正確的 employeeId: ${employeeIdToUse} (phone: ${phoneToUse})`);
+                    } else {
+                        // ⚠️ 如果緩存中沒有，記錄警告（應該在預先查詢階段已經處理）
+                        console.warn(`⚠️ 記錄缺少 employeeId，且緩存中沒有找到 (phone: ${phoneToUse})`, {
+                            record: { workDate: record.workDate, location: record.location, club: record.club }
+                        });
+                    }
+                }
+            }
+            
+            // ✅ 最終驗證：如果 employeeIdToUse 仍然是電話號碼格式，這是錯誤的
+            if (employeeIdToUse && /^\d{8}$/.test(employeeIdToUse)) {
+                console.error(`❌ 嚴重錯誤：employeeIdToUse 仍然是電話號碼格式！`, {
+                    employeeIdToUse: employeeIdToUse,
+                    phoneToUse: phoneToUse,
+                    record: { workDate: record.workDate, location: record.location, club: record.club }
+                });
+                // ⚠️ 嘗試最後一次從緩存查找
+                if (phoneToUse) {
+                    const lastTryEmployee = employeeInfoCache.get(phoneToUse);
+                    if (lastTryEmployee && lastTryEmployee.employeeId && !/^\d{8}$/.test(lastTryEmployee.employeeId)) {
+                        employeeIdToUse = lastTryEmployee.employeeId;
+                        console.log(`✅ 最後一次嘗試找到正確的 employeeId: ${employeeIdToUse}`);
+                    }
+                }
+            }
+            
+            // ✅ 構建查詢條件：同時支持使用 phone 或 employeeId 作為 filter
+            const orConditions = [];
+            if (phoneToUse) {
+                orConditions.push({ phone: phoneToUse });
+            }
+            if (employeeIdToUse) {
+                orConditions.push({ employeeId: employeeIdToUse });
             }
             // 如果都沒有，使用 phone 作為後備
-            if (orConditions.length === 0 && record.phone) {
-                orConditions.push({ phone: record.phone });
+            if (orConditions.length === 0 && phoneToUse) {
+                orConditions.push({ phone: phoneToUse });
             }
             
             const filter = {
-                $or: orConditions.length > 0 ? orConditions : [{ phone: record.phone }],
+                $or: orConditions.length > 0 ? orConditions : [{ phone: phoneToUse }],
                 workDate: record.workDate,
                 editorType: record.editorType
+            };
+            
+            // ✅ 統一數據格式：確保保存的記錄同時包含 phone 和 employeeId
+            const recordToSave = {
+                ...record,
+                phone: phoneToUse, // ✅ 確保包含 phone
+                employeeId: employeeIdToUse, // ✅ 確保包含 employeeId
+                submittedBy,
+                submittedByName,
+                submittedByType,
+                updatedAt: new Date()
             };
             
             return {
                 updateOne: {
                     filter: filter,
                     update: {
-                        $set: {
-                            ...record,
-                            submittedBy,
-                            submittedByName,
-                            submittedByType,
-                            updatedAt: new Date()
-                        }
+                        $set: recordToSave
                     },
                     upsert: true
                 }
@@ -2428,28 +2550,101 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
         
         // ✅ 首先確定員工類型（coach 或 admin）
         // 從 Admin_account 查詢員工信息（所有員工的基本資料都在 Admin_account 裡）
-        let employee = await adminCollection.findOne({ phone });
+        // ✅ 修復：同時支持使用 phone 或 employeeId 查詢
+        let employee = await adminCollection.findOne({
+            $or: [
+                { phone: phone },
+                { employeeId: phone }  // 如果傳入的是 employeeId，也能匹配
+            ]
+        });
         let employeeType = employee?.type;
         
-        // ✅ 如果 Admin_account 中沒有找到，或者類型不確定，從 Staff_work_hours 記錄中推斷
-        if (!employeeType) {
-            const sampleRecord = await collection.findOne({ phone });
-            if (sampleRecord) {
-                employeeType = sampleRecord.type || 'coach';
-                console.log(`⚠️ Admin_account 中未找到員工，從 Staff_work_hours 推斷類型: ${employeeType}`);
-            } else {
-                employeeType = 'coach';
+        // ✅ 獲取員工的所有標識符（phone 和 employeeId），用於查詢所有相關記錄
+        // 因為數據庫中的記錄可能使用 phone 或 employeeId，需要同時匹配兩者
+        let employeePhone = employee?.phone || phone;
+        let employeeId = employee?.employeeId || phone;
+        
+        // ✅ 從 Staff_work_hours 記錄中收集所有可能的 phone 和 employeeId
+        // 這樣可以確保找到該員工的所有記錄，無論它們使用哪個標識符
+        // ⚠️ 關鍵修復：先使用較寬鬆的查詢條件，找到所有可能的記錄（不限制 employeeId/phone）
+        // 然後通過 name 和 type 來識別是否屬於同一個員工
+        let allRelatedRecords = await collection.find({
+            $or: [
+                { phone: phone },
+                { employeeId: phone },
+                { phone: employeePhone },
+                { employeeId: employeeId }
+            ],
+            year: parseInt(year),
+            month: parseInt(month)
+        }).limit(50).toArray(); // 增加到50條，確保找到所有相關記錄
+        
+        // ✅ 聲明 allPhones 和 allEmployeeIds 在外部作用域，確保兩個分支都可以訪問
+        let allPhones = new Set([phone, employeePhone].filter(Boolean));
+        let allEmployeeIds = new Set([phone, employeeId].filter(Boolean));
+        
+        // ✅ 如果從 Admin_account 找到了員工信息，使用 name 和 type 來識別同一員工的所有記錄
+        if (employee && employee.name) {
+            const recordsBySameEmployee = await collection.find({
+                name: employee.name,
+                type: employee.type || 'coach',
+                year: parseInt(year),
+                month: parseInt(month)
+            }).limit(50).toArray();
+            
+            // ✅ 合併兩次查詢的結果，去重
+            const allRecordsMap = new Map();
+            [...allRelatedRecords, ...recordsBySameEmployee].forEach(record => {
+                const recordKey = `${record._id}`;
+                if (!allRecordsMap.has(recordKey)) {
+                    allRecordsMap.set(recordKey, record);
+                }
+            });
+            const allRecords = Array.from(allRecordsMap.values());
+            
+            // ✅ 從所有相關記錄中收集 phone 和 employeeId
+            allRecords.forEach(record => {
+                if (record.phone) allPhones.add(record.phone);
+                if (record.employeeId) allEmployeeIds.add(record.employeeId);
+            });
+            
+            // ✅ 更新 employeePhone 和 employeeId（使用第一個非空值）
+            employeePhone = Array.from(allPhones)[0] || phone;
+            employeeId = Array.from(allEmployeeIds)[0] || phone;
+            
+            console.log(`📊 通過 name 和 type 找到 ${allRecords.length} 條記錄（去重後）`);
+        } else {
+            // ✅ 如果沒有從 Admin_account 找到，只使用第一次查詢的結果
+            if (allRelatedRecords && allRelatedRecords.length > 0) {
+                allRelatedRecords.forEach(record => {
+                    if (record.phone) allPhones.add(record.phone);
+                    if (record.employeeId) allEmployeeIds.add(record.employeeId);
+                });
             }
+            
+            employeePhone = Array.from(allPhones)[0] || phone;
+            employeeId = Array.from(allEmployeeIds)[0] || phone;
+        }
+        
+        // ✅ 如果 Admin_account 中沒有找到，或者類型不確定，從 Staff_work_hours 記錄中推斷
+        if (!employeeType && allRelatedRecords && allRelatedRecords.length > 0) {
+            employeeType = allRelatedRecords[0].type || 'coach';
+            console.log(`⚠️ Admin_account 中未找到員工，從 Staff_work_hours 推斷類型: ${employeeType}`);
+        } else if (!employeeType) {
+            employeeType = 'coach';
         }
         
         // ✅ 如果 Admin_account 中的類型與實際記錄不一致，使用實際記錄中的類型
-        const sampleRecord = await collection.findOne({ phone });
-        if (sampleRecord && sampleRecord.type && sampleRecord.type !== employeeType) {
-            console.log(`⚠️ Admin_account 類型 (${employeeType}) 與實際記錄類型 (${sampleRecord.type}) 不一致，使用實際記錄類型`);
-            employeeType = sampleRecord.type;
+        if (allRelatedRecords && allRelatedRecords.length > 0) {
+            const firstRecordType = allRelatedRecords[0].type;
+            if (firstRecordType && firstRecordType !== employeeType) {
+                console.log(`⚠️ Admin_account 類型 (${employeeType}) 與實際記錄類型 (${firstRecordType}) 不一致，使用實際記錄類型`);
+                employeeType = firstRecordType;
+            }
         }
         
-        console.log(`📊 員工類型: ${employeeType}, phone: ${phone}`);
+        console.log(`📊 員工類型: ${employeeType}, phone: ${employeePhone}, employeeId: ${employeeId}, 查詢參數: ${phone}`);
+        console.log(`📊 收集到的所有標識符: phones=[${Array.from(allPhones).join(', ')}], employeeIds=[${Array.from(allEmployeeIds).join(', ')}]`);
         
         let version1Records = [];
         let version2Records = [];
@@ -2458,37 +2653,57 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
             // ✅ 如果員工是文書職員（admin），則比較：
             // - version1: admin自己編輯的記錄（editorType: 'admin'）
             // - version2: 主管/管理員幫admin編輯的記錄（editorType: 'supervisor' 或 'manager'）
+            // ✅ 使用收集到的所有 phone 和 employeeId 進行查詢
+            const phoneArray = Array.from(allPhones);
+            const employeeIdArray = Array.from(allEmployeeIds);
+            const identifierConditions = [
+                ...phoneArray.map(p => ({ phone: p })),
+                ...employeeIdArray.map(id => ({ employeeId: id }))
+            ];
+            
             version1Records = await collection.find({
-                phone,
-                year: parseInt(year),
-                month: parseInt(month),
-                $or: [
-                    { editorType: 'admin' },
-                    { 
-                        $and: [
-                            { editorType: { $in: [null, ''] } },
-                            { $or: [
-                                { submittedByType: 'admin' },
-                                { type: 'admin' }
-                            ]}
+                $and: [
+                    {
+                        $or: identifierConditions
+                    },
+                    {
+                        year: parseInt(year),
+                        month: parseInt(month),
+                        $or: [
+                            { editorType: 'admin' },
+                            { 
+                                $and: [
+                                    { editorType: { $in: [null, ''] } },
+                                    { $or: [
+                                        { submittedByType: 'admin' },
+                                        { type: 'admin' }
+                                    ]}
+                                ]
+                            }
                         ]
                     }
                 ]
             }).toArray();
             
             version2Records = await collection.find({
-                phone,
-                year: parseInt(year),
-                month: parseInt(month),
-                $or: [
-                    { editorType: { $in: ['supervisor', 'manager'] } },
-                    { 
-                        $and: [
-                            { editorType: { $in: [null, ''] } },
-                            { $or: [
-                                { submittedByType: { $in: ['supervisor', 'manager'] } },
-                                { type: { $in: ['supervisor', 'manager'] } }
-                            ]}
+                $and: [
+                    {
+                        $or: identifierConditions
+                    },
+                    {
+                        year: parseInt(year),
+                        month: parseInt(month),
+                        $or: [
+                            { editorType: { $in: ['supervisor', 'manager'] } },
+                            { 
+                                $and: [
+                                    { editorType: { $in: [null, ''] } },
+                                    { $or: [
+                                        { submittedByType: { $in: ['supervisor', 'manager'] } },
+                                        { type: { $in: ['supervisor', 'manager'] } }
+                                    ]}
+                                ]
+                            }
                         ]
                     }
                 ]
@@ -2499,37 +2714,57 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
             // ✅ 如果員工是管理員（manager），則比較：
             // - version1: manager自己編輯的記錄（editorType: 'manager'）
             // - version2: 主管幫manager編輯的記錄（editorType: 'supervisor'）
+            // ✅ 使用收集到的所有 phone 和 employeeId 進行查詢
+            const phoneArray = Array.from(allPhones);
+            const employeeIdArray = Array.from(allEmployeeIds);
+            const identifierConditions = [
+                ...phoneArray.map(p => ({ phone: p })),
+                ...employeeIdArray.map(id => ({ employeeId: id }))
+            ];
+            
             version1Records = await collection.find({
-                phone,
-                year: parseInt(year),
-                month: parseInt(month),
-                $or: [
-                    { editorType: 'manager' },
-                    { 
-                        $and: [
-                            { editorType: { $in: [null, ''] } },
-                            { $or: [
-                                { submittedByType: 'manager' },
-                                { type: 'manager' }
-                            ]}
+                $and: [
+                    {
+                        $or: identifierConditions
+                    },
+                    {
+                        year: parseInt(year),
+                        month: parseInt(month),
+                        $or: [
+                            { editorType: 'manager' },
+                            { 
+                                $and: [
+                                    { editorType: { $in: [null, ''] } },
+                                    { $or: [
+                                        { submittedByType: 'manager' },
+                                        { type: 'manager' }
+                                    ]}
+                                ]
+                            }
                         ]
                     }
                 ]
             }).toArray();
             
             version2Records = await collection.find({
-                phone,
-                year: parseInt(year),
-                month: parseInt(month),
-                $or: [
-                    { editorType: 'supervisor' },
-                    { 
-                        $and: [
-                            { editorType: { $in: [null, ''] } },
-                            { $or: [
-                                { submittedByType: 'supervisor' },
-                                { type: 'supervisor' }
-                            ]}
+                $and: [
+                    {
+                        $or: identifierConditions
+                    },
+                    {
+                        year: parseInt(year),
+                        month: parseInt(month),
+                        $or: [
+                            { editorType: 'supervisor' },
+                            { 
+                                $and: [
+                                    { editorType: { $in: [null, ''] } },
+                                    { $or: [
+                                        { submittedByType: 'supervisor' },
+                                        { type: 'supervisor' }
+                                    ]}
+                                ]
+                            }
                         ]
                     }
                 ]
@@ -2540,37 +2775,57 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
             // ✅ 如果員工是coach，則比較：
             // - version1: coach自己編輯的記錄（editorType: 'coach'）
             // - version2: 主管/文書職員/管理員幫coach編輯的記錄（editorType: 'admin'、'supervisor' 或 'manager'）
+            // ✅ 使用收集到的所有 phone 和 employeeId 進行查詢
+            const phoneArray = Array.from(allPhones);
+            const employeeIdArray = Array.from(allEmployeeIds);
+            const identifierConditions = [
+                ...phoneArray.map(p => ({ phone: p })),
+                ...employeeIdArray.map(id => ({ employeeId: id }))
+            ];
+            
             version1Records = await collection.find({
-                phone,
-                year: parseInt(year),
-                month: parseInt(month),
-                $or: [
-                    { editorType: 'coach' },
-                    { 
-                        $and: [
-                            { editorType: { $in: [null, ''] } },
-                            { $or: [
-                                { submittedByType: 'coach' },
-                                { type: 'coach' }
-                            ]}
+                $and: [
+                    {
+                        $or: identifierConditions
+                    },
+                    {
+                        year: parseInt(year),
+                        month: parseInt(month),
+                        $or: [
+                            { editorType: 'coach' },
+                            { 
+                                $and: [
+                                    { editorType: { $in: [null, ''] } },
+                                    { $or: [
+                                        { submittedByType: 'coach' },
+                                        { type: 'coach' }
+                                    ]}
+                                ]
+                            }
                         ]
                     }
                 ]
             }).toArray();
             
             version2Records = await collection.find({
-                phone,
-                year: parseInt(year),
-                month: parseInt(month),
-                $or: [
-                    { editorType: { $in: ['admin', 'supervisor', 'manager'] } },
-                    { 
-                        $and: [
-                            { editorType: { $in: [null, ''] } },
-                            { $or: [
-                                { submittedByType: { $in: ['admin', 'supervisor', 'manager'] } },
-                                { type: { $in: ['admin', 'supervisor', 'manager'] } }
-                            ]}
+                $and: [
+                    {
+                        $or: identifierConditions
+                    },
+                    {
+                        year: parseInt(year),
+                        month: parseInt(month),
+                        $or: [
+                            { editorType: { $in: ['admin', 'supervisor', 'manager'] } },
+                            { 
+                                $and: [
+                                    { editorType: { $in: [null, ''] } },
+                                    { $or: [
+                                        { submittedByType: { $in: ['admin', 'supervisor', 'manager'] } },
+                                        { type: { $in: ['admin', 'supervisor', 'manager'] } }
+                                    ]}
+                                ]
+                            }
                         ]
                     }
                 ]
@@ -4428,6 +4683,7 @@ app.get('/student/:studentId/remaining-time-slots', validateApiKeys, async (req,
                     classFormat: classFormat,
                     count: 0,
                     totalTimeSlot: 0,
+        
                     records: []
                 };
             }
