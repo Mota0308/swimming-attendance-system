@@ -3543,7 +3543,6 @@ app.get('/pricing', validateApiKeys, async (req, res) => {
         });
         
         if (pricing) {
-            console.log(`✅ 找到價格: ${classType} - ${classFormat} - ${instructorLevel} = $${pricing.price}`);
         } else {
             console.warn(`⚠️ 未找到價格: ${classType} - ${classFormat} - ${instructorLevel}`);
         }
