@@ -770,9 +770,6 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
         // ✅ 先按日期分組，合併同一日期的多個 entry（不同 slot）
         const entriesByDate = new Map();
         
-        // ✅ 添加調試日志
-        console.log('📊 批量保存更表 - 接收到的 entries:', JSON.stringify(entries.slice(0, 3), null, 2));
-        
         entries.forEach(entry => {
             const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
             // ✅ 修复：使用本地时区创建日期对象，避免时区问题导致分组失败
@@ -792,11 +789,6 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
             }
             
             const dateKey = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
-            
-            // ✅ 添加调试日志
-            if (!entriesByDate.has(dateKey)) {
-                console.log(`📅 创建新的日期组: ${dateKey}, dateStr: ${dateStr}, entry.date: ${entry.date}`);
-            }
             
             if (!entriesByDate.has(dateKey)) {
                 // ✅ 初始化：每次都從空數組開始，完全替換舊數據
@@ -819,26 +811,6 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
             
             const dateGroup = entriesByDate.get(dateKey);
             dateGroup.entries.push(entry);
-            
-            // ✅ 添加調試日志
-            console.log(`📊 處理 entry:`, {
-                date: dateStr,
-                dateKey: dateKey,
-                slot: entry.slot,
-                location: entry.location,
-                locationType: typeof entry.location,
-                dateGroupEntriesCount: dateGroup.entries.length,
-                currentLocationArray: [...dateGroup.locationArray]
-            });
-            
-            if (entry.location === null || entry.location === undefined) {
-                console.log(`⚠️ 發現 location 為 null/undefined 的 entry:`, {
-                    date: dateStr,
-                    slot: entry.slot,
-                    location: entry.location,
-                    locationType: typeof entry.location
-                });
-            }
             
             // ✅ 合併 time 和 location 到數組中
             // ✅ 即使 entry 沒有 time 字段，只要有 slot，就應該處理 location
@@ -922,14 +894,6 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
             // ✅ 在更新之前，先查詢數據庫中是否存在相同 date 的記錄
             const existingRecord = await collection.findOne(dateFilter);
             
-            console.log(`🔍 查詢現有記錄:`, {
-                date: dateString,
-                phone: phone,
-                found: !!existingRecord,
-                existingLocation: existingRecord?.location,
-                existingLocationType: existingRecord?.location ? (Array.isArray(existingRecord.location) ? 'array' : typeof existingRecord.location) : 'N/A'
-            });
-            
             // ✅ 工作類型：處理 location 數組
             let cleanLocationArray = ['', '', ''];
             if (!isLeave) {
@@ -974,7 +938,6 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
                 // ✅ 確保 locationArray 中沒有 null 值
                 cleanLocationArray = cleanLocationArray.map(loc => {
                     if (loc === null || loc === undefined) {
-                        console.log(`⚠️ 清理 locationArray 中的 null/undefined 值，設為空字符串`);
                         return '';
                     }
                     return loc;
@@ -992,11 +955,6 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
                 }
                 if (cleanLocationArray.length > 3) {
                     cleanLocationArray.splice(3);
-                }
-                
-                // ✅ 添加調試日志
-                if (cleanLocationArray.some(loc => loc === null || loc === undefined)) {
-                    console.log(`❌ locationArray 中仍有 null/undefined 值:`, cleanLocationArray);
                 }
             }
             
@@ -1023,18 +981,6 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
             } else {
                 // ✅ 假期類型：不保存 location 和 time 字段
             }
-            
-            console.log(`📊 保存更表記錄:`, {
-                date: dateString,
-                phone: phone,
-                isLeave: isLeave,
-                leaveType: dateGroup.leaveType,
-                location: isLeave ? 'N/A (假期)' : cleanLocationArray,
-                locationType: isLeave ? 'N/A' : (Array.isArray(cleanLocationArray) ? 'array' : typeof cleanLocationArray),
-                entriesCount: dateGroup.entries.length,
-                entriesSlots: dateGroup.entries.map(e => e.slot),
-                hadExistingRecord: !!existingRecord
-            });
             
             // ✅ 返回操作對象（bulkWrite 格式）
             return {
@@ -1210,15 +1156,6 @@ app.post('/coach-roster/batch-clear', validateApiKeys, async (req, res) => {
                 });
                 updateFields.location = ['', '', ''];
             }
-            
-            console.log(`📊 批量清除更表記錄:`, {
-                date: dateGroup.dateStr,
-                phone: phone,
-                location: updateFields.location,
-                locationType: Array.isArray(updateFields.location) ? 'array' : typeof updateFields.location,
-                clearLocation: dateGroup.clearLocation,
-                clearTime: dateGroup.clearTime
-            });
             
             // ✅ 格式化 date 為 "YYYY-MM-DD" 字符串（用於查詢）
             const dateStringForQuery = formatDateToYYYYMMDD(dateGroup.date) || dateGroup.dateStr;
@@ -1498,8 +1435,6 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
         const trialBillCollection = db.collection('trail_bill');
         const studentCollection = db.collection('Student_account');
         
-        console.log('📊 出席管理查詢參數:', { classDate, location });
-        
         // ==================== 1. 查詢 students_timeslot 集合 ====================
         const timeslotQuery = {
             classDate: { $nin: [null, ''] }, // 只查詢有日期的記錄（排除 null 和空字符串）
@@ -1513,11 +1448,8 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
             timeslotQuery.location = location;
         }
         
-        console.log('📊 students_timeslot 查詢條件:', JSON.stringify(timeslotQuery, null, 2));
-        
         // 查詢時段記錄
         const timeslots = await timeslotCollection.find(timeslotQuery).toArray();
-        console.log(`📊 students_timeslot 查詢結果: ${timeslots.length} 條記錄`);
         
         // ==================== 2. 查詢 trail_bill 集合 ====================
         const trialQuery = {
@@ -1533,11 +1465,8 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
             trialQuery.location = location;
         }
         
-        console.log('📊 trail_bill 查詢條件:', JSON.stringify(trialQuery, null, 2));
-        
         // 查詢試堂記錄
         const trialBills = await trialBillCollection.find(trialQuery).toArray();
-        console.log(`📊 trail_bill 查詢結果: ${trialBills.length} 條記錄`);
         
         // ==================== 3. 合併數據 ====================
         // 將 trail_bill 記錄轉換為與 students_timeslot 相同的格式
@@ -1575,10 +1504,8 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
         
         // 合併兩個數據源
         const allRecords = [...timeslots, ...convertedTrials];
-        console.log(`📊 合併後總記錄數: ${allRecords.length} 條（students_timeslot: ${timeslots.length}, trail_bill: ${trialBills.length}）`);
         
         if (allRecords.length === 0) {
-            console.log('⚠️ 沒有找到符合條件的記錄');
             return res.json({
                 success: true,
                 data: [],
@@ -1741,8 +1668,6 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
         
         const totalRecords = allRecords.length;
         
-        console.log(`📊 最終返回: ${result.length} 個日期-地點組合，共 ${totalRecords} 條記錄`);
-        
         res.json({
             success: true,
             data: result,
@@ -1893,7 +1818,6 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
                             firstTimeSlot = firstDuration ? calculateTotalTimeSlot(baseTimeSlot, firstDuration) : 1;
                             // 保存第一次的 time_slot 到數據庫
                             updateData.originalTimeSlot = firstTimeSlot;
-                            console.log(`📝 首次保存第一次的 time_slot: ${firstTimeSlot}`);
                         }
                         
                         // ✅ 計算新時間的實際時長和 time_slot，並更新 total_time_slot
@@ -1910,10 +1834,8 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
                         // ✅ 與第一次的 time_slot 對比，有變化則為 true，沒變化則為 false
                         if (newTimeSlot !== firstTimeSlot) {
                             updateData.isChangeTime = true;
-                            console.log(`✅ 只修改了時間且新 time_slot (${newTimeSlot}) !== 第一次 time_slot (${firstTimeSlot})，設置 isChangeTime = true`);
                         } else {
                             updateData.isChangeTime = false;
-                            console.log(`⚠️ 只修改了時間但新 time_slot (${newTimeSlot}) === 第一次 time_slot (${firstTimeSlot})，設置 isChangeTime = false`);
                         }
                     } else {
                         // 如果找不到基礎 time_slot，默認設置為 false
@@ -2406,29 +2328,7 @@ app.get('/staff-work-hours/:phone/:year/:month', validateApiKeys, async (req, re
         if (club) query.club = club;
         if (editorType) query.editorType = editorType;
         
-        console.log('🔍 查詢工時記錄:', {
-            phoneOrEmployeeId: phone.substring(0, 3) + '***',
-            year: parseInt(year),
-            month: parseInt(month),
-            location,
-            club,
-            editorType,
-            query: JSON.stringify(query).substring(0, 200)
-        });
-        
         const workHours = await collection.find(query).toArray();
-        
-        console.log(`✅ 獲取到 ${workHours.length} 條工時記錄`);
-        if (workHours.length > 0) {
-            console.log('📋 第一條記錄示例:', {
-                employeeId: workHours[0].employeeId,
-                phone: workHours[0].phone,
-                name: workHours[0].name,
-                workDate: workHours[0].workDate,
-                totalHours: workHours[0].totalHours,
-                editorType: workHours[0].editorType
-            });
-        }
         
         res.json({
             success: true,
@@ -2500,7 +2400,6 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
         
         if (missingEmployeeIdRecords.length > 0) {
             const phonesToQuery = [...new Set(missingEmployeeIdRecords.map(r => r.phone).filter(Boolean))];
-            console.log(`📊 發現 ${missingEmployeeIdRecords.length} 條記錄缺少正確的 employeeId，需要查詢 ${phonesToQuery.length} 個員工信息`);
             
             // 批量查詢缺少的員工信息
             const missingEmployeeQueries = phonesToQuery.map(phone => 
@@ -2594,19 +2493,19 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
             
             const filter = {
                 $or: orConditions.length > 0 ? orConditions : [{ phone: phoneToUse }],
-                workDate: record.workDate,
-                editorType: record.editorType
+                    workDate: record.workDate,
+                    editorType: record.editorType
             };
             
             // ✅ 統一數據格式：確保保存的記錄同時包含 phone 和 employeeId
             const recordToSave = {
-                ...record,
+                        ...record,
                 phone: phoneToUse, // ✅ 確保包含 phone
                 employeeId: employeeIdToUse, // ✅ 確保包含 employeeId
-                submittedBy,
-                submittedByName,
-                submittedByType,
-                updatedAt: new Date()
+                        submittedBy,
+                        submittedByName,
+                        submittedByType,
+                        updatedAt: new Date()
             };
             
             return {
@@ -2614,9 +2513,9 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
                     filter: filter,
                     update: {
                         $set: recordToSave
-                    },
-                    upsert: true
-                }
+                },
+                upsert: true
+            }
             };
         });
         
@@ -2710,8 +2609,6 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
             // ✅ 更新 employeePhone 和 employeeId（使用第一個非空值）
             employeePhone = Array.from(allPhones)[0] || phone;
             employeeId = Array.from(allEmployeeIds)[0] || phone;
-            
-            console.log(`📊 通過 name 和 type 找到 ${allRecords.length} 條記錄（去重後）`);
         } else {
             // ✅ 如果沒有從 Admin_account 找到，只使用第一次查詢的結果
             if (allRelatedRecords && allRelatedRecords.length > 0) {
@@ -2728,9 +2625,9 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
         // ✅ 如果 Admin_account 中沒有找到，或者類型不確定，從 Staff_work_hours 記錄中推斷
         if (!employeeType && allRelatedRecords && allRelatedRecords.length > 0) {
             employeeType = allRelatedRecords[0].type || 'coach';
-            console.log(`⚠️ Admin_account 中未找到員工，從 Staff_work_hours 推斷類型: ${employeeType}`);
+                console.log(`⚠️ Admin_account 中未找到員工，從 Staff_work_hours 推斷類型: ${employeeType}`);
         } else if (!employeeType) {
-            employeeType = 'coach';
+                employeeType = 'coach';
         }
         
         // ✅ 如果 Admin_account 中的類型與實際記錄不一致，使用實際記錄中的類型
@@ -2741,9 +2638,6 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                 employeeType = firstRecordType;
             }
         }
-        
-        console.log(`📊 員工類型: ${employeeType}, phone: ${employeePhone}, employeeId: ${employeeId}, 查詢參數: ${phone}`);
-        console.log(`📊 收集到的所有標識符: phones=[${Array.from(allPhones).join(', ')}], employeeIds=[${Array.from(allEmployeeIds).join(', ')}]`);
         
         let version1Records = [];
         let version2Records = [];
@@ -2766,17 +2660,17 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                         $or: identifierConditions
                     },
                     {
-                        year: parseInt(year),
-                        month: parseInt(month),
-                        $or: [
-                            { editorType: 'admin' },
-                            { 
-                                $and: [
-                                    { editorType: { $in: [null, ''] } },
-                                    { $or: [
-                                        { submittedByType: 'admin' },
-                                        { type: 'admin' }
-                                    ]}
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'admin' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'admin' },
+                                { type: 'admin' }
+                            ]}
                                 ]
                             }
                         ]
@@ -2790,25 +2684,23 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                         $or: identifierConditions
                     },
                     {
-                        year: parseInt(year),
-                        month: parseInt(month),
-                        $or: [
-                            { editorType: { $in: ['supervisor', 'manager'] } },
-                            { 
-                                $and: [
-                                    { editorType: { $in: [null, ''] } },
-                                    { $or: [
-                                        { submittedByType: { $in: ['supervisor', 'manager'] } },
-                                        { type: { $in: ['supervisor', 'manager'] } }
-                                    ]}
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: { $in: ['supervisor', 'manager'] } },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: { $in: ['supervisor', 'manager'] } },
+                                { type: { $in: ['supervisor', 'manager'] } }
+                            ]}
                                 ]
                             }
                         ]
                     }
                 ]
             }).toArray();
-            
-            console.log(`📊 比較查詢結果（文書職員）: 自己編輯=${version1Records.length}條, 主管/管理員編輯=${version2Records.length}條`);
         } else if (employeeType === 'manager') {
             // ✅ 如果員工是管理員（manager），則比較：
             // - version1: manager自己編輯的記錄（editorType: 'manager'）
@@ -2827,17 +2719,17 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                         $or: identifierConditions
                     },
                     {
-                        year: parseInt(year),
-                        month: parseInt(month),
-                        $or: [
-                            { editorType: 'manager' },
-                            { 
-                                $and: [
-                                    { editorType: { $in: [null, ''] } },
-                                    { $or: [
-                                        { submittedByType: 'manager' },
-                                        { type: 'manager' }
-                                    ]}
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'manager' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'manager' },
+                                { type: 'manager' }
+                            ]}
                                 ]
                             }
                         ]
@@ -2851,25 +2743,23 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                         $or: identifierConditions
                     },
                     {
-                        year: parseInt(year),
-                        month: parseInt(month),
-                        $or: [
-                            { editorType: 'supervisor' },
-                            { 
-                                $and: [
-                                    { editorType: { $in: [null, ''] } },
-                                    { $or: [
-                                        { submittedByType: 'supervisor' },
-                                        { type: 'supervisor' }
-                                    ]}
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'supervisor' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'supervisor' },
+                                { type: 'supervisor' }
+                            ]}
                                 ]
                             }
                         ]
                     }
                 ]
             }).toArray();
-            
-            console.log(`📊 比較查詢結果（管理員）: 自己編輯=${version1Records.length}條, 主管編輯=${version2Records.length}條`);
         } else {
             // ✅ 如果員工是coach，則比較：
             // - version1: coach自己編輯的記錄（editorType: 'coach'）
@@ -2888,17 +2778,17 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                         $or: identifierConditions
                     },
                     {
-                        year: parseInt(year),
-                        month: parseInt(month),
-                        $or: [
-                            { editorType: 'coach' },
-                            { 
-                                $and: [
-                                    { editorType: { $in: [null, ''] } },
-                                    { $or: [
-                                        { submittedByType: 'coach' },
-                                        { type: 'coach' }
-                                    ]}
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: 'coach' },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: 'coach' },
+                                { type: 'coach' }
+                            ]}
                                 ]
                             }
                         ]
@@ -2912,25 +2802,23 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
                         $or: identifierConditions
                     },
                     {
-                        year: parseInt(year),
-                        month: parseInt(month),
-                        $or: [
-                            { editorType: { $in: ['admin', 'supervisor', 'manager'] } },
-                            { 
-                                $and: [
-                                    { editorType: { $in: [null, ''] } },
-                                    { $or: [
-                                        { submittedByType: { $in: ['admin', 'supervisor', 'manager'] } },
-                                        { type: { $in: ['admin', 'supervisor', 'manager'] } }
-                                    ]}
+                year: parseInt(year),
+                month: parseInt(month),
+                $or: [
+                    { editorType: { $in: ['admin', 'supervisor', 'manager'] } },
+                    { 
+                        $and: [
+                            { editorType: { $in: [null, ''] } },
+                            { $or: [
+                                { submittedByType: { $in: ['admin', 'supervisor', 'manager'] } },
+                                { type: { $in: ['admin', 'supervisor', 'manager'] } }
+                            ]}
                                 ]
                             }
                         ]
                     }
                 ]
             }).toArray();
-            
-            console.log(`📊 比較查詢結果（coach）: coach記錄=${version1Records.length}條, admin/supervisor記錄=${version2Records.length}條`);
         }
         
         // ✅ 生成比較結果數組
@@ -3600,15 +3488,10 @@ app.get('/instructor-levels', validateApiKeys, async (req, res) => {
                 class_type: classType,
                 class_format: classFormat
             };
-            console.log(`📋 查詢導師級別: classType="${classType}", classFormat="${classFormat}"`);
-            console.log(`📋 查詢條件:`, JSON.stringify(query, null, 2));
-        } else {
-            console.log('📋 查詢所有導師級別（未提供 classType 和 classFormat）');
         }
         
         // ✅ 先檢查集合中是否有數據
         const totalCount = await collection.countDocuments({});
-        console.log(`📊 Pricing 集合總記錄數: ${totalCount}`);
         
         // ✅ 如果集合為空，記錄警告
         if (totalCount === 0) {
@@ -3628,12 +3511,7 @@ app.get('/instructor-levels', validateApiKeys, async (req, res) => {
             }).limit(5).toArray();
             
             if (similarRecords.length > 0) {
-                console.warn(`📋 找到 ${similarRecords.length} 條類似的記錄（僅匹配 class_type 或 class_format）:`);
-                similarRecords.forEach(r => {
-                    console.warn(`  - class_type: "${r.class_type}", class_format: "${r.class_format}", instructor_level: "${r.instructor_level}"`);
-                });
-            } else {
-                console.warn(`⚠️ 集合中沒有任何與 "${classType}" 或 "${classFormat}" 相關的記錄`);
+                console.warn(`⚠️ 未找到匹配的記錄，但找到 ${similarRecords.length} 條類似的記錄`);
             }
         }
         
@@ -3645,8 +3523,6 @@ app.get('/instructor-levels', validateApiKeys, async (req, res) => {
             level: level, // ✅ 保持向後兼容，使用 level 字段
             instructor_level: level // ✅ 同時提供 instructor_level 字段
         }));
-        
-        console.log(`✅ 找到 ${pricingRecords.length} 條記錄，${uniqueLevels.length} 個唯一導師級別:`, uniqueLevels);
         
         res.json({
             success: true,
@@ -5131,16 +5007,6 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const studentIdsForPage = studentIdsToProcess.slice(skip, skip + parseInt(limit));
         
-        console.log('📊 學生堂數查詢:', {
-            semester: semester || '無',
-            year: year || '無',
-            totalStudents: allStudentIds.length,
-            validStudents: studentIdsToProcess.length,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            studentsForPage: studentIdsForPage.length
-        });
-        
         // ✅ 優化：批量查詢當前頁所有學生的時段記錄，避免N+1查詢
         const allPageTimeslots = await timeslotCollection.find({
             studentId: { $in: studentIdsForPage }
@@ -5623,15 +5489,6 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
         
         // ✅ 總數和分頁已經在上面計算好了
         const totalPages = Math.ceil(total / parseInt(limit)) || 1;
-        
-        console.log('📊 學生堂數查詢結果:', {
-            semester: semester || '無',
-            year: year || '無',
-            total: total,
-            totalPages: totalPages,
-            returnedStudents: formattedStudents.length,
-            page: parseInt(page)
-        });
         
         res.json({
             success: true,
