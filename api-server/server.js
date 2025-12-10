@@ -7,16 +7,83 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
+// ✅ 安全措施：引入安全工具
+const { comparePassword } = require('./security/utils/password-utils');
+const { validateLogin } = require('./security/middleware/validation');
+const { loginLimiter, apiLimiter } = require('./security/middleware/rate-limit');
+const { errorHandler, notFoundHandler } = require('./security/middleware/error-handler');
+const { logSecurityEvent } = require('./security/utils/logger');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // MongoDB 配置
-const MONGO_BASE_URI = process.env.MONGO_BASE_URI || 'mongodb+srv://chenyaolin0308:9GUhZvnuEpAA1r6c@cluster0.0dhi0qc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+let MONGO_BASE_URI = process.env.MONGO_BASE_URI;
 const DEFAULT_DB_NAME = process.env.DEFAULT_DB_NAME || 'test';
 
+// ✅ 安全措施：强制使用环境变量（生产环境）
+if (process.env.NODE_ENV === 'production') {
+    if (!MONGO_BASE_URI) {
+        throw new Error('❌ MONGO_BASE_URI environment variable is required in production');
+    }
+} else {
+    // 开发环境：使用默认值（向后兼容）
+    if (!MONGO_BASE_URI) {
+        MONGO_BASE_URI = 'mongodb+srv://chenyaolin0308:9GUhZvnuEpAA1r6c@cluster0.0dhi0qc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+        console.warn('⚠️ 警告: 使用默认 MongoDB URI，建议设置 MONGO_BASE_URI 环境变量');
+    }
+}
+
 // API 密鑰配置
-const PUBLIC_API_KEY = process.env.PUBLIC_API_KEY || 'ttdrcccy';
-const PRIVATE_API_KEY = process.env.PRIVATE_API_KEY || '2b207365-cbf0-4e42-a3bf-f932c84557c4';
+let PUBLIC_API_KEY = process.env.PUBLIC_API_KEY;
+let PRIVATE_API_KEY = process.env.PRIVATE_API_KEY;
+
+// ✅ 安全措施：强制使用环境变量（生产环境）
+if (process.env.NODE_ENV === 'production') {
+    if (!PUBLIC_API_KEY || !PRIVATE_API_KEY) {
+        throw new Error('❌ API keys must be set in environment variables in production');
+    }
+} else {
+    // 开发环境：使用默认值（向后兼容）
+    if (!PUBLIC_API_KEY) {
+        PUBLIC_API_KEY = 'ttdrcccy';
+        console.warn('⚠️ 警告: 使用默认 PUBLIC_API_KEY，建议设置环境变量');
+    }
+    if (!PRIVATE_API_KEY) {
+        PRIVATE_API_KEY = '2b207365-cbf0-4e42-a3bf-f932c84557c4';
+        console.warn('⚠️ 警告: 使用默认 PRIVATE_API_KEY，建议设置环境变量');
+    }
+}
+
+// ✅ 安全措施：引入 Helmet 设置安全头
+const helmet = require('helmet');
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"]
+        }
+    },
+    hsts: {
+        maxAge: 31536000, // 1年
+        includeSubDomains: true,
+        preload: true
+    },
+    frameguard: {
+        action: 'deny'
+    },
+    hidePoweredBy: true,
+    xssFilter: true,
+    noSniff: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+}));
 
 // 中間件
 app.use(cors());
@@ -64,6 +131,11 @@ function validateApiKeys(req, res, next) {
     if (publicKey === PUBLIC_API_KEY && privateKey === PRIVATE_API_KEY) {
         next();
     } else {
+        // ✅ 安全措施：记录安全事件
+        logSecurityEvent('API_KEY_VALIDATION_FAILED', { 
+            publicKey: publicKey ? 'provided' : 'missing',
+            privateKey: privateKey ? 'provided' : 'missing'
+        }, req);
         console.log('❌ API 密鑰驗證失敗 - IP:', req.ip);
         res.status(401).json({ success: false, message: 'API 密鑰驗證失敗' });
     }
@@ -216,7 +288,8 @@ app.get('/health', (req, res) => {
 });
 
 // 用戶登入驗證
-app.post('/auth/login', validateApiKeys, async (req, res) => {
+// ✅ 安全措施：添加速率限制和输入验证
+app.post('/auth/login', loginLimiter, validateApiKeys, validateLogin, async (req, res) => {
     try {
         const { phone, password, userType, type } = req.body;
         const loginType = userType || type;
@@ -234,28 +307,52 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
         
         if (loginType === 'coach' || loginType === 'supervisor' || loginType === 'admin' || loginType === 'manager') {
             const collection = db.collection('Admin_account');
-            user = await collection.findOne({
+            // ✅ 安全措施：先查找用户，再验证密码（支持哈希和明文向后兼容）
+            const foundUser = await collection.findOne({
                 phone: phone,
-                password: password,
                 type: loginType
             });
             
+            // ✅ 验证密码（支持 bcrypt 哈希和明文向后兼容）
+            if (foundUser && foundUser.password) {
+                const isPasswordValid = await comparePassword(password, foundUser.password);
+                if (isPasswordValid) {
+                    user = foundUser;
+                }
+            }
+            
+            // ✅ 向后兼容：检查 Coach_account（仅 coach 和 supervisor）
             if (!user && (loginType === 'coach' || loginType === 'supervisor')) {
                 const coachCollection = db.collection('Coach_account');
-                user = await coachCollection.findOne({
-                    phone: phone,
-                    password: password
+                const foundCoachUser = await coachCollection.findOne({
+                    phone: phone
                 });
+                
+                if (foundCoachUser && foundCoachUser.password) {
+                    const isPasswordValid = await comparePassword(password, foundCoachUser.password);
+                    if (isPasswordValid) {
+                        user = foundCoachUser;
+                    }
+                }
             }
         } else {
             const collection = db.collection('Coach_account');
-            user = await collection.findOne({
-                studentPhone: phone,
-                password: password
+            // ✅ 安全措施：先查找用户，再验证密码
+            const foundUser = await collection.findOne({
+                studentPhone: phone
             });
+            
+            if (foundUser && foundUser.password) {
+                const isPasswordValid = await comparePassword(password, foundUser.password);
+                if (isPasswordValid) {
+                    user = foundUser;
+                }
+            }
         }
         
         if (user) {
+            // ✅ 安全措施：不返回密码字段
+            const { password: _, ...userWithoutPassword } = user;
             res.json({
                 success: true,
                 message: '登入成功',
@@ -268,6 +365,8 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
                 }
             });
         } else {
+            // ✅ 安全措施：记录登录失败事件
+            logSecurityEvent('LOGIN_FAILED', { phone, loginType }, req);
             res.status(401).json({
                 success: false,
                 message: '電話號碼或密碼錯誤'
@@ -277,8 +376,8 @@ app.post('/auth/login', validateApiKeys, async (req, res) => {
         console.error('❌ 用戶登入錯誤:', error);
         res.status(500).json({
             success: false,
-            message: '登入失敗',
-            error: error.message
+            message: '登入失敗'
+            // ✅ 安全措施：不暴露详细错误信息
         });
     }
 });
@@ -5556,6 +5655,15 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
 });
 
 // 啟動服務器
+// ✅ 安全措施：应用 API 速率限制（所有 /api/ 路由）
+app.use('/api/', apiLimiter);
+
+// ✅ 安全措施：404 处理（必须在所有路由之后）
+app.use(notFoundHandler);
+
+// ✅ 安全措施：错误处理中间件（必须在最后）
+app.use(errorHandler);
+
 app.listen(PORT, async () => {
     console.log(`🚀 API 服務器啟動成功 - 端口: ${PORT}`);
     console.log(`📊 健康檢查: http://localhost:${PORT}/health`);
