@@ -116,6 +116,9 @@ lavalink/
 # Dashboard 設置（可能包含敏感信息）
 dashboard/settings.json
 
+# 敏感配置文件
+settings.json
+
 # 部署腳本（可選，如果不公開）
 auto-deploy-railway.ps1
 deploy-to-railway.ps1
