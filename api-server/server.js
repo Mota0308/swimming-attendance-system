@@ -143,6 +143,8 @@ const staticMiddleware = express.static(uploadsDir, {
         } else if (filePath.endsWith('.webp')) {
             res.setHeader('Content-Type', 'image/webp');
         }
+        // ✅ 設置 Content-Disposition 為 inline，確保圖片在瀏覽器中顯示而不是下載
+        res.setHeader('Content-Disposition', 'inline');
     }
 });
 
