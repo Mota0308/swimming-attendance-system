@@ -74,4 +74,61 @@ Android_app/app/debug/
 *.rar
 
 # 本地配置文件
-local.properties 
+local.properties
+
+# PDF 和 Excel 文件（參考文件，不需要上傳）
+*.pdf
+*.xlsx
+*.xls
+
+# 圖片文件（除非必要，否則不上傳）
+*.jpeg
+*.jpg
+*.png
+*.gif
+!assets/**/*.png
+!assets/**/*.jpg
+!assets/**/*.svg
+
+# Railway 相關的臨時文件
+railway-redirect-uri.txt
+railway-vocard.toml
+
+# 臨時部署文檔（可以不上傳，除非是重要文檔）
+AUTO_DEPLOY_RAILWAY.md
+CHECK_BOT_STATUS.md
+DEPLOYMENT_STATUS.md
+DEPLOYMENT_SUCCESS.md
+DOCKER_INSTALLATION_GUIDE.md
+FINAL_STATUS.md
+FIX_*.md
+NEXT_STEPS.md
+PLAY_*.md
+QUICK_FIX_SUMMARY.md
+RAILWAY_*.md
+RUN_INSTALLER.md
+SPOTIFY_*.md
+VOCARD_*.md
+
+# Lavalink 相關（如果不需要上傳）
+lavalink/
+
+# Dashboard 設置（可能包含敏感信息）
+dashboard/settings.json
+
+# 部署腳本（可選，如果不公開）
+auto-deploy-railway.ps1
+deploy-to-railway.ps1
+railway-auto-deploy.ps1
+check-bot-status.ps1
+install-vocard.bat
+install-vocard.ps1
+fix-install-permissions.ps1
+generate-redirect-uri.ps1
+set-railway-vars.ps1
+installer.py
+
+# Docker 相關（如果不需要）
+docker-compose.yml
+Dockerfile
+Docker安装指南.md 

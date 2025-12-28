@@ -10,7 +10,7 @@ require('dotenv').config();
 // ✅ 安全措施：引入安全工具
 const { comparePassword } = require('./security/utils/password-utils');
 const { validateLogin } = require('./security/middleware/validation');
-const { loginLimiter, apiLimiter } = require('./security/middleware/rate-limit');
+const { apiLimiter } = require('./security/middleware/rate-limit');
 const { errorHandler, notFoundHandler } = require('./security/middleware/error-handler');
 const { logSecurityEvent } = require('./security/utils/logger');
 
@@ -101,6 +101,78 @@ app.use(compression({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ✅ 配置靜態文件服務：提供 uploads 目錄中的文件
+// 確保 uploads 目錄存在
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    console.log('✅ 已創建 uploads 目錄');
+}
+
+// ✅ 配置 multer 用於文件上傳（在這裡定義，確保可以使用 uploadsDir）
+const upload = multer({
+    dest: uploadsDir, // 使用絕對路徑，確保文件保存在正確位置
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('不支持的圖片格式'));
+        }
+    }
+});
+console.log('✅ 已配置 multer 文件上傳：目標目錄 ->', uploadsDir);
+
+// 提供靜態文件服務
+const staticMiddleware = express.static(uploadsDir, {
+    maxAge: '1y', // 緩存1年
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        // 設置適當的 Content-Type
+        if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+            res.setHeader('Content-Type', 'image/jpeg');
+        } else if (filePath.endsWith('.png')) {
+            res.setHeader('Content-Type', 'image/png');
+        } else if (filePath.endsWith('.gif')) {
+            res.setHeader('Content-Type', 'image/gif');
+        } else if (filePath.endsWith('.webp')) {
+            res.setHeader('Content-Type', 'image/webp');
+        }
+    }
+});
+
+// ✅ 包裝靜態文件服務，處理文件不存在的情況
+app.use('/uploads', (req, res, next) => {
+    // ✅ 注意：在 app.use('/uploads', ...) 中，req.path 通常是 "/<filename>"
+    // 這裡必須把前導 "/" 去掉，否則 path.join(uploadsDir, "/xxx") 會變成 "/xxx"（忽略 uploadsDir）
+    const requestedPath = String(req.path || '').replace(/^\/+/, '');
+    const normalized = path.normalize(requestedPath);
+    // 防止目錄穿越
+    if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
+        return res.status(400).json({ success: false, message: '無效的文件路徑' });
+    }
+    const filePath = path.join(uploadsDir, normalized);
+    
+    // 檢查文件是否存在且是文件（不是目錄）
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        // 文件不存在，返回JSON格式的404錯誤
+        console.warn('⚠️ 找不到文件:', req.path, '->', filePath);
+        return res.status(404).json({
+            success: false,
+            message: `找不到路徑: ${req.path}`
+        });
+    }
+    
+    // 文件存在，使用靜態文件服務處理
+    staticMiddleware(req, res, next);
+});
+
+console.log('✅ 已配置靜態文件服務：/uploads ->', uploadsDir);
 
 // MongoDB 連接池
 let mongoClient = null;
@@ -288,8 +360,8 @@ app.get('/health', (req, res) => {
 });
 
 // 用戶登入驗證
-// ✅ 安全措施：添加速率限制和输入验证
-app.post('/auth/login', loginLimiter, validateApiKeys, validateLogin, async (req, res) => {
+// ✅ 安全措施：添加输入验证
+app.post('/auth/login', validateApiKeys, validateLogin, async (req, res) => {
     try {
         const { phone, password, userType, type } = req.body;
         const loginType = userType || type;
@@ -671,18 +743,46 @@ app.get('/coaches', validateApiKeys, async (req, res) => {
 // ✅ 批量保存请假记录
 app.post('/coach-roster/batch-leave', validateApiKeys, async (req, res) => {
     try {
-        const { phone, leaveEntries } = req.body;
+        const { phone, employeeId, leaveEntries } = req.body;
         
-        if (!phone || !leaveEntries || !Array.isArray(leaveEntries) || leaveEntries.length === 0) {
+        if ((!phone && !employeeId) || !leaveEntries || !Array.isArray(leaveEntries) || leaveEntries.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: '請提供有效的電話號碼和請假記錄'
+                message: '請提供有效的電話號碼或員工ID和請假記錄'
             });
         }
         
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Coach_roster');
+        
+        // ✅ 統一架構：優先使用 employeeId，如果沒有則使用 phone
+        const adminCollection = db.collection('Admin_account');
+        let employeeInfo = null;
+        let phoneToUse = phone;
+        let employeeIdToUse = employeeId;
+        
+        if (employeeIdToUse) {
+            employeeInfo = await adminCollection.findOne({ employeeId: employeeIdToUse });
+            if (employeeInfo) {
+                phoneToUse = employeeInfo.phone || phoneToUse;
+            }
+        } else if (phoneToUse) {
+            employeeInfo = await adminCollection.findOne({ phone: phoneToUse });
+            if (employeeInfo && employeeInfo.employeeId) {
+                employeeIdToUse = employeeInfo.employeeId;
+            }
+        }
+        
+        if (!employeeInfo) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到對應的員工記錄'
+            });
+        }
+        
+        phoneToUse = phoneToUse || employeeInfo.phone;
+        employeeIdToUse = employeeIdToUse || employeeInfo.employeeId;
         
         const operations = leaveEntries.map(entry => {
             const dateStr = formatDateToYYYYMMDD(entry.date) || entry.date;
@@ -691,31 +791,52 @@ app.post('/coach-roster/batch-leave', validateApiKeys, async (req, res) => {
             // ✅ 格式化 date 為 "YYYY-MM-DD" 字符串
             const dateString = formatDateToYYYYMMDD(dateObj) || dateStr;
             
-            // ✅ 構建查詢條件：同時支持字符串和 Date 對象格式的 date
+            // ✅ 構建查詢條件：優先使用 employeeId，同時支持字符串和 Date 對象格式的 date
+            const employeeFilter = [];
+            if (employeeIdToUse) {
+                employeeFilter.push({ employeeId: employeeIdToUse });
+            }
+            if (phoneToUse) {
+                employeeFilter.push({ phone: phoneToUse });
+            }
+            
             const dateFilter = {
-                phone: phone,
-                $or: [
-                    // Date 對象格式
+                $and: [
+                    // 員工匹配條件（優先使用 employeeId）
+                    ...(employeeFilter.length > 0 ? [{ $or: employeeFilter }] : []),
+                    // 日期匹配條件
                     {
-                        date: {
-                            $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
-                            $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
-                        }
-                    },
-                    // 字符串格式 "YYYY-MM-DD"（精確匹配）
-                    {
-                        date: dateString
+                        $or: [
+                            // Date 對象格式
+                            {
+                                date: {
+                                    $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
+                                    $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
+                                }
+                            },
+                            // 字符串格式 "YYYY-MM-DD"（精確匹配）
+                            {
+                                date: dateString
+                            }
+                        ]
                     }
                 ]
             };
+            
+            // ✅ 如果沒有 employeeId 和 phone，使用舊的查詢方式（向後兼容）
+            if (!employeeIdToUse && !phoneToUse) {
+                dateFilter.phone = phone;
+                delete dateFilter.$and;
+            }
             
             return {
                 updateOne: {
                     filter: dateFilter,
                     update: {
                         $set: {
-                            phone: phone,
-                            name: entry.name || '',
+                            phone: phoneToUse, // ✅ 使用驗證後的 phone
+                            employeeId: employeeIdToUse, // ✅ 添加 employeeId
+                            name: entry.name || employeeInfo?.name || '',
                             date: dateString, // ✅ 使用 "YYYY-MM-DD" 字符串格式
                             unavailable: entry.unavailable !== undefined ? entry.unavailable : true,
                             isClicked: entry.isClicked !== undefined ? entry.isClicked : true,
@@ -754,12 +875,12 @@ app.post('/coach-roster/batch-leave', validateApiKeys, async (req, res) => {
 // ✅ 批量保存更表数据
 app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
     try {
-        const { phone, name, entries, supervisorApproved, submittedBy, isSubmitted, isConfirmed } = req.body;
+        const { phone, employeeId, name, entries, supervisorApproved, managerApproved, submittedBy, isSubmitted, isConfirmed } = req.body;
         
-        if (!phone || !entries || !Array.isArray(entries) || entries.length === 0) {
+        if ((!phone && !employeeId) || !entries || !Array.isArray(entries) || entries.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: '請提供有效的電話號碼和更表記錄'
+                message: '請提供有效的電話號碼或員工ID和更表記錄'
             });
         }
         
@@ -767,7 +888,40 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Coach_roster');
         
+        // ✅ 統一架構：優先使用 employeeId，如果沒有則使用 phone
+        // 同時從 Admin_account 獲取完整的員工信息
+        const adminCollection = db.collection('Admin_account');
+        let employeeInfo = null;
+        let phoneToUse = phone;
+        let employeeIdToUse = employeeId;
+        
+        if (employeeIdToUse) {
+            // ✅ 優先使用 employeeId 查找
+            employeeInfo = await adminCollection.findOne({ employeeId: employeeIdToUse });
+            if (employeeInfo) {
+                phoneToUse = employeeInfo.phone || phoneToUse;
+            }
+        } else if (phoneToUse) {
+            // ✅ 如果沒有 employeeId，使用 phone 查找
+            employeeInfo = await adminCollection.findOne({ phone: phoneToUse });
+            if (employeeInfo && employeeInfo.employeeId) {
+                employeeIdToUse = employeeInfo.employeeId;
+            }
+        }
+        
+        if (!employeeInfo) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到對應的員工記錄'
+            });
+        }
+        
+        // ✅ 確保兩個標識符都存在
+        phoneToUse = phoneToUse || employeeInfo.phone;
+        employeeIdToUse = employeeIdToUse || employeeInfo.employeeId;
+        
         // ✅ 先按日期分組，合併同一日期的多個 entry（不同 slot）
+        const toBool = (v) => (v === true || v === 'true' || v === 1 || v === '1');
         const entriesByDate = new Map();
         
         entries.forEach(entry => {
@@ -800,11 +954,14 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
                     locationArray: ['', '', ''], // ✅ 從空數組開始，完全替換
                     slot: entry.slot || 1,
                     unavailable: entry.unavailable !== undefined ? entry.unavailable : false,
-                    isClicked: entry.isClicked !== undefined ? entry.isClicked : false,
+                    // ✅ 關鍵修復：不要默認成 false，否則 manager/supervisor 確認更表時若未帶 isClicked 會覆蓋掉教練原本 isClicked=true
+                    // 這裡保留 undefined，後面會用 existingRecord 合併
+                    isClicked: entry.isClicked !== undefined ? entry.isClicked : undefined,
                     leaveType: entry.leaveType || null,
                     isSubmitted: isSubmitted !== undefined ? isSubmitted : (entry.isSubmitted !== undefined ? entry.isSubmitted : false),
                     isConfirmed: isConfirmed !== undefined ? isConfirmed : (entry.isConfirmed !== undefined ? entry.isConfirmed : false),
                     supervisorApproved: supervisorApproved !== undefined ? supervisorApproved : (entry.supervisorApproved !== undefined ? entry.supervisorApproved : false),
+                    managerApproved: managerApproved !== undefined ? managerApproved : (entry.managerApproved !== undefined ? entry.managerApproved : false),
                     submittedBy: submittedBy || entry.submittedBy || 'supervisor'
                 });
             }
@@ -855,13 +1012,18 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
             
             // ✅ 更新其他字段（使用最後一個 entry 的值，或合併邏輯）
             if (entry.unavailable !== undefined) {
-                dateGroup.unavailable = entry.unavailable;
+                // ✅ 避免後續 slot 覆蓋：只要任一 entry 為 true，就保留 true
+                dateGroup.unavailable = toBool(dateGroup.unavailable) || toBool(entry.unavailable);
             }
             if (entry.isClicked !== undefined) {
-                dateGroup.isClicked = entry.isClicked;
+                // ✅ 避免後續 slot 覆蓋：只要任一 entry 為 true，就保留 true
+                dateGroup.isClicked = toBool(dateGroup.isClicked) || toBool(entry.isClicked);
             }
             if (entry.leaveType !== null && entry.leaveType !== undefined) {
                 dateGroup.leaveType = entry.leaveType;
+            }
+            if (entry.managerApproved !== undefined) {
+                dateGroup.managerApproved = toBool(dateGroup.managerApproved) || toBool(entry.managerApproved);
             }
         });
         
@@ -873,23 +1035,44 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
             // ✅ 格式化 date 為 "YYYY-MM-DD" 字符串
             const dateString = formatDateToYYYYMMDD(dateGroup.date) || dateGroup.dateStr;
             
-            // ✅ 構建查詢條件：同時支持字符串和 Date 對象格式的 date
+            // ✅ 構建查詢條件：優先使用 employeeId，同時支持字符串和 Date 對象格式的 date
+            // 🔥 統一架構：優先使用 employeeId 匹配
+            const employeeFilter = [];
+            if (employeeIdToUse) {
+                employeeFilter.push({ employeeId: employeeIdToUse });
+            }
+            if (phoneToUse) {
+                employeeFilter.push({ phone: phoneToUse });
+            }
+            
             const dateFilter = {
-                phone: phone,
-                $or: [
-                    // Date 對象格式
+                $and: [
+                    // 員工匹配條件（優先使用 employeeId）
+                    ...(employeeFilter.length > 0 ? [{ $or: employeeFilter }] : []),
+                    // 日期匹配條件
                     {
-                        date: {
-                            $gte: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate()),
-                            $lt: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate() + 1)
-                        }
-                    },
-                    // 字符串格式 "YYYY-MM-DD"（精確匹配）
-                    {
-                        date: dateString
+                        $or: [
+                            // Date 對象格式
+                            {
+                                date: {
+                                    $gte: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate()),
+                                    $lt: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate() + 1)
+                                }
+                            },
+                            // 字符串格式 "YYYY-MM-DD"（精確匹配）
+                            {
+                                date: dateString
+                            }
+                        ]
                     }
                 ]
             };
+            
+            // ✅ 如果沒有 employeeId 和 phone，使用舊的查詢方式（向後兼容）
+            if (!employeeIdToUse && !phoneToUse) {
+                dateFilter.phone = phone;
+                delete dateFilter.$and;
+            }
             
             // ✅ 在更新之前，先查詢數據庫中是否存在相同 date 的記錄
             const existingRecord = await collection.findOne(dateFilter);
@@ -960,16 +1143,19 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
             
             // ✅ 構建更新對象
             const updateData = {
-                phone: phone,
-                name: name || dateGroup.entries[0]?.name || '',
+                phone: phoneToUse, // ✅ 使用驗證後的 phone
+                employeeId: employeeIdToUse, // ✅ 添加 employeeId
+                name: name || dateGroup.entries[0]?.name || employeeInfo?.name || '',
                 date: dateString, // ✅ 使用 "YYYY-MM-DD" 字符串格式
                 slot: dateGroup.slot,
                 unavailable: dateGroup.unavailable !== undefined ? dateGroup.unavailable : false,
-                isClicked: dateGroup.isClicked !== undefined ? dateGroup.isClicked : false,
+                // ✅ 關鍵修復：如果本次請求沒有明確帶 isClicked，保留 DB 既有值（避免把教練原本 isClicked=true 覆蓋成 false）
+                isClicked: dateGroup.isClicked !== undefined ? toBool(dateGroup.isClicked) : (existingRecord?.isClicked !== undefined ? toBool(existingRecord.isClicked) : false),
                 leaveType: dateGroup.leaveType || null,
                 isSubmitted: dateGroup.isSubmitted !== undefined ? dateGroup.isSubmitted : false,
                 isConfirmed: dateGroup.isConfirmed !== undefined ? dateGroup.isConfirmed : false,
                 supervisorApproved: dateGroup.supervisorApproved !== undefined ? dateGroup.supervisorApproved : false,
+                managerApproved: dateGroup.managerApproved !== undefined ? toBool(dateGroup.managerApproved) : (existingRecord?.managerApproved !== undefined ? toBool(existingRecord.managerApproved) : false),
                 submittedBy: dateGroup.submittedBy || 'supervisor',
                 updatedAt: new Date()
             };
@@ -1018,18 +1204,46 @@ app.post('/coach-roster/batch', validateApiKeys, async (req, res) => {
 // ✅ 批量清除更表数据
 app.post('/coach-roster/batch-clear', validateApiKeys, async (req, res) => {
     try {
-        const { phone, clearEntries } = req.body;
+        const { phone, employeeId, clearEntries } = req.body;
         
-        if (!phone || !clearEntries || !Array.isArray(clearEntries) || clearEntries.length === 0) {
+        if ((!phone && !employeeId) || !clearEntries || !Array.isArray(clearEntries) || clearEntries.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: '請提供有效的電話號碼和清除記錄'
+                message: '請提供有效的電話號碼或員工ID和清除記錄'
             });
         }
         
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Coach_roster');
+        
+        // ✅ 統一架構：優先使用 employeeId，如果沒有則使用 phone
+        const adminCollection = db.collection('Admin_account');
+        let employeeInfo = null;
+        let phoneToUse = phone;
+        let employeeIdToUse = employeeId;
+        
+        if (employeeIdToUse) {
+            employeeInfo = await adminCollection.findOne({ employeeId: employeeIdToUse });
+            if (employeeInfo) {
+                phoneToUse = employeeInfo.phone || phoneToUse;
+            }
+        } else if (phoneToUse) {
+            employeeInfo = await adminCollection.findOne({ phone: phoneToUse });
+            if (employeeInfo && employeeInfo.employeeId) {
+                employeeIdToUse = employeeInfo.employeeId;
+            }
+        }
+        
+        if (!employeeInfo) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到對應的員工記錄'
+            });
+        }
+        
+        phoneToUse = phoneToUse || employeeInfo.phone;
+        employeeIdToUse = employeeIdToUse || employeeInfo.employeeId;
         
         // ✅ 先按日期分组，获取现有记录
         const clearEntriesByDate = new Map();
@@ -1039,14 +1253,24 @@ app.post('/coach-roster/batch-clear', validateApiKeys, async (req, res) => {
             const dateKey = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
             
             if (!clearEntriesByDate.has(dateKey)) {
-                // ✅ 获取现有记录
-                const existingRecord = await collection.findOne({
-                    phone: phone,
+                // ✅ 获取现有记录：優先使用 employeeId
+                const existingRecordFilter = {
+                    $or: [
+                        ...(employeeIdToUse ? [{ employeeId: employeeIdToUse }] : []),
+                        ...(phoneToUse ? [{ phone: phoneToUse }] : [])
+                    ],
                     date: {
                         $gte: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()),
                         $lt: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate() + 1)
                     }
-                });
+                };
+                
+                // ✅ 如果沒有 employeeId 和 phone，使用舊的查詢方式（向後兼容）
+                if (!employeeIdToUse && !phoneToUse) {
+                    existingRecordFilter.phone = phone;
+                }
+                
+                const existingRecord = await collection.findOne(existingRecordFilter);
                 
                 // ✅ 获取现有的 time 和 location 数组（如果存在）
                 let existingTimeArray = ['', '', ''];
@@ -1160,23 +1384,47 @@ app.post('/coach-roster/batch-clear', validateApiKeys, async (req, res) => {
             // ✅ 格式化 date 為 "YYYY-MM-DD" 字符串（用於查詢）
             const dateStringForQuery = formatDateToYYYYMMDD(dateGroup.date) || dateGroup.dateStr;
             
-            // ✅ 構建查詢條件：同時支持字符串和 Date 對象格式的 date
+            // ✅ 構建查詢條件：優先使用 employeeId，同時支持字符串和 Date 對象格式的 date
+            const employeeFilter = [];
+            if (employeeIdToUse) {
+                employeeFilter.push({ employeeId: employeeIdToUse });
+            }
+            if (phoneToUse) {
+                employeeFilter.push({ phone: phoneToUse });
+            }
+            
             const dateFilter = {
-                phone: phone,
-                $or: [
-                    // Date 對象格式
+                $and: [
+                    // 員工匹配條件（優先使用 employeeId）
+                    ...(employeeFilter.length > 0 ? [{ $or: employeeFilter }] : []),
+                    // 日期匹配條件
                     {
-                        date: {
-                            $gte: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate()),
-                            $lt: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate() + 1)
-                        }
-                    },
-                    // 字符串格式 "YYYY-MM-DD"（精確匹配）
-                    {
-                        date: dateStringForQuery
+                        $or: [
+                            // Date 對象格式
+                            {
+                                date: {
+                                    $gte: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate()),
+                                    $lt: new Date(dateGroup.date.getFullYear(), dateGroup.date.getMonth(), dateGroup.date.getDate() + 1)
+                                }
+                            },
+                            // 字符串格式 "YYYY-MM-DD"（精確匹配）
+                            {
+                                date: dateStringForQuery
+                            }
+                        ]
                     }
                 ]
             };
+            
+            // ✅ 如果沒有 employeeId 和 phone，使用舊的查詢方式（向後兼容）
+            if (!employeeIdToUse && !phoneToUse) {
+                dateFilter.phone = phone;
+                delete dateFilter.$and;
+            }
+            
+            // ✅ 確保更新數據包含 employeeId 和 phone
+            updateFields.phone = phoneToUse;
+            updateFields.employeeId = employeeIdToUse;
             
             return {
                 updateOne: {
@@ -1266,9 +1514,27 @@ app.get('/roster', validateApiKeys, async (req, res) => {
             ];
         }
         // ✅ 如果沒有指定月份，獲取全年數據
-        // ✅ 處理 phone 參數：空字符串表示獲取所有教練的數據，不添加查詢條件
+        // ✅ 處理 phone/employeeId 參數：空字符串表示獲取所有教練的數據，不添加查詢條件
+        // 🔥 統一架構：優先使用 employeeId 匹配，同時支持 phone 作為後備
         if (phone && phone.trim() !== '') {
-            query.phone = phone.trim();
+            const identifier = phone.trim();
+            // ✅ 判斷是 employeeId 格式（如 "C0002"）還是 phone 格式（8位數字）
+            const isEmployeeId = /^[A-Z]\d{4}$/.test(identifier);
+            const isPhone = /^\d{8}$/.test(identifier);
+            
+            if (isEmployeeId) {
+                // ✅ 如果是 employeeId 格式，優先使用 employeeId 查詢
+                query.employeeId = identifier;
+            } else if (isPhone) {
+                // ✅ 如果是 phone 格式，使用 phone 查詢
+                query.phone = identifier;
+            } else {
+                // ✅ 如果不確定格式，同時支持兩種查詢（向後兼容）
+                query.$or = [
+                    { phone: identifier },
+                    { employeeId: identifier }
+                ];
+            }
         }
         
         const roster = await collection.find(query).toArray();
@@ -1328,6 +1594,7 @@ app.get('/roster', validateApiKeys, async (req, res) => {
                     isClicked: item.isClicked !== undefined ? item.isClicked : true,
                     leaveType: item.leaveType || null,
                     supervisorApproved: item.supervisorApproved !== undefined ? item.supervisorApproved : false,
+                    managerApproved: item.managerApproved !== undefined ? item.managerApproved : false,
                     submittedBy: item.submittedBy || 'supervisor'
                     // ✅ 假期類型也返回 location，但不返回 time
                 });
@@ -1350,6 +1617,7 @@ app.get('/roster', validateApiKeys, async (req, res) => {
                         isClicked: item.isClicked !== undefined ? item.isClicked : false,
                         leaveType: null,
                         supervisorApproved: item.supervisorApproved !== undefined ? item.supervisorApproved : false,
+                        managerApproved: item.managerApproved !== undefined ? item.managerApproved : false,
                         submittedBy: item.submittedBy || 'supervisor'
                         // ✅ 工作類型不返回 time 字段
                     });
@@ -1368,6 +1636,7 @@ app.get('/roster', validateApiKeys, async (req, res) => {
                     isClicked: item.isClicked !== undefined ? item.isClicked : false,
                     leaveType: null,
                     supervisorApproved: item.supervisorApproved !== undefined ? item.supervisorApproved : false,
+                    managerApproved: item.managerApproved !== undefined ? item.managerApproved : false,
                     submittedBy: item.submittedBy || 'supervisor'
                     // ✅ 工作類型不返回 time 字段
                 });
@@ -1425,6 +1694,82 @@ app.get('/attendance', validateApiKeys, async (req, res) => {
     }
 });
 
+// 獲取所有出席記錄（用於資料管理的出席記錄標籤）
+app.get('/attendance/all', validateApiKeys, async (req, res) => {
+    try {
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const attendanceCollection = db.collection('Attendance');
+        const timeslotCollection = db.collection('students_timeslot');
+        const studentCollection = db.collection('Student_account');
+        
+        // 獲取所有出席記錄
+        const attendanceRecords = await attendanceCollection.find({}).toArray();
+        
+        // 獲取所有時段記錄（包含學生信息）
+        const timeslotRecords = await timeslotCollection.find({
+            classDate: { $nin: [null, ''] },
+            isPending: { $ne: true }
+        }).toArray();
+        
+        // 獲取所有學生信息
+        const students = await studentCollection.find({}).toArray();
+        const studentMap = new Map();
+        students.forEach(s => {
+            if (s.studentId) {
+                studentMap.set(s.studentId, s);
+            }
+        });
+        
+        // 合併出席記錄和時段記錄
+        const allRecords = [];
+        
+        // 處理 Attendance 集合的記錄
+        attendanceRecords.forEach(record => {
+            const studentId = record.studentId;
+            const student = studentMap.get(studentId);
+            allRecords.push({
+                ...record,
+                // ✅ 修復：保留 null/undefined（初始狀態），不要把 null 誤轉成 false（缺席）
+                isAttended: record.isAttended === true ? true : (record.isAttended === false ? false : null),
+                isLeave: record.isLeave === true ? true : (record.isLeave === false ? false : null),
+                student: student || null,
+                source: 'Attendance'
+            });
+        });
+        
+        // 處理 students_timeslot 集合的記錄
+        timeslotRecords.forEach(record => {
+            const studentId = record.studentId;
+            const student = studentMap.get(studentId);
+            allRecords.push({
+                studentId: studentId,
+                name: student ? student.name : '',
+                date: record.classDate || '',
+                time: record.time || '',
+                location: Array.isArray(record.location) ? record.location.join(', ') : record.location || '',
+                // ✅ 修復：保留 null/undefined（初始狀態），不要把 null 誤轉成 false（缺席）
+                isAttended: record.isAttended === true ? true : (record.isAttended === false ? false : null),
+                isLeave: record.isLeave === true ? true : (record.isLeave === false ? false : null),
+                student: student || null,
+                source: 'students_timeslot'
+            });
+        });
+        
+        res.json({
+            success: true,
+            attendance: allRecords
+        });
+    } catch (error) {
+        console.error('❌ 獲取所有出席記錄失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取所有出席記錄失敗',
+            error: error.message
+        });
+    }
+});
+
 // 獲取出席管理數據（按 classDate 和 location 分組）
 app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
     try {
@@ -1450,6 +1795,125 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
         
         // 查詢時段記錄
         const timeslots = await timeslotCollection.find(timeslotQuery).toArray();
+        
+        // ✅ 新增：查詢原始位置的記錄（已修改但原始位置匹配當前查詢參數）
+        console.log(`🔎 開始查詢原始位置記錄，參數: classDate=${classDate}, location=${location}`);
+        let originalLocationTimeslots = [];
+        
+        // ✅ 只要有查詢日期或地點，就嘗試查找原始位置的記錄
+        if (classDate || location) {
+            // ✅ 構建查詢條件：查找原始位置匹配查詢參數但當前位置不同的記錄
+            const orConditions = [];
+            
+            if (classDate) {
+                // ✅ 標準化日期格式以確保匹配
+                const formattedClassDate = formatDateToYYYYMMDD(classDate) || classDate;
+                
+                // ✅ 情況1：initialClassDate 存在且匹配（已修改過日期，原始日期匹配）
+                // 注意：只要 initialClassDate 匹配，且當前 classDate 不同即可（不需要 location 條件）
+                orConditions.push({
+                    initialClassDate: formattedClassDate,
+                    classDate: { $ne: formattedClassDate } // 當前日期必須不同
+                });
+                
+                // ✅ 情況1b：也嘗試匹配原始格式（以防格式不一致）
+                if (formattedClassDate !== classDate) {
+                    orConditions.push({
+                        initialClassDate: classDate,
+                        classDate: { $ne: classDate }
+                    });
+                }
+            }
+            
+            if (location) {
+                // ✅ 情況2：initialLocation 存在且匹配（已修改過地點，原始地點匹配）
+                orConditions.push({
+                    initialLocation: location,
+                    location: { $ne: location } // 當前地點必須不同
+                });
+            }
+            
+            // ✅ 只要有查詢條件，就執行查詢
+            if (orConditions.length > 0) {
+                const originalQuery = {
+                    isPending: { $ne: true },
+                    $or: orConditions
+                };
+                
+                console.log('🔍 查詢原始位置記錄 - 查詢條件:', JSON.stringify(originalQuery, null, 2));
+                console.log('🔍 查詢原始位置記錄 - 參數:', { classDate, location });
+                
+                originalLocationTimeslots = await timeslotCollection.find(originalQuery).toArray();
+                
+                console.log(`📊 MongoDB查詢結果: 找到 ${originalLocationTimeslots.length} 條記錄`);
+                if (originalLocationTimeslots.length > 0) {
+                    console.log('📋 原始位置記錄詳細信息:');
+                    originalLocationTimeslots.forEach((record, index) => {
+                        console.log(`  記錄 ${index + 1}:`, {
+                            recordId: record._id,
+                            initialClassDate: record.initialClassDate,
+                            classDate: record.classDate,
+                            initialLocation: record.initialLocation,
+                            location: record.location,
+                            isChangeDate: record.isChangeDate,
+                            isChangeLocation: record.isChangeLocation
+                        });
+                    });
+                }
+                
+                // ✅ 過濾：確保原始位置確實匹配查詢條件，且當前位置不同
+                const beforeFilterCount = originalLocationTimeslots.length;
+                originalLocationTimeslots = originalLocationTimeslots.filter(record => {
+                    // 確定原始日期和地點（優先使用 initial 字段）
+                    const recordOriginalDate = record.initialClassDate || record.classDate || '';
+                    const recordOriginalLocation = record.initialLocation || record.location || '';
+                    
+                    // ✅ 標準化日期格式進行比較
+                    const formattedRecordOriginalDate = formatDateToYYYYMMDD(recordOriginalDate) || recordOriginalDate;
+                    const formattedQueryDate = formatDateToYYYYMMDD(classDate) || classDate;
+                    
+                    // 檢查原始位置是否匹配查詢條件
+                    const originalDateMatches = !classDate || 
+                        formattedRecordOriginalDate === formattedQueryDate || 
+                        recordOriginalDate === classDate || 
+                        formattedRecordOriginalDate === classDate;
+                    const originalLocationMatches = !location || recordOriginalLocation === location;
+                    
+                    // ✅ 如果查詢了日期但原始日期不匹配，過濾掉
+                    if (classDate && !originalDateMatches) {
+                        console.log(`   ❌ 過濾記錄 ${record._id}: 原始日期 ${recordOriginalDate} 不匹配查詢日期 ${classDate}`);
+                        return false;
+                    }
+                    
+                    // ✅ 如果查詢了地點但原始地點不匹配，過濾掉
+                    if (location && !originalLocationMatches) {
+                        console.log(`   ❌ 過濾記錄 ${record._id}: 原始地點 ${recordOriginalLocation} 不匹配查詢地點 ${location}`);
+                        return false;
+                    }
+                    
+                    // 確保當前位置與查詢參數不同（避免重複顯示）
+                    const formattedRecordCurrentDate = formatDateToYYYYMMDD(record.classDate) || record.classDate;
+                    const currentDateMatches = !classDate || 
+                        (formattedRecordCurrentDate !== formattedQueryDate && 
+                         record.classDate !== classDate && 
+                         formattedRecordCurrentDate !== classDate);
+                    const currentLocationMatches = !location || record.location !== location;
+                    
+                    const shouldKeep = currentDateMatches || currentLocationMatches;
+                    if (!shouldKeep) {
+                        console.log(`   ❌ 過濾記錄 ${record._id}: 當前位置與查詢參數相同，避免重複顯示`);
+                    }
+                    
+                    return shouldKeep;
+                });
+                
+                console.log(`✅ 過濾完成: ${beforeFilterCount} -> ${originalLocationTimeslots.length} 條記錄`);
+            } else {
+                console.log('⚠️ 沒有構建任何查詢條件，跳過原始位置記錄查詢');
+            }
+        } else {
+            console.log('⚠️ 沒有提供 classDate 或 location 參數，跳過原始位置記錄查詢');
+        }
         
         // ==================== 2. 查詢 trail_bill 集合 ====================
         const trialQuery = {
@@ -1505,7 +1969,9 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
         // 合併兩個數據源
         const allRecords = [...timeslots, ...convertedTrials];
         
-        if (allRecords.length === 0) {
+        // ✅ 注意：即使 allRecords 為空，也可能有原始位置記錄需要顯示
+        // 所以不能提前返回，需要繼續處理原始位置記錄
+        if (allRecords.length === 0 && originalLocationTimeslots.length === 0) {
             return res.json({
                 success: true,
                 data: [],
@@ -1514,17 +1980,23 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
         }
         
         // ==================== 4. 獲取學生信息 ====================
-        // 獲取所有唯一的 studentId 和 phone
-        const studentIds = [...new Set(allRecords.map(t => t.studentId).filter(Boolean))];
-        const phones = [...new Set(allRecords.map(t => t.studentPhone).filter(Boolean))];
+        // 獲取所有唯一的 studentId 和 phone（包括原始位置記錄）
+        const allStudentIds = [...new Set([
+            ...allRecords.map(t => t.studentId).filter(Boolean),
+            ...originalLocationTimeslots.map(t => t.studentId).filter(Boolean)
+        ])];
+        const allPhones = [...new Set([
+            ...allRecords.map(t => t.studentPhone).filter(Boolean),
+            ...originalLocationTimeslots.map(t => t.studentPhone).filter(Boolean)
+        ])];
         
         // 批量查詢學生信息（通過 studentId 或 phone）
         const studentQueries = [];
-        if (studentIds.length > 0) {
-            studentQueries.push({ studentId: { $in: studentIds } });
+        if (allStudentIds.length > 0) {
+            studentQueries.push({ studentId: { $in: allStudentIds } });
         }
-        if (phones.length > 0) {
-            studentQueries.push({ phone: { $in: phones } });
+        if (allPhones.length > 0) {
+            studentQueries.push({ phone: { $in: allPhones } });
         }
         
         let students = [];
@@ -1543,9 +2015,12 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
         });
         
         // ==================== 5. 批量獲取學生的可約補堂數 ====================
-        // ✅ 為了優化性能，批量查詢所有學生的可約補堂數
+        // ✅ 為了優化性能，批量查詢所有學生的可約補堂數（包括原始位置記錄）
         const studentBookableMakeupMap = {};
-        const uniqueStudentIds = [...new Set(allRecords.map(r => r.studentId).filter(Boolean))];
+        const uniqueStudentIds = [...new Set([
+            ...allRecords.map(r => r.studentId).filter(Boolean),
+            ...originalLocationTimeslots.map(r => r.studentId).filter(Boolean)
+        ])];
         
         // ✅ 並行查詢每個學生的可約補堂數（簡化版本：只查詢當前記錄相關的數據）
         const bookableMakeupPromises = uniqueStudentIds.map(async (studentId) => {
@@ -1638,8 +2113,111 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
                 isEdited: isEdited,
                 totalTimeSlot: totalTimeSlot,
                 originalTimeSlot: originalTimeSlot,
-                bookableMakeup: bookableMakeup
+                bookableMakeup: bookableMakeup,
+                isOriginalLocation: false  // ✅ 標記為當前位置記錄
             });
+        });
+        
+        // ✅ 處理原始位置的記錄（已修改的記錄）
+        console.log('═══════════════════════════════════════════════════════════');
+        console.log(`🔄 準備處理原始位置記錄，變量 originalLocationTimeslots 的長度: ${originalLocationTimeslots ? originalLocationTimeslots.length : 'undefined'}`);
+        console.log(`🔄 開始處理 ${originalLocationTimeslots.length} 條原始位置記錄`);
+        originalLocationTimeslots.forEach(record => {
+            // 使用原始位置作為key
+            // ✅ 注意：如果 initialLocation 不存在，使用當前 location 作為原始地點
+            const originalDate = record.initialClassDate || record.classDate || '';
+            const originalLoc = record.initialLocation !== undefined ? record.initialLocation : (record.location || '');
+            const key = `${originalDate}_${originalLoc || ''}`;
+            
+            console.log(`📍 處理原始位置記錄: ${key}, recordId: ${record._id}, currentDate: ${record.classDate}, currentLocation: ${record.location}`);
+            console.log(`   - originalDate: ${originalDate}, originalLoc: ${originalLoc}`);
+            console.log(`   - dateLocationGroups 中是否已存在 key '${key}': ${!!dateLocationGroups[key]}`);
+            
+            if (!dateLocationGroups[key]) {
+                console.log(`   ✅ 創建新的 dateLocationGroups 條目: ${key}`);
+                dateLocationGroups[key] = {
+                    classDate: originalDate,
+                    location: originalLoc,
+                    groups: {}
+                };
+            } else {
+                console.log(`   ℹ️ 使用現有的 dateLocationGroups 條目: ${key}`);
+            }
+            
+            // 按原始時間分組
+            const originalTime = record.initialClassTime || record.classTime || '';
+            const originalFormat = record.originalClassFormat || record.classFormat || '';
+            const originalInstructorType = record.originalInstructorType || record.instructorType || '';
+            const groupKey = `${originalTime}_${originalFormat}_${originalInstructorType}`;
+            
+            if (!dateLocationGroups[key].groups[groupKey]) {
+                dateLocationGroups[key].groups[groupKey] = {
+                    classTime: originalTime,
+                    classFormat: originalFormat,
+                    instructorType: originalInstructorType,
+                    instructorName: record.instructorName || '',
+                    students: []
+                };
+            }
+            
+            // 獲取學生信息
+            const student = record.studentId ? studentMap[record.studentId] : 
+                           record.studentPhone ? phoneMap[record.studentPhone] : null;
+            
+            // ✅ 計算 isEdited
+            const isChangeDate = record.isChangeDate || false;
+            const isChangeTime = record.isChangeTime || false;
+            const isChangeLocation = record.isChangeLocation || false;
+            const isEdited = isChangeDate || isChangeTime || isChangeLocation;
+            
+            // ✅ 獲取 totalTimeSlot 和 originalTimeSlot
+            const totalTimeSlot = record.total_time_slot || record.totalTimeSlot || 0;
+            const originalTimeSlot = record.originalTimeSlot || record.original_time_slot || 0;
+            
+            // ✅ 獲取可約補堂數
+            const bookableMakeup = studentBookableMakeupMap[record.studentId] || 0;
+            
+            // ✅ 添加原始位置記錄，標記為 isOriginalLocation = true
+            const studentData = {
+                recordId: record._id.toString(),
+                studentId: record.studentId || '',
+                studentName: student?.name || record.name || '未知學生',
+                studentPhone: record.studentPhone || student?.phone || '',
+                isAttended: record.isAttended,
+                isLeave: record.isLeave || false,
+                isTrialBill: record.isTrialBill || false,
+                originalClassDate: originalDate,  // 原始日期
+                originalClassTime: originalTime,  // 原始時間
+                originalLocation: originalLoc,      // 原始地點
+                originalClassFormat: originalFormat,
+                originalInstructorType: originalInstructorType,
+                instructorType: record.instructorType || '',
+                instructorName: record.instructorName || '',
+                isChangeDate: isChangeDate,
+                isChangeTime: isChangeTime,
+                isChangeLocation: isChangeLocation,
+                isEdited: isEdited,
+                totalTimeSlot: totalTimeSlot,
+                originalTimeSlot: originalTimeSlot,
+                bookableMakeup: bookableMakeup,
+                isOriginalLocation: true,  // ✅ 標記為原始位置記錄
+                currentClassDate: record.classDate,  // ✅ 當前位置日期
+                currentLocation: record.location     // ✅ 當前位置地點
+            };
+            
+            dateLocationGroups[key].groups[groupKey].students.push(studentData);
+            console.log(`   ✅ 已添加學生記錄到 ${key}/${groupKey}, isOriginalLocation: ${studentData.isOriginalLocation}`);
+        });
+        
+        // ✅ 調試：檢查 dateLocationGroups 的內容
+        console.log(`📦 dateLocationGroups 總共包含 ${Object.keys(dateLocationGroups).length} 個日期-地點組合`);
+        Object.keys(dateLocationGroups).forEach(key => {
+            const dlg = dateLocationGroups[key];
+            const totalStudents = Object.values(dlg.groups).reduce((sum, group) => sum + group.students.length, 0);
+            const originalLocationStudents = Object.values(dlg.groups).reduce((sum, group) => {
+                return sum + group.students.filter(s => s.isOriginalLocation === true).length;
+            }, 0);
+            console.log(`   - ${key}: ${Object.keys(dlg.groups).length} 個時段組, ${totalStudents} 個學生 (其中 ${originalLocationStudents} 個是原始位置記錄)`);
         });
         
         // 轉換為數組格式並排序
@@ -1666,7 +2244,18 @@ app.get('/attendance/timeslots', validateApiKeys, async (req, res) => {
             return (a.classDate || '').localeCompare(b.classDate || '');
         });
         
-        const totalRecords = allRecords.length;
+        // ✅ 計算總記錄數（包括原始位置記錄）
+        const totalRecords = allRecords.length + originalLocationTimeslots.length;
+        
+        // ✅ 調試：檢查返回的結果
+        console.log(`📤 準備返回數據: ${result.length} 個日期-地點組合`);
+        result.forEach((dlg, index) => {
+            const totalStudents = dlg.groups.reduce((sum, group) => sum + group.students.length, 0);
+            const originalLocationStudents = dlg.groups.reduce((sum, group) => {
+                return sum + group.students.filter(s => s.isOriginalLocation === true).length;
+            }, 0);
+            console.log(`   組合 ${index + 1}: classDate=${dlg.classDate}, location=${dlg.location}, ${dlg.groups.length} 個時段組, ${totalStudents} 個學生 (其中 ${originalLocationStudents} 個是原始位置記錄)`);
+        });
         
         res.json({
             success: true,
@@ -1794,6 +2383,26 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
         if (classTime !== undefined) {
             updateData.classTime = classTime;
             
+            // ✅ 時間修改历史（如果時間改變了）
+            if (timeChanged) {
+                // ✅ 保存原始值（只在第一次修改时保存）
+                if (!originalRecord.initialClassTime) {
+                    updateData.initialClassTime = originalTime;
+                }
+                
+                // ✅ 追加到修改历史数组
+                const currentTimeHistory = originalRecord.classTimeHistory || [];
+                currentTimeHistory.push({
+                    oldValue: originalTime,
+                    newValue: classTime,
+                    modifiedAt: new Date()
+                });
+                updateData.classTimeHistory = currentTimeHistory;
+                
+                // ✅ 同时保存最后一次修改前的值（方便快速查询）
+                updateData.previousClassTime = originalTime;
+            }
+            
             // ✅ 新的邏輯：
             // 1. 如果同時修改了日期或地點，isChangeTime 為 false
             // 2. 如果只修改了時間，需要比較 time_slot：
@@ -1857,9 +2466,26 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
         if (instructorType !== undefined) {
             updateData.instructorType = instructorType;
         }
+        // ✅ 日期修改历史（在 move 端点中）
         if (classDate !== undefined) {
-            // ✅ 只有當日期實際改變時，才更新日期和設置 isChangeDate = true
             if (dateChanged) {
+                // ✅ 保存原始值（只在第一次修改时保存）
+                if (!originalRecord.initialClassDate) {
+                    updateData.initialClassDate = originalDate;
+                }
+                
+                // ✅ 追加到修改历史数组
+                const currentDateHistory = originalRecord.classDateHistory || [];
+                currentDateHistory.push({
+                    oldValue: originalDate,
+                    newValue: classDate,
+                    modifiedAt: new Date()
+                });
+                updateData.classDateHistory = currentDateHistory;
+                
+                // ✅ 同时保存最后一次修改前的值（方便快速查询）
+                updateData.previousClassDate = originalDate;
+                
                 updateData.classDate = classDate;
                 updateData.isChangeDate = true;
             } else {
@@ -1867,9 +2493,27 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
                 updateData.isChangeDate = false;
             }
         }
+        
+        // ✅ 地點修改历史（在 move 端点中）
         if (location !== undefined) {
-            // ✅ 只有當地點實際改變時，才更新地點和設置 isChangeLocation = true
             if (locationChanged) {
+                // ✅ 保存原始值（只在第一次修改时保存）
+                if (!originalRecord.initialLocation) {
+                    updateData.initialLocation = originalLocation;
+                }
+                
+                // ✅ 追加到修改历史数组
+                const currentLocationHistory = originalRecord.locationHistory || [];
+                currentLocationHistory.push({
+                    oldValue: originalLocation,
+                    newValue: location,
+                    modifiedAt: new Date()
+                });
+                updateData.locationHistory = currentLocationHistory;
+                
+                // ✅ 同时保存最后一次修改前的值（方便快速查询）
+                updateData.previousLocation = originalLocation;
+                
                 updateData.location = location;
                 updateData.isChangeLocation = true;
             } else {
@@ -1947,9 +2591,26 @@ app.put('/attendance/timeslot/date-location', validateApiKeys, async (req, res) 
             updatedAt: new Date()
         };
         
+        // ✅ 日期修改历史
         if (classDate !== undefined) {
-            // ✅ 只有當日期實際改變時，才更新日期和設置 isChangeDate = true
             if (dateChanged) {
+                // ✅ 保存原始值（只在第一次修改时保存）
+                if (!originalRecord.initialClassDate) {
+                    updateData.initialClassDate = originalDate;
+                }
+                
+                // ✅ 追加到修改历史数组
+                const currentDateHistory = originalRecord.classDateHistory || [];
+                currentDateHistory.push({
+                    oldValue: originalDate,
+                    newValue: classDate,
+                    modifiedAt: new Date()
+                });
+                updateData.classDateHistory = currentDateHistory;
+                
+                // ✅ 同时保存最后一次修改前的值（方便快速查询）
+                updateData.previousClassDate = originalDate;
+                
                 updateData.classDate = classDate;
                 updateData.isChangeDate = true;
             } else {
@@ -1957,9 +2618,27 @@ app.put('/attendance/timeslot/date-location', validateApiKeys, async (req, res) 
                 updateData.isChangeDate = false;
             }
         }
+        
+        // ✅ 地點修改历史
         if (location !== undefined) {
-            // ✅ 只有當地點實際改變時，才更新地點和設置 isChangeLocation = true
             if (locationChanged) {
+                // ✅ 保存原始值（只在第一次修改时保存）
+                if (!originalRecord.initialLocation) {
+                    updateData.initialLocation = originalLocation;
+                }
+                
+                // ✅ 追加到修改历史数组
+                const currentLocationHistory = originalRecord.locationHistory || [];
+                currentLocationHistory.push({
+                    oldValue: originalLocation,
+                    newValue: location,
+                    modifiedAt: new Date()
+                });
+                updateData.locationHistory = currentLocationHistory;
+                
+                // ✅ 同时保存最后一次修改前的值（方便快速查询）
+                updateData.previousLocation = originalLocation;
+                
                 updateData.location = location;
                 updateData.isChangeLocation = true;
             } else {
@@ -2483,21 +3162,29 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
                 orConditions.push({ phone: phoneToUse });
             }
             
+            // ✅ 關鍵修復：工時記錄的唯一鍵必須包含 location + club
+            // 否則同一員工同一天不同地點/泳會的多筆記錄會互相覆蓋，導致 feeContent 等字段被清空
+            const normalizedLocation = (record.location ?? '').toString();
+            const normalizedClub = (record.club ?? '').toString();
             const filter = {
                 $or: orConditions.length > 0 ? orConditions : [{ phone: phoneToUse }],
-                    workDate: record.workDate,
-                    editorType: record.editorType
+                workDate: record.workDate,
+                editorType: record.editorType,
+                location: normalizedLocation,
+                club: normalizedClub
             };
             
             // ✅ 統一數據格式：確保保存的記錄同時包含 phone 和 employeeId
             const recordToSave = {
-                        ...record,
+                ...record,
                 phone: phoneToUse, // ✅ 確保包含 phone
                 employeeId: employeeIdToUse, // ✅ 確保包含 employeeId
-                        submittedBy,
-                        submittedByName,
-                        submittedByType,
-                        updatedAt: new Date()
+                location: normalizedLocation,
+                club: normalizedClub,
+                submittedBy,
+                submittedByName,
+                submittedByType,
+                updatedAt: new Date()
             };
             
             return {
@@ -3088,6 +3775,15 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Admin_account');
+
+        // ✅ 昵稱必填（前端也會驗證，但後端必須兜底）
+        const nickname = (employeeData?.nickname || '').toString().trim();
+        if (!nickname) {
+            return res.status(400).json({
+                success: false,
+                message: '昵稱為必填'
+            });
+        }
         
         // 檢查電話是否已存在
         const existing = await collection.findOne({ phone: employeeData.phone });
@@ -3190,6 +3886,7 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         
         const result = await collection.insertOne({
             ...employeeData,
+            nickname: nickname, // ✅ 確保存入的是 trim 後的值
             employeeId: newEmployeeId, // ✅ 分配唯一的 employeeId
             password: password, // ✅ 使用電話號碼後四位作為密碼
             createdAt: new Date(),
@@ -3202,6 +3899,8 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
             employee: {
                 id: result.insertedId,
                 ...employeeData,
+                employeeId: newEmployeeId,
+                nickname: nickname,
                 password: password // ✅ 返回生成的密碼給前端顯示
             }
         });
@@ -3570,112 +4269,21 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('trail_bill');
-        
-        // ✅ 生成唯一的 trailId（格式：T + 6位數字，如 T000010）
-        // 查找現有最大的 trailId（支持舊的 TrailID 格式以保持兼容性）
-        const maxTrailResult = await collection.aggregate([
-            {
-                $match: {
-                    $or: [
-                        { trailId: { $exists: true, $ne: null, $regex: /^T\d{6}$/ } },  // ✅ 匹配 T + 6位數字
-                        { TrailID: { $exists: true, $ne: null, $regex: /^T\d{6}$/ } },  // ✅ 兼容舊格式
-                        { trailId: { $exists: true, $ne: null, $regex: /^\d{8}$/ } },  // ✅ 兼容純數字格式
-                        { TrailID: { $exists: true, $ne: null, $regex: /^\d{8}$/ } }   // ✅ 兼容舊的純數字格式
-                    ]
-                }
-            },
-            {
-                $project: {
-                    trailId: 1,
-                    TrailID: 1,
-                    number: {
-                        $cond: {
-                            if: { 
-                                $and: [
-                                    { $ne: ['$trailId', null] }, 
-                                    { $ne: ['$trailId', ''] },
-                                    { $regexMatch: { input: { $toString: '$trailId' }, regex: /^T\d{6}$/ } }
-                                ] 
-                            },
-                            then: { 
-                                $toInt: { $substr: ['$trailId', 1, -1] }  // ✅ 去掉 T，提取數字部分
-                            },
-                            else: {
-                                $cond: {
-                                    if: { 
-                                        $and: [
-                                            { $ne: ['$TrailID', null] }, 
-                                            { $ne: ['$TrailID', ''] },
-                                            { $regexMatch: { input: { $toString: '$TrailID' }, regex: /^T\d{6}$/ } }
-                                        ] 
-                                    },
-                                    then: { 
-                                        $toInt: { $substr: ['$TrailID', 1, -1] }  // ✅ 去掉 T，提取數字部分
-                                    },
-                                    else: {
-                                        $cond: {
-                                            if: { $and: [{ $ne: ['$trailId', null] }, { $ne: ['$trailId', ''] }] },
-                                            then: { 
-                                                $convert: {
-                                                    input: '$trailId',
-                                                    to: 'int',
-                                                    onError: null,
-                                                    onNull: null
-                                                }
-                                            },
-                                            else: { 
-                                                $convert: {
-                                                    input: '$TrailID',
-                                                    to: 'int',
-                                                    onError: null,
-                                                    onNull: null
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                $match: {
-                    number: { $ne: null, $type: 'number' }
-                }
-            },
-            {
-                $sort: { number: -1 }
-            },
-            {
-                $limit: 1
-            }
-        ]).toArray();
-        
-        let nextNumber = 1;
-        if (maxTrailResult && maxTrailResult.length > 0 && maxTrailResult[0].number) {
-            nextNumber = maxTrailResult[0].number + 1;
+
+        // ✅ 重要修復：使用 MongoDB 原子 counter 生成 trailId，避免併發時撞號
+        // 新格式固定為 T + 6 位數字（T000001）
+        const counters = db.collection('Counters');
+        async function nextTrailId() {
+            const result = await counters.findOneAndUpdate(
+                { _id: 'trail_bill_trailId_seq' },
+                { $inc: { seq: 1 } },
+                { upsert: true, returnDocument: 'after' }
+            );
+            const seq = result?.value?.seq || 1;
+            return `T${String(seq).padStart(6, '0')}`;
         }
-        
-        // 確保 trailId 唯一（檢查是否已存在）
-        let newTrailId;
-        let attempts = 0;
-        do {
-            const numberPart = String(nextNumber).padStart(6, '0');  // ✅ 6位數字
-            newTrailId = `T${numberPart}`;  // ✅ 格式：T000010
-            const existingCheck = await collection.findOne({ 
-                $or: [
-                    { trailId: newTrailId },
-                    { TrailID: newTrailId }  // ✅ 兼容舊格式
-                ]
-            });
-            if (!existingCheck) break;
-            nextNumber++;
-            attempts++;
-            if (attempts > 100) {
-                throw new Error('無法生成唯一的 trailId');
-            }
-        } while (true);
+
+        let newTrailId = await nextTrailId();
         
         // ✅ 為所有記錄添加相同的 trailId（批量創建時共享同一個 trailId）
         // ✅ 支持兩種數據格式：{ students: [...] } 或 { records: [...] } 或直接數組
@@ -3720,7 +4328,27 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
             };
         });
         
-        const result = await collection.insertMany(recordsWithTrailId);
+        // ✅ 插入時做重試：若遇到重複 key（極少數情況），重新取號再插入
+        let result = null;
+        for (let retry = 0; retry < 5; retry++) {
+            try {
+                result = await collection.insertMany(recordsWithTrailId);
+                break;
+            } catch (e) {
+                const msg = String(e?.message || '');
+                const isDup = msg.includes('E11000') && (msg.includes('trailId') || msg.includes('TrailID'));
+                if (!isDup) throw e;
+
+                console.warn('⚠️ trial-bill/create：偵測到 trailId 重複，重新取號重試', { retry });
+                newTrailId = await nextTrailId();
+                for (let i = 0; i < recordsWithTrailId.length; i++) {
+                    recordsWithTrailId[i].trailId = newTrailId;
+                }
+            }
+        }
+        if (!result) {
+            throw new Error('創建試堂記錄失敗：無法生成唯一 trailId（重試已達上限）');
+        }
         
         res.json({
             success: true,
@@ -3924,39 +4552,68 @@ app.delete('/trial-bill/:id', validateApiKeys, async (req, res) => {
 
 // ==================== 文件上傳相關端點 ====================
 
-// 配置 multer 用於文件上傳
-const upload = multer({
-    dest: 'uploads/',
-    limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB
-    },
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-        if (allowedTypes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('不支持的圖片格式'));
-        }
-    }
-});
-
-// 上傳收據圖片
+// 上傳收據圖片（multer 配置已在文件頂部定義）
 app.post('/upload-receipt', validateApiKeys, upload.single('receipt'), async (req, res) => {
     try {
+        console.log('📤 收到圖片上傳請求:', {
+            hasFile: !!req.file,
+            uploadsDir: uploadsDir,
+            multerDest: upload.dest || upload.storage
+        });
+        
         if (!req.file) {
+            console.warn('⚠️ 沒有收到文件');
             return res.status(400).json({
                 success: false,
                 message: '沒有上傳文件'
             });
         }
         
-        // 這裡可以將文件上傳到雲存儲（如 AWS S3, Cloudinary 等）
-        // 目前返回本地文件路徑作為示例
-        const imageUrl = `/uploads/${req.file.filename}`;
+        // ✅ 驗證文件是否真的被保存
+        const savedFilePath = path.join(uploadsDir, req.file.filename);
+        const fileExists = fs.existsSync(savedFilePath);
+        
+        console.log('📁 文件保存信息:', {
+            filename: req.file.filename,
+            savedPath: savedFilePath,
+            fileExists: fileExists,
+            size: req.file.size,
+            mimetype: req.file.mimetype,
+            originalname: req.file.originalname
+        });
+        
+        if (!fileExists) {
+            console.error('❌ 文件未找到:', savedFilePath);
+            return res.status(500).json({
+                success: false,
+                message: '文件保存失敗：文件未找到',
+                savedPath: savedFilePath
+            });
+        }
+        
+        // ✅ 返回完整的 URL（Railway/反向代理下要用 x-forwarded-proto，否則會變成 http 導致前端混合內容被瀏覽器擋）
+        const forwardedProto = (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim();
+        const protocol = forwardedProto || req.protocol || 'https';
+        const host = req.get('host') || 'localhost:3000';
+        const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+        
+        // ✅ 同時返回相對路徑，供前端選擇使用
+        const relativePath = `/uploads/${req.file.filename}`;
+        
+        console.log('✅ 圖片上傳成功:', {
+            filename: req.file.filename,
+            savedPath: savedFilePath,
+            fileExists: fileExists,
+            size: req.file.size,
+            mimetype: req.file.mimetype,
+            imageUrl: imageUrl,
+            relativePath: relativePath
+        });
         
         res.json({
             success: true,
-            imageUrl: imageUrl,
+            imageUrl: imageUrl, // 完整 URL
+            relativePath: relativePath, // 相對路徑（備用）
             message: '上傳成功'
         });
     } catch (error) {
@@ -4357,6 +5014,358 @@ app.delete('/user-preferences/work-hours-filter', validateApiKeys, async (req, r
         res.status(500).json({
             success: false,
             message: '清除失敗',
+            error: error.message
+        });
+    }
+});
+
+// ==================== 賬單草稿相關端點 ====================
+
+// 保存賬單草稿
+app.post('/bill-drafts/save', validateApiKeys, async (req, res) => {
+    try {
+        const { employeeId, formData, timeSlotStates, prefix } = req.body;
+        
+        if (!employeeId) {
+            return res.status(400).json({
+                success: false,
+                message: 'employeeId 不能為空'
+            });
+        }
+        
+        if (!formData || Object.keys(formData).length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: '沒有可保存的數據'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('Bill_drafts');
+        
+        // 生成草稿ID（時間戳）
+        const draftId = `draft_${Date.now()}`;
+        
+        // 創建草稿對象
+        const draft = {
+            draftId: draftId,
+            employeeId: employeeId,
+            formData: formData,
+            timeSlotStates: timeSlotStates || [],
+            prefix: prefix || '',
+            savedAt: new Date(),
+            updatedAt: new Date()
+        };
+        
+        // 插入草稿
+        await collection.insertOne(draft);
+        
+        // 只保留每個員工最近的20個草稿
+        const allDrafts = await collection.find({ employeeId: employeeId })
+            .sort({ savedAt: -1 })
+            .toArray();
+        
+        if (allDrafts.length > 20) {
+            const draftsToDelete = allDrafts.slice(20);
+            const idsToDelete = draftsToDelete.map(d => d._id);
+            await collection.deleteMany({ _id: { $in: idsToDelete } });
+        }
+        
+        res.json({
+            success: true,
+            message: '草稿保存成功',
+            draftId: draftId
+        });
+    } catch (error) {
+        console.error('❌ 保存賬單草稿失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '保存草稿失敗',
+            error: error.message
+        });
+    }
+});
+
+// 獲取員工的所有草稿列表
+app.get('/bill-drafts/list/:employeeId', validateApiKeys, async (req, res) => {
+    try {
+        const { employeeId } = req.params;
+        
+        if (!employeeId) {
+            return res.status(400).json({
+                success: false,
+                message: 'employeeId 不能為空'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('Bill_drafts');
+        
+        // 獲取該員工的所有草稿，按保存時間倒序排列
+        const drafts = await collection.find({ employeeId: employeeId })
+            .sort({ savedAt: -1 })
+            .limit(20)  // 最多返回20個
+            .toArray();
+        
+        // 格式化返回數據（不包含完整的 formData 和 timeSlotStates，只包含摘要）
+        const draftsList = drafts.map(draft => ({
+            draftId: draft.draftId,
+            employeeId: draft.employeeId,
+            prefix: draft.prefix || '',
+            savedAt: draft.savedAt,
+            savedAtDisplay: new Date(draft.savedAt).toLocaleString('zh-HK'),
+            // 生成簡要信息
+            summary: {
+                studentNames: draft.formData?.students?.map(s => s.name).filter(Boolean).join('、') || '未命名',
+                location: draft.formData?.location || '未選擇地點',
+                courseType: draft.formData?.courseType || '未選擇課程',
+                totalSlots: draft.timeSlotStates?.length || 0
+            }
+        }));
+        
+        res.json({
+            success: true,
+            drafts: draftsList
+        });
+    } catch (error) {
+        console.error('❌ 獲取草稿列表失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取草稿列表失敗',
+            error: error.message
+        });
+    }
+});
+
+// 獲取單個草稿詳情
+app.get('/bill-drafts/get/:employeeId/:draftId', validateApiKeys, async (req, res) => {
+    try {
+        const { employeeId, draftId } = req.params;
+        
+        if (!employeeId || !draftId) {
+            return res.status(400).json({
+                success: false,
+                message: 'employeeId 和 draftId 不能為空'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('Bill_drafts');
+        
+        // 查找草稿（必須匹配 employeeId 和 draftId，確保安全）
+        const draft = await collection.findOne({
+            employeeId: employeeId,
+            draftId: draftId
+        });
+        
+        if (!draft) {
+            return res.status(404).json({
+                success: false,
+                message: '找不到該草稿'
+            });
+        }
+        
+        // 移除 MongoDB 的 _id 字段，返回完整草稿數據
+        const { _id, ...draftData } = draft;
+        
+        res.json({
+            success: true,
+            draft: draftData
+        });
+    } catch (error) {
+        console.error('❌ 獲取草稿詳情失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取草稿詳情失敗',
+            error: error.message
+        });
+    }
+});
+
+// 刪除草稿
+app.delete('/bill-drafts/delete/:employeeId/:draftId', validateApiKeys, async (req, res) => {
+    try {
+        const { employeeId, draftId } = req.params;
+        
+        if (!employeeId || !draftId) {
+            return res.status(400).json({
+                success: false,
+                message: 'employeeId 和 draftId 不能為空'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('Bill_drafts');
+        
+        // 刪除草稿（必須匹配 employeeId 和 draftId，確保安全）
+        const result = await collection.deleteOne({
+            employeeId: employeeId,
+            draftId: draftId
+        });
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '找不到該草稿'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: '草稿已刪除'
+        });
+    } catch (error) {
+        console.error('❌ 刪除草稿失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '刪除草稿失敗',
+            error: error.message
+        });
+    }
+});
+
+// ==================== 法定假期相關端點 ====================
+
+// 獲取指定年份的法定假期
+app.get('/public-holidays/:year', validateApiKeys, async (req, res) => {
+    try {
+        const year = parseInt(req.params.year);
+        if (isNaN(year) || year < 2000 || year > 2100) {
+            return res.status(400).json({
+                success: false,
+                message: '無效的年份參數'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('PublicHolidays');
+        
+        const holidays = await collection.find({ year: year, type: 'statutory' })
+            .sort({ date: 1 })
+            .toArray();
+        
+        res.json({
+            success: true,
+            data: holidays
+        });
+    } catch (error) {
+        console.error('❌ 獲取法定假期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取法定假期失敗',
+            error: error.message
+        });
+    }
+});
+
+// 添加法定假期
+app.post('/public-holidays', validateApiKeys, async (req, res) => {
+    try {
+        const { year, date, name } = req.body;
+        
+        if (!year || !date) {
+            return res.status(400).json({
+                success: false,
+                message: '請提供年份和日期'
+            });
+        }
+        
+        // 驗證日期格式
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(date)) {
+            return res.status(400).json({
+                success: false,
+                message: '日期格式錯誤，應為 YYYY-MM-DD'
+            });
+        }
+        
+        // 驗證日期是否與年份匹配
+        const dateYear = parseInt(date.split('-')[0]);
+        if (dateYear !== parseInt(year)) {
+            return res.status(400).json({
+                success: false,
+                message: '日期年份與指定年份不匹配'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('PublicHolidays');
+        
+        // 檢查是否已存在
+        const existing = await collection.findOne({ year: parseInt(year), date: date, type: 'statutory' });
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: '該日期已存在於法定假期列表中'
+            });
+        }
+        
+        const holiday = {
+            year: parseInt(year),
+            date: date,
+            name: name || '',
+            type: 'statutory',
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+        
+        const result = await collection.insertOne(holiday);
+        
+        res.json({
+            success: true,
+            message: '添加成功',
+            data: { _id: result.insertedId, ...holiday }
+        });
+    } catch (error) {
+        console.error('❌ 添加法定假期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '添加法定假期失敗',
+            error: error.message
+        });
+    }
+});
+
+// 刪除法定假期
+app.delete('/public-holidays/:id', validateApiKeys, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: '請提供假期ID'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('PublicHolidays');
+        
+        const result = await collection.deleteOne({ _id: new ObjectId(id) });
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該假期記錄'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: '刪除成功'
+        });
+    } catch (error) {
+        console.error('❌ 刪除法定假期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '刪除法定假期失敗',
             error: error.message
         });
     }
