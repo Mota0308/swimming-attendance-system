@@ -3776,14 +3776,8 @@ app.post('/create-employee', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Admin_account');
 
-        // ✅ 昵稱必填（前端也會驗證，但後端必須兜底）
+        // ✅ 昵稱為非必填項
         const nickname = (employeeData?.nickname || '').toString().trim();
-        if (!nickname) {
-            return res.status(400).json({
-                success: false,
-                message: '昵稱為必填'
-            });
-        }
         
         // 檢查電話是否已存在
         const existing = await collection.findOne({ phone: employeeData.phone });
