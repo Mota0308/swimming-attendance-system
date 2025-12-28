@@ -1,0 +1,24 @@
+# Railway 配置文件 - 根目錄
+# 此文件用於配置 Railway 從 GitHub 自動部署時的構建設置
+# 
+# 注意：此配置默認指向 api-server（後端 API）
+# 如果您的服務需要部署不同的目錄，請在 Railway Dashboard 中設置 Root Directory
+
+[build]
+builder = "nixpacks"
+# Railway 會自動檢測 package.json 並運行 npm install
+# 構建命令會在 rootDirectory 指定的目錄中執行
+
+[deploy]
+# ⚠️ 重要：如果您在 Railway Dashboard 中設置了 Root Directory，此處設置會被覆蓋
+# 建議在 Railway Dashboard 的服務設置中設置 Root Directory 為 "api-server"
+rootDirectory = "api-server"
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[deploy.envs]
+NODE_ENV = "production"
+
