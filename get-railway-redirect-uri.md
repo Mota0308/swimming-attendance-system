@@ -88,3 +88,5 @@ https://vocard-bot.up.railway.app/callback
 3. 如果遇到 "Invalid redirect URI" 错误，检查 URI 是否完全匹配
 
 
+
+

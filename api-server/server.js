@@ -133,6 +133,11 @@ const staticMiddleware = express.static(uploadsDir, {
     etag: true,
     lastModified: true,
     setHeaders: (res, filePath) => {
+        // ✅ 設置 CORS headers，確保圖片可以跨域訪問
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        
         // 設置適當的 Content-Type
         if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
             res.setHeader('Content-Type', 'image/jpeg');
@@ -142,6 +147,18 @@ const staticMiddleware = express.static(uploadsDir, {
             res.setHeader('Content-Type', 'image/gif');
         } else if (filePath.endsWith('.webp')) {
             res.setHeader('Content-Type', 'image/webp');
+        } else {
+            // 對於其他文件類型，嘗試從文件擴展名推斷
+            const ext = path.extname(filePath).toLowerCase();
+            if (ext === '.jpg' || ext === '.jpeg') {
+                res.setHeader('Content-Type', 'image/jpeg');
+            } else if (ext === '.png') {
+                res.setHeader('Content-Type', 'image/png');
+            } else if (ext === '.gif') {
+                res.setHeader('Content-Type', 'image/gif');
+            } else if (ext === '.webp') {
+                res.setHeader('Content-Type', 'image/webp');
+            }
         }
         // ✅ 設置 Content-Disposition 為 inline，確保圖片在瀏覽器中顯示而不是下載
         res.setHeader('Content-Disposition', 'inline');
@@ -150,6 +167,16 @@ const staticMiddleware = express.static(uploadsDir, {
 
 // ✅ 包裝靜態文件服務，處理文件不存在的情況
 app.use('/uploads', (req, res, next) => {
+    // ✅ 設置 CORS headers，確保圖片可以跨域訪問
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    // 處理 OPTIONS 預檢請求
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    
     // ✅ 注意：在 app.use('/uploads', ...) 中，req.path 通常是 "/<filename>"
     // 這裡必須把前導 "/" 去掉，否則 path.join(uploadsDir, "/xxx") 會變成 "/xxx"（忽略 uploadsDir）
     const requestedPath = String(req.path || '').replace(/^\/+/, '');
