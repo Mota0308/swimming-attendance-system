@@ -6152,8 +6152,8 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             // ✅ 本期請假堂數：本期資料格對應學生的isLeave為true的數量
             const currentPeriodLeaveRequests = timeslots.filter(s => s.isLeave === true).length;
             
-            // ✅ 計算缺席：isAttended === false 的記錄
-            const absences = timeslots.filter(s => s.isAttended === false).length;
+            // ✅ 計算缺席：isAttended === false 且非請假的記錄（請假不應被計入缺席）
+            const absences = timeslots.filter(s => s.isAttended === false && s.isLeave !== true).length;
             
             // ✅ 計算本期已購堂數（根據學期/年份過濾後的記錄數量）
             const currentPurchasedClasses = timeslots.length;
@@ -6407,7 +6407,8 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 const lastPeriodAttendedMakeup = lastPeriodTimeslots.filter(s => 
                     (s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true
                 ).length;
-                const lastPeriodAbsences = lastPeriodTimeslots.filter(s => s.isAttended === false).length;
+                // ✅ 計算上期缺席：isAttended === false 且非請假的記錄（請假不應被計入缺席）
+                const lastPeriodAbsences = lastPeriodTimeslots.filter(s => s.isAttended === false && s.isLeave !== true).length;
                 const lastPeriodPurchasedClasses = lastPeriodTimeslots.length;
                 
                 // ✅ 上期剩餘堂數 = 上期已購堂數 - 上期已出席 - 上期已缺席
@@ -6422,15 +6423,14 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             // ✅ 可約補堂 = 上期剩餘堂數 + 本期請假堂數 + 待約
             const bookableMakeup = lastPeriodRemaining + currentPeriodLeaveRequests + pendingClasses;
             
-            // ✅ 計算本期剩餘時數：（本期已購堂數 - 本期已出席 - 本期補堂已出席 - 本期已缺席）的剩餘資料格的total_time_slot的總和
-            // 剩餘記錄 = 本期已購堂數 - 已出席 - 補堂已出席 - 已缺席
+            // ✅ 計算本期剩餘時數：尚未上課狀態（isAttended 為 null/undefined）的記錄的 total_time_slot 總和
+            // 剩餘記錄 = 所有 isAttended 為 null/undefined 的記錄（尚未上課狀態）
             const remainingRecords = timeslots.filter(s => {
-                // 排除已出席的記錄
+                // 排除已出席的記錄（包括普通已出席和補堂已出席）
                 if (s.isAttended === true) return false;
-                // 排除補堂已出席的記錄
-                if ((s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true) return false;
-                // 排除已缺席的記錄（isAttended === false）
+                // 排除已缺席的記錄
                 if (s.isAttended === false) return false;
+                // 返回 isAttended 為 null/undefined 的記錄（尚未上課狀態）
                 return true;
             });
             
@@ -6457,12 +6457,11 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             if (semesterFilter && yearFilter && lastPeriodRemaining > 0) {
                 // 查詢上一期的剩餘記錄
                 const lastPeriodRemainingRecords = lastPeriodTimeslots.filter(s => {
-                    // 排除已出席的記錄
+                    // 排除已出席的記錄（包括普通已出席和補堂已出席）
                     if (s.isAttended === true) return false;
-                    // 排除補堂已出席的記錄
-                    if ((s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true) return false;
-                    // 排除已缺席的記錄（isAttended === false）
+                    // 排除已缺席的記錄
                     if (s.isAttended === false) return false;
+                    // 返回 isAttended 為 null/undefined 的記錄（尚未上課狀態）
                     return true;
                 });
                 bookableMakeupSlots.push(...lastPeriodRemainingRecords);
