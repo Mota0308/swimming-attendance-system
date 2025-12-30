@@ -4666,8 +4666,23 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
             delete billDataToInsert.studentId;
         }
         
+        // ✅ 保存學生堂數相關數據
+        const studentClassesData = {
+            plannedTotalLessons: billData.plannedTotalLessons || null,
+            remainingLessons: billData.remainingLessons || null,
+            asOfDate: billData.asOfDate || null,
+            semesterData: billData.semesterData || [],
+            year: billData.year || new Date().getFullYear()
+        };
+        
         const billResult = await billCollection.insertOne({
             ...billDataToInsert,
+            // ✅ 添加學生堂數相關字段
+            plannedTotalLessons: studentClassesData.plannedTotalLessons,
+            remainingLessons: studentClassesData.remainingLessons,
+            asOfDate: studentClassesData.asOfDate,
+            semesterData: studentClassesData.semesterData,
+            year: studentClassesData.year,
             createdAt: new Date(),
             updatedAt: new Date()
         });
@@ -6093,6 +6108,24 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             pendingRecordsByStudent[record.studentId].push(record);
         }
         
+        // ✅ 批量查询所有学生的账单数据（通过 studentId）
+        const billCollection = db.collection('Student_bill');
+        const allBills = await billCollection.find({
+            studentId: { $in: studentIdsForPage, $ne: null }
+        }).sort({ createdAt: -1 }).toArray(); // 按创建时间降序排序
+        
+        // ✅ 按 studentId 分组账单数据（一个学生可能有多个账单，取最新的）
+        const billsByStudentId = {};
+        allBills.forEach(bill => {
+            if (bill.studentId) {
+                // 如果已有账单，比较创建时间，保留最新的
+                if (!billsByStudentId[bill.studentId] || 
+                    new Date(bill.createdAt || 0) > new Date(billsByStudentId[bill.studentId].createdAt || 0)) {
+                    billsByStudentId[bill.studentId] = bill;
+                }
+            }
+        });
+        
         // ✅ 優化：並行處理所有學生，提高處理速度
         const studentPromises = studentIdsForPage.map(async (studentId) => {
             const student = allStudents.find(s => s.studentId === studentId);
@@ -6474,6 +6507,9 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             
             // ✅ 剩餘堂數已在上面計算：remainingClasses = canStillAttend + canStillBook
             
+            // ✅ 获取该学生的账单数据（从 Student_bill 查询）
+            const studentBill = billsByStudentId[studentId];
+            
             const studentData = {
                 studentId: studentId,
                 name: student.name || '',
@@ -6490,7 +6526,13 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 attendedMakeup: attendedMakeup, // 補堂已出席
                 // ✅ 時數相關字段
                 currentPeriodRemainingTimeSlots: parseFloat(currentPeriodRemainingTimeSlots.toFixed(1)), // ✅ 本期剩餘時數：（本期已購堂數 - 本期已出席 - 本期補堂已出席 - 本期已缺席）的剩餘資料格的total_time_slot的總和
-                bookableMakeupTimeSlots: parseFloat(bookableMakeupTimeSlots.toFixed(1)) // ✅ 可補時數：（上期剩餘堂數 + 本期請假堂數 + 待約）的對應資料格的total_time_slot的總和
+                bookableMakeupTimeSlots: parseFloat(bookableMakeupTimeSlots.toFixed(1)), // ✅ 可補時數：（上期剩餘堂數 + 本期請假堂數 + 待約）的對應資料格的total_time_slot的總和
+                // ✅ 學生堂數相關數據（從 Student_bill 查詢）
+                plannedTotalLessons: studentBill?.plannedTotalLessons || null,
+                remainingLessons: studentBill?.remainingLessons || null,
+                asOfDate: studentBill?.asOfDate || null,
+                semesterData: studentBill?.semesterData || [],
+                year: studentBill?.year || null
             };
             
             return studentData;
