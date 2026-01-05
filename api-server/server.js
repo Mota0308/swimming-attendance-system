@@ -5,6 +5,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 require('dotenv').config();
 
 // ✅ 安全措施：引入安全工具
@@ -20,6 +21,76 @@ const PORT = process.env.PORT || 3000;
 // MongoDB 配置
 let MONGO_BASE_URI = process.env.MONGO_BASE_URI;
 const DEFAULT_DB_NAME = process.env.DEFAULT_DB_NAME || 'test';
+
+// ==================== S3/R2（持久化收據）配置 ====================
+// B1：把 /upload-receipt 的文件保存到 S3-compatible（推薦 Cloudflare R2 / AWS S3）
+// 需要在環境變量中提供：
+// - S3_BUCKET
+// - S3_ACCESS_KEY_ID
+// - S3_SECRET_ACCESS_KEY
+// - S3_ENDPOINT（R2 必填；AWS S3 可不填）
+// - S3_REGION（R2 可用 "auto"）
+// - S3_PUBLIC_BASE_URL（必填，用於生成可公開訪問的永久 URL，例如 https://pub-xxx.r2.dev 或自定義域名）
+// 可選：
+// - S3_PREFIX（默認 "receipts"）
+// - S3_FORCE_PATH_STYLE（true/false；R2 建議 true）
+let S3Client = null;
+let PutObjectCommand = null;
+try {
+    ({ S3Client, PutObjectCommand } = require('@aws-sdk/client-s3'));
+} catch (e) {
+    // 依賴未安裝時不阻塞啟動（本地 fallback 仍可用）
+    console.warn('⚠️ 未安裝 @aws-sdk/client-s3，/upload-receipt 將回退使用本地 uploads（若需要 B1，請先 npm install）');
+}
+
+function isS3ReceiptEnabled() {
+    const hasDeps = Boolean(S3Client && PutObjectCommand);
+    const hasCreds = Boolean(process.env.S3_BUCKET && process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY);
+    const hasPublicBase = Boolean(process.env.S3_PUBLIC_BASE_URL);
+    // R2 一般需要 endpoint；AWS S3 可不設 endpoint
+    const endpointOptional = true;
+    const hasEndpoint = Boolean(process.env.S3_ENDPOINT);
+    return hasDeps && hasCreds && hasPublicBase && (endpointOptional ? true : hasEndpoint);
+}
+
+function getS3ReceiptClient() {
+    const endpoint = process.env.S3_ENDPOINT;
+    const region = process.env.S3_REGION || 'auto';
+    const forcePathStyleEnv = (process.env.S3_FORCE_PATH_STYLE || '').toString().toLowerCase();
+    const forcePathStyle =
+        forcePathStyleEnv === 'true' ? true :
+        forcePathStyleEnv === 'false' ? false :
+        // 默認：R2 建議 path-style
+        (endpoint && endpoint.includes('r2.cloudflarestorage.com')) ? true : false;
+
+    const config = {
+        region,
+        credentials: {
+            accessKeyId: process.env.S3_ACCESS_KEY_ID,
+            secretAccessKey: process.env.S3_SECRET_ACCESS_KEY
+        },
+        forcePathStyle
+    };
+    if (endpoint) config.endpoint = endpoint;
+    return new S3Client(config);
+}
+
+function guessImageExt(mimetype = '', originalname = '') {
+    const mt = String(mimetype || '').toLowerCase();
+    if (mt.includes('jpeg')) return 'jpg';
+    if (mt.includes('png')) return 'png';
+    if (mt.includes('gif')) return 'gif';
+    if (mt.includes('webp')) return 'webp';
+    const ext = (path.extname(originalname || '') || '').toLowerCase().replace('.', '');
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
+    return 'jpg';
+}
+
+function buildPublicReceiptUrl(key) {
+    const base = (process.env.S3_PUBLIC_BASE_URL || '').toString().trim().replace(/\/+$/, '');
+    if (!base) return '';
+    return `${base}/${String(key).replace(/^\/+/, '')}`;
+}
 
 // ✅ 安全措施：强制使用环境变量（生产环境）
 if (process.env.NODE_ENV === 'production') {
@@ -110,22 +181,36 @@ if (!fs.existsSync(uploadsDir)) {
     console.log('✅ 已創建 uploads 目錄');
 }
 
-// ✅ 配置 multer 用於文件上傳（在這裡定義，確保可以使用 uploadsDir）
-const upload = multer({
-    dest: uploadsDir, // 使用絕對路徑，確保文件保存在正確位置
-    limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB
-    },
-    fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-        if (allowedTypes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('不支持的圖片格式'));
-        }
+// ✅ 配置 multer 用於文件上傳
+// - 本地 fallback：dest uploadsDir
+// - S3/R2：memoryStorage（不落地，直接上傳到對象存儲）
+const receiptUploadLimits = { fileSize: 10 * 1024 * 1024 }; // 10MB
+const receiptUploadFileFilter = (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error('不支持的圖片格式'));
     }
+};
+const uploadReceiptDisk = multer({
+    dest: uploadsDir,
+    limits: receiptUploadLimits,
+    fileFilter: receiptUploadFileFilter
 });
-console.log('✅ 已配置 multer 文件上傳：目標目錄 ->', uploadsDir);
+const uploadReceiptMemory = multer({
+    storage: multer.memoryStorage(),
+    limits: receiptUploadLimits,
+    fileFilter: receiptUploadFileFilter
+});
+console.log('✅ 已配置 multer 收據上傳（本地 uploads fallback）:', uploadsDir);
+console.log('✅ 收據持久化（S3/R2）狀態:', isS3ReceiptEnabled() ? '啟用' : '未啟用（將回退本地 uploads）');
+
+function receiptUploadMiddleware(req, res, next) {
+    const useS3 = isS3ReceiptEnabled();
+    const handler = useS3 ? uploadReceiptMemory.single('receipt') : uploadReceiptDisk.single('receipt');
+    return handler(req, res, next);
+}
 
 // 提供靜態文件服務
 const staticMiddleware = express.static(uploadsDir, {
@@ -324,7 +409,9 @@ function extractDurationFromClassTime(classTime) {
     return duration;
 }
 
-// ✅ 根據基礎時長和實際時長計算 total_time_slot（堂數）
+// ✅ 方案三：根據基礎時長和實際時長計算 total_time_slot（實際堂數 - 主要字段）
+// 計算公式：total_time_slot = actualDuration / baseTimeSlot（四捨五入到 0.5）
+// 如果需要時數，可以通過 total_time_slot * time_slot 計算
 function calculateTotalTimeSlot(baseTimeSlot, actualDuration) {
     if (!baseTimeSlot || !actualDuration) {
         return 1; // 默認 1 堂
@@ -340,7 +427,7 @@ function calculateTotalTimeSlot(baseTimeSlot, actualDuration) {
     return Math.max(0.5, roundedRatio);
 }
 
-// ✅ 獲取 classFormat 對應的 time_slot（從 Pricing 集合）
+// ✅ 方案三：獲取 classFormat 對應的基礎時長（從 Pricing 集合）- 輔助字段
 async function getTimeSlotForClassFormat(db, classType, classFormat) {
     if (!classType || !classFormat) {
         return null;
@@ -348,7 +435,7 @@ async function getTimeSlotForClassFormat(db, classType, classFormat) {
     
     try {
         const pricingCollection = db.collection('Pricing');
-        // ✅ 從 Pricing 集合查詢，同一 classType + classFormat 組合的 time_slot 應該相同
+        // ✅ 從 Pricing 集合查詢，同一 classType + classFormat 組合的基礎時長應該相同
         const pricingRecord = await pricingCollection.findOne({
             class_type: classType,
             class_format: classFormat
@@ -360,7 +447,7 @@ async function getTimeSlotForClassFormat(db, classType, classFormat) {
         
         return null;
     } catch (error) {
-        console.error('❌ 獲取 time_slot 失敗:', error);
+        console.error('❌ 獲取基礎時長失敗:', error);
         return null;
     }
 }
@@ -390,6 +477,7 @@ app.get('/health', (req, res) => {
 
 // 用戶登入驗證
 // ✅ 安全措施：添加输入验证
+// ✅ 自動根據用戶type登入，不需要指定userType
 app.post('/auth/login', validateApiKeys, validateLogin, async (req, res) => {
     try {
         const { phone, password, userType, type } = req.body;
@@ -405,25 +493,79 @@ app.post('/auth/login', validateApiKeys, validateLogin, async (req, res) => {
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         let user = null;
+        let foundUserType = null;
         
-        if (loginType === 'coach' || loginType === 'supervisor' || loginType === 'admin' || loginType === 'manager') {
-            const collection = db.collection('Admin_account');
-            // ✅ 安全措施：先查找用户，再验证密码（支持哈希和明文向后兼容）
-            const foundUser = await collection.findOne({
-                phone: phone,
-                type: loginType
-            });
+        // ✅ 如果指定了userType，按原逻辑查找
+        if (loginType) {
+            if (loginType === 'coach' || loginType === 'supervisor' || loginType === 'admin' || loginType === 'manager') {
+                const collection = db.collection('Admin_account');
+                const foundUser = await collection.findOne({
+                    phone: phone,
+                    type: loginType
+                });
+                
+                if (foundUser && foundUser.password) {
+                    const isPasswordValid = await comparePassword(password, foundUser.password);
+                    if (isPasswordValid) {
+                        user = foundUser;
+                        foundUserType = foundUser.type || loginType;
+                    }
+                }
+                
+                // ✅ 向后兼容：检查 Coach_account（仅 coach 和 supervisor）
+                if (!user && (loginType === 'coach' || loginType === 'supervisor')) {
+                    const coachCollection = db.collection('Coach_account');
+                    const foundCoachUser = await coachCollection.findOne({
+                        phone: phone
+                    });
+                    
+                    if (foundCoachUser && foundCoachUser.password) {
+                        const isPasswordValid = await comparePassword(password, foundCoachUser.password);
+                        if (isPasswordValid) {
+                            user = foundCoachUser;
+                            foundUserType = loginType;
+                        }
+                    }
+                }
+            } else {
+                // parent/student 类型
+                const collection = db.collection('Student_account');
+                const foundUser = await collection.findOne({
+                    phone: phone
+                });
+                
+                if (foundUser && foundUser.password) {
+                    const isPasswordValid = await comparePassword(password, foundUser.password);
+                    if (isPasswordValid) {
+                        user = foundUser;
+                        foundUserType = 'parent';
+                    }
+                }
+            }
+        } else {
+            // ✅ 如果没有指定userType，自动在所有可能的集合中查找
+            // 1. 先在 Admin_account 中查找所有类型
+            const adminCollection = db.collection('Admin_account');
+            const adminUserTypes = ['coach', 'supervisor', 'admin', 'manager'];
             
-            // ✅ 验证密码（支持 bcrypt 哈希和明文向后兼容）
-            if (foundUser && foundUser.password) {
-                const isPasswordValid = await comparePassword(password, foundUser.password);
-                if (isPasswordValid) {
-                    user = foundUser;
+            for (const userType of adminUserTypes) {
+                const foundUser = await adminCollection.findOne({
+                    phone: phone,
+                    type: userType
+                });
+                
+                if (foundUser && foundUser.password) {
+                    const isPasswordValid = await comparePassword(password, foundUser.password);
+                    if (isPasswordValid) {
+                        user = foundUser;
+                        foundUserType = foundUser.type || userType;
+                        break;
+                    }
                 }
             }
             
-            // ✅ 向后兼容：检查 Coach_account（仅 coach 和 supervisor）
-            if (!user && (loginType === 'coach' || loginType === 'supervisor')) {
+            // 2. 如果没找到，检查 Coach_account（向后兼容）
+            if (!user) {
                 const coachCollection = db.collection('Coach_account');
                 const foundCoachUser = await coachCollection.findOne({
                     phone: phone
@@ -433,20 +575,24 @@ app.post('/auth/login', validateApiKeys, validateLogin, async (req, res) => {
                     const isPasswordValid = await comparePassword(password, foundCoachUser.password);
                     if (isPasswordValid) {
                         user = foundCoachUser;
+                        foundUserType = 'coach'; // 默认为coach
                     }
                 }
             }
-        } else {
-            const collection = db.collection('Coach_account');
-            // ✅ 安全措施：先查找用户，再验证密码
-            const foundUser = await collection.findOne({
-                studentPhone: phone
-            });
             
-            if (foundUser && foundUser.password) {
-                const isPasswordValid = await comparePassword(password, foundUser.password);
-                if (isPasswordValid) {
-                    user = foundUser;
+            // 3. 如果还没找到，检查 Student_account
+            if (!user) {
+                const studentCollection = db.collection('Student_account');
+                const foundStudentUser = await studentCollection.findOne({
+                    phone: phone
+                });
+                
+                if (foundStudentUser && foundStudentUser.password) {
+                    const isPasswordValid = await comparePassword(password, foundStudentUser.password);
+                    if (isPasswordValid) {
+                        user = foundStudentUser;
+                        foundUserType = 'parent';
+                    }
                 }
             }
         }
@@ -461,13 +607,13 @@ app.post('/auth/login', validateApiKeys, validateLogin, async (req, res) => {
                     id: user._id,
                     phone: user.phone || user.studentPhone,
                     name: user.name || user.studentName,
-                    type: user.type || user.userType || loginType,
-                    userType: user.type || user.userType || loginType
+                    type: foundUserType || user.type || user.userType,
+                    userType: foundUserType || user.type || user.userType
                 }
             });
         } else {
             // ✅ 安全措施：记录登录失败事件
-            logSecurityEvent('LOGIN_FAILED', { phone, loginType }, req);
+            logSecurityEvent('LOGIN_FAILED', { phone, loginType: loginType || 'auto' }, req);
             res.status(401).json({
                 success: false,
                 message: '電話號碼或密碼錯誤'
@@ -588,15 +734,43 @@ app.put('/update-user/:phone', validateApiKeys, async (req, res) => {
         const { phone } = req.params;
         const updateData = req.body;
         
-        // ✅ 禁止修改 employeeId（這是系統自動生成的唯一標識符）
+        // ✅ 處理 employeeId 修改：如果 allowEmployeeIdUpdate 為 true，允許修改
+        const allowEmployeeIdUpdate = updateData.allowEmployeeIdUpdate === true;
+        let employeeIdValue = undefined;
+        
+        // 移除 allowEmployeeIdUpdate 標誌，避免寫入數據庫
+        delete updateData.allowEmployeeIdUpdate;
+        
         if (updateData.employeeId !== undefined) {
-            delete updateData.employeeId;
-            console.warn(`⚠️ 嘗試修改 employeeId 被阻止 (phone: ${phone})`);
+            if (allowEmployeeIdUpdate) {
+                // ✅ 允許修改 employeeId，記錄日誌以便審計
+                employeeIdValue = updateData.employeeId;
+                console.log(`✅ 允許修改 employeeId (phone: ${phone}, allowEmployeeIdUpdate: true, new employeeId: ${employeeIdValue})`);
+            } else {
+                // ✅ 禁止修改 employeeId（默認行為）
+                delete updateData.employeeId;
+                console.warn(`⚠️ 嘗試修改 employeeId 被阻止 (phone: ${phone}, 提示: 如需修改 employeeId，請設置 allowEmployeeIdUpdate: true)`);
+            }
         }
         
         const client = await getMongoClient();
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('Admin_account');
+        
+        // ✅ 如果允許修改 employeeId，先檢查新值是否已被其他用戶使用
+        if (allowEmployeeIdUpdate && employeeIdValue !== undefined) {
+            const existingUser = await collection.findOne({ 
+                employeeId: employeeIdValue,
+                phone: { $ne: phone } // 排除當前用戶
+            });
+            
+            if (existingUser) {
+                return res.status(400).json({
+                    success: false,
+                    message: `employeeId "${employeeIdValue}" 已被其他用戶使用 (phone: ${existingUser.phone})`
+                });
+            }
+        }
         
         const result = await collection.updateOne(
             { phone: phone },
@@ -613,7 +787,8 @@ app.put('/update-user/:phone', validateApiKeys, async (req, res) => {
         res.json({
             success: true,
             message: '更新成功',
-            modifiedCount: result.modifiedCount
+            modifiedCount: result.modifiedCount,
+            employeeIdUpdated: allowEmployeeIdUpdate && employeeIdValue !== undefined
         });
     } catch (error) {
         console.error('❌ 更新用戶信息失敗:', error);
@@ -693,8 +868,14 @@ app.get('/location-clubs', validateApiKeys, async (req, res) => {
                 if (!grouped[location]) {
                     grouped[location] = [];
                 }
-                if (item.club && !grouped[location].includes(item.club)) {
-                    grouped[location].push(item.club);
+                // ✅ 修復：支持 club 是字符串或數組
+                if (item.club) {
+                    const clubs = Array.isArray(item.club) ? item.club : [item.club];
+                    clubs.forEach(club => {
+                        if (club && !grouped[location].includes(club)) {
+                            grouped[location].push(club);
+                        }
+                    });
                 }
             }
         });
@@ -726,8 +907,18 @@ app.get('/clubs', validateApiKeys, async (req, res) => {
         const collection = db.collection('Location_club');
         
         const locationClubs = await collection.find({}).toArray();
-        const clubs = locationClubs.map(item => item.club).filter(Boolean);
-        const uniqueClubs = [...new Set(clubs)].sort();
+        // ✅ 修復：支持 club 是字符串或數組
+        const clubs = [];
+        locationClubs.forEach(item => {
+            if (item.club) {
+                if (Array.isArray(item.club)) {
+                    clubs.push(...item.club);
+                } else {
+                    clubs.push(item.club);
+                }
+            }
+        });
+        const uniqueClubs = [...new Set(clubs.filter(Boolean))].sort();
         
         res.json({
             success: true,
@@ -2447,29 +2638,29 @@ app.put('/attendance/timeslot/move', validateApiKeys, async (req, res) => {
                     const baseTimeSlot = await getTimeSlotForClassFormat(db, currentCourseType, currentClassFormat);
                     
                     if (baseTimeSlot) {
-                        // ✅ 獲取第一次的 time_slot（如果記錄中沒有 originalTimeSlot，則使用當前時間計算並保存）
+                        // ✅ 方案三：獲取第一次的堂數（如果記錄中沒有 originalTimeSlot，則使用當前時間計算並保存）
                         let firstTimeSlot = originalRecord.originalTimeSlot;
                         
                         if (!firstTimeSlot) {
-                            // 如果沒有保存第一次的 time_slot，使用當前時間計算並保存
+                            // 如果沒有保存第一次的堂數，使用當前時間計算並保存
                             const firstDuration = extractDurationFromClassTime(originalTime);
                             firstTimeSlot = firstDuration ? calculateTotalTimeSlot(baseTimeSlot, firstDuration) : 1;
-                            // 保存第一次的 time_slot 到數據庫
+                            // 保存第一次的堂數到數據庫
                             updateData.originalTimeSlot = firstTimeSlot;
                         }
                         
-                        // ✅ 計算新時間的實際時長和 time_slot，並更新 total_time_slot
+                        // ✅ 方案三：計算新時間的實際時長和堂數，並更新 total_time_slot
                         const newDuration = extractDurationFromClassTime(classTime);
                         const newTimeSlot = newDuration ? calculateTotalTimeSlot(baseTimeSlot, newDuration) : 1;
                         
-                        // ✅ 更新 total_time_slot（後續修改的 time_slot）
+                        // ✅ 方案三：更新 total_time_slot（實際堂數 - 主要字段）
                         updateData.total_time_slot = newTimeSlot;
-                        // ✅ 保存基礎 time_slot（如果還沒有保存）
+                        // ✅ 方案三：保存基礎 time_slot（基礎時長 - 輔助字段，如果還沒有保存）
                         if (!originalRecord.time_slot) {
                             updateData.time_slot = baseTimeSlot;
                         }
                         
-                        // ✅ 與第一次的 time_slot 對比，有變化則為 true，沒變化則為 false
+                        // ✅ 與第一次的堂數對比，有變化則為 true，沒變化則為 false
                         if (newTimeSlot !== firstTimeSlot) {
                             updateData.isChangeTime = true;
                         } else {
@@ -2949,51 +3140,81 @@ app.post('/attendance/pending-class/create', validateApiKeys, async (req, res) =
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('students_timeslot');
         
-        // 查找該學生的一個isPending為true的記錄
+        // ✅ 先查找該學生的一個isPending為true的記錄（待約記錄）
         const pendingRecord = await collection.findOne({
             studentId: studentId,
             isPending: true
         });
         
-        if (!pendingRecord) {
-            return res.status(404).json({
-                success: false,
-                message: '該學生沒有待約記錄（isPending為true的記錄）'
-            });
+        let result;
+        let recordId;
+        
+        if (pendingRecord) {
+            // ✅ 如果有待約記錄，先扣除待約數（更新待約記錄）
+            const updateData = {
+                classDate: classDate,
+                courseType: courseType,
+                classTime: classTime, // 保持原始格式 hhmm-hhmm
+                location: location, // ✅ 添加地點
+                isPending: false,
+                updatedAt: new Date()
+            };
+            
+            result = await collection.updateOne(
+                { _id: pendingRecord._id },
+                { $set: updateData }
+            );
+            
+            if (result.matchedCount === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: '未找到該記錄'
+                });
+            }
+            
+            recordId = pendingRecord._id.toString();
+        } else {
+            // ✅ 如果沒有待約記錄（待約數為0），則創建一個新記錄，扣除剩餘堂數（剩餘堂數可以為負數）
+            // 獲取該學生的基本信息（用於創建新記錄）
+            const studentAccountCollection = db.collection('Student_account');
+            const student = await studentAccountCollection.findOne({ studentId: studentId });
+            
+            if (!student) {
+                return res.status(404).json({
+                    success: false,
+                    message: '未找到該學生'
+                });
+            }
+            
+            // 創建新記錄
+            const newRecord = {
+                studentId: studentId,
+                classDate: classDate,
+                courseType: courseType,
+                classTime: classTime,
+                location: location,
+                isPending: false,
+                isAttended: null, // 尚未出席
+                isLeave: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            
+            // 如果有其他字段需要從學生信息中獲取，可以在這裡添加
+            if (student.name) newRecord.studentName = student.name;
+            if (student.phone) newRecord.phone = student.phone;
+            
+            const insertResult = await collection.insertOne(newRecord);
+            recordId = insertResult.insertedId.toString();
+            result = { modifiedCount: 1, matchedCount: 1 };
         }
-        
-        // ✅ 解析時間格式 hhmm-hhmm (例如: 0900-1000)
-        // 保存為原始格式 hhmm-hhmm，不轉換為 hh:mm-hh:mm
-        // 因為數據庫中可能已經使用這種格式
-        
-        // 更新記錄
-        const updateData = {
-            classDate: classDate,
-            courseType: courseType,
-            classTime: classTime, // 保持原始格式 hhmm-hhmm
-            location: location, // ✅ 添加地點
-            isPending: false,
-            updatedAt: new Date()
-        };
-        
-        const result = await collection.updateOne(
-            { _id: pendingRecord._id },
-            { $set: updateData }
-        );
-        
-        if (result.matchedCount === 0) {
-            return res.status(404).json({
-                success: false,
-                message: '未找到該記錄'
-            });
-        }
-        
         
         res.json({
             success: true,
-            message: '待補課程創建成功',
-            recordId: pendingRecord._id.toString(),
-            modifiedCount: result.modifiedCount
+            message: pendingRecord ? '待補課程創建成功（已扣除待約數）' : '待補課程創建成功（已扣除剩餘堂數）',
+            recordId: recordId,
+            modifiedCount: result.modifiedCount,
+            usedPending: !!pendingRecord
         });
     } catch (error) {
         console.error('❌ 創建待補課程失敗:', error);
@@ -3240,6 +3461,219 @@ app.post('/staff-work-hours/batch', validateApiKeys, async (req, res) => {
         res.status(500).json({
             success: false,
             message: '保存工時記錄失敗',
+            error: error.message
+        });
+    }
+});
+
+// ==================== Receipt（收據內容）相關端點 ====================
+
+// 批量保存收據記錄
+app.post('/receipts/batch', validateApiKeys, async (req, res) => {
+    try {
+        const { receipts, submittedBy, submittedByName, submittedByType, editorType } = req.body;
+        
+        if (!receipts || !Array.isArray(receipts) || receipts.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: '收據記錄不能為空'
+            });
+        }
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('receipt');
+        
+        // ✅ 驗證：如果 type 是"泳池入场费"或"泳池月票"，必須提供 club
+        const poolEntryTypes = ['泳池入场费', '泳池月票', '泳池月票(購買當天)'];
+        const invalidReceipts = receipts.filter(r => {
+            const type = String(r.type || '').trim();
+            const club = String(r.club || '').trim();
+            return poolEntryTypes.some(poolType => type.includes(poolType)) && !club;
+        });
+        
+        if (invalidReceipts.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `以下收據類型需要選擇泳會：${invalidReceipts.map(r => r.type).join(', ')}`,
+                invalidReceipts: invalidReceipts.map(r => ({ type: r.type, workDate: r.workDate }))
+            });
+        }
+        
+        // ✅ 統一數據格式：確保所有記錄都同時包含 phone 和 employeeId
+        const adminCollection = db.collection('Admin_account');
+        const employeeInfoCache = new Map();
+        
+        const uniqueIdentifiers = new Set();
+        receipts.forEach(receipt => {
+            if (receipt.phone) uniqueIdentifiers.add(receipt.phone);
+            if (receipt.employeeId) uniqueIdentifiers.add(receipt.employeeId);
+        });
+        
+        const employeeQueries = Array.from(uniqueIdentifiers).map(identifier => 
+            adminCollection.findOne({
+                $or: [
+                    { phone: identifier },
+                    { employeeId: identifier }
+                ]
+            })
+        );
+        const employeeResults = await Promise.all(employeeQueries);
+        
+        employeeResults.forEach(emp => {
+            if (emp) {
+                if (emp.phone) employeeInfoCache.set(emp.phone, emp);
+                if (emp.employeeId) employeeInfoCache.set(emp.employeeId, emp);
+            }
+        });
+        
+        const operations = receipts.map(receipt => {
+            let phoneToUse = receipt.phone;
+            let employeeIdToUse = receipt.employeeId;
+            
+            if (!phoneToUse || !employeeIdToUse) {
+                const identifier = phoneToUse || employeeIdToUse;
+                if (identifier) {
+                    const employeeInfo = employeeInfoCache.get(identifier);
+                    if (employeeInfo) {
+                        if (!phoneToUse && employeeInfo.phone) phoneToUse = employeeInfo.phone;
+                        if (!employeeIdToUse && employeeInfo.employeeId) employeeIdToUse = employeeInfo.employeeId;
+                    }
+                }
+            }
+            
+            // ✅ 構建唯一鍵：employeeId + workDate + type + amount + note + club + receiptImageUrl
+            // 這樣可以避免重複保存相同的收據項
+            const receiptKey = {
+                employeeId: employeeIdToUse,
+                phone: phoneToUse,
+                workDate: receipt.workDate,
+                year: receipt.year,
+                month: receipt.month,
+                type: String(receipt.type || '').trim(),
+                amount: String(receipt.amount || '').trim(),
+                note: String(receipt.note || '').trim(),
+                club: String(receipt.club || '').trim(),
+                receiptImageUrl: String(receipt.receiptImageUrl || '').trim(),
+                editorType: editorType || receipt.editorType || 'coach'
+            };
+            
+            const receiptToSave = {
+                ...receiptKey,
+                submittedBy: submittedBy || receipt.submittedBy,
+                submittedByName: submittedByName || receipt.submittedByName,
+                submittedByType: submittedByType || receipt.submittedByType,
+                updatedAt: new Date()
+            };
+            
+            // ✅ 如果是新記錄，設置 createdAt
+            return {
+                updateOne: {
+                    filter: receiptKey,
+                    update: {
+                        $set: receiptToSave,
+                        $setOnInsert: { createdAt: new Date() }
+                    },
+                    upsert: true
+                }
+            };
+        });
+        
+        const result = await collection.bulkWrite(operations);
+        
+        res.json({
+            success: true,
+            message: '收據記錄保存成功',
+            insertedCount: result.upsertedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('❌ 保存收據記錄失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '保存收據記錄失敗',
+            error: error.message
+        });
+    }
+});
+
+// 獲取收據記錄
+app.get('/receipts/:employeeId/:year/:month', validateApiKeys, async (req, res) => {
+    try {
+        const { employeeId, year, month } = req.params;
+        const { editorType } = req.query;
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('receipt');
+        
+        const query = {
+            $or: [
+                { employeeId: employeeId },
+                { phone: employeeId }
+            ],
+            year: parseInt(year),
+            month: parseInt(month)
+        };
+        
+        if (editorType) {
+            query.editorType = editorType;
+        }
+        
+        const receipts = await collection.find(query).sort({ workDate: 1, createdAt: 1 }).toArray();
+        
+        res.json({
+            success: true,
+            receipts: receipts
+        });
+    } catch (error) {
+        console.error('❌ 獲取收據記錄失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取收據記錄失敗',
+            error: error.message
+        });
+    }
+});
+
+// 刪除收據記錄
+app.delete('/receipts/:id', validateApiKeys, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('receipt');
+        
+        let query;
+        if (ObjectId.isValid(id) && id.match(/^[0-9a-fA-F]{24}$/)) {
+            query = { _id: new ObjectId(id) };
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: '無效的ID格式'
+            });
+        }
+        
+        const result = await collection.deleteOne(query);
+        
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: '未找到該收據記錄'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: '刪除成功',
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        console.error('❌ 刪除收據記錄失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '刪除收據記錄失敗',
             error: error.message
         });
     }
@@ -3606,13 +4040,36 @@ app.get('/work-hours/compare/:phone/:year/:month', validateApiKeys, async (req, 
             } else {
                 const comparison = comparisonMap.get(key);
                 
-                // ✅ 如果已經有version2Record，需要合併或選擇最新的
+                // ✅ 如果已經有version2Record，需要合併或選擇
                 if (comparison.version2Record) {
-                    // 如果已經有version2Record，比較updatedAt，保留最新的
-                    const existingUpdatedAt = comparison.version2Record.updatedAt || new Date(0);
-                    const newUpdatedAt = record.updatedAt || new Date(0);
-                    if (newUpdatedAt > existingUpdatedAt) {
-                        comparison.version2Record = record;
+                    // ✅ 對於admin員工，優先保留supervisor版本，如果沒有supervisor版本，則保留manager版本
+                    if (employeeType === 'admin') {
+                        const existingEditorType = comparison.version2Record.editorType || comparison.version2Record.submittedByType || comparison.version2Record.type || '';
+                        const newEditorType = record.editorType || record.submittedByType || record.type || '';
+                        
+                        // 如果現有記錄是supervisor，保留現有記錄
+                        if (existingEditorType === 'supervisor') {
+                            // 保持現有記錄不變
+                        }
+                        // 如果新記錄是supervisor，替換現有記錄
+                        else if (newEditorType === 'supervisor') {
+                            comparison.version2Record = record;
+                        }
+                        // 如果都不是supervisor，比較updatedAt，保留最新的
+                        else {
+                            const existingUpdatedAt = comparison.version2Record.updatedAt || new Date(0);
+                            const newUpdatedAt = record.updatedAt || new Date(0);
+                            if (newUpdatedAt > existingUpdatedAt) {
+                                comparison.version2Record = record;
+                            }
+                        }
+                    } else {
+                        // 對於其他員工類型，比較updatedAt，保留最新的
+                        const existingUpdatedAt = comparison.version2Record.updatedAt || new Date(0);
+                        const newUpdatedAt = record.updatedAt || new Date(0);
+                        if (newUpdatedAt > existingUpdatedAt) {
+                            comparison.version2Record = record;
+                        }
                     }
                 } else {
                     comparison.version2Record = record;
@@ -4293,20 +4750,88 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
         const db = client.db(DEFAULT_DB_NAME);
         const collection = db.collection('trail_bill');
 
-        // ✅ 重要修復：使用 MongoDB 原子 counter 生成 trailId，避免併發時撞號
-        // 新格式固定為 T + 6 位數字（T000001）
-        const counters = db.collection('Counters');
-        async function nextTrailId() {
-            const result = await counters.findOneAndUpdate(
-                { _id: 'trail_bill_trailId_seq' },
-                { $inc: { seq: 1 } },
-                { upsert: true, returnDocument: 'after' }
-            );
-            const seq = result?.value?.seq || 1;
-            return `T${String(seq).padStart(6, '0')}`;
+        // ✅ 生成 Taril_number（使用原本的 trailId 生成邏輯：隨機10位字符串）
+        async function getNextTarilNumber() {
+            // 生成隨機字符串的函數
+            function generateRandomId(length = 10) {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+                let result = '';
+                for (let i = 0; i < length; i++) {
+                    result += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return result;
+            }
+            
+            // 檢查 Taril_number 是否已存在
+            async function isTarilNumberExists(tarilNumber) {
+                const existing = await collection.findOne({ Taril_number: tarilNumber });
+                return existing !== null;
+            }
+            
+            // 生成唯一的 Taril_number（最多重試100次）
+            let newTarilNumber;
+            let attempts = 0;
+            const maxAttempts = 100;
+            
+            do {
+                newTarilNumber = generateRandomId(10); // 生成10位隨機字符串
+                const exists = await isTarilNumberExists(newTarilNumber);
+                if (!exists) {
+                    break; // 找到唯一的 ID
+                }
+                attempts++;
+                if (attempts >= maxAttempts) {
+                    throw new Error('無法生成唯一的 Taril_number（重試已達上限）');
+                }
+            } while (true);
+            
+            return newTarilNumber;
         }
 
-        let newTrailId = await nextTrailId();
+        // ✅ 生成 trailId（格式：T+6位數字，例如 T000022）
+        async function getNextTrailId() {
+            // 查詢數據庫中所有 trailId，找出最大的數字
+            const allRecords = await collection.find({ 
+                trailId: { $regex: /^T\d{6}$/ } // 匹配 T+6位數字的格式
+            }).toArray();
+            
+            let maxNumber = 0;
+            
+            // 提取所有數字部分，找出最大值
+            allRecords.forEach(record => {
+                if (record.trailId && record.trailId.startsWith('T')) {
+                    const numberPart = parseInt(record.trailId.substring(1));
+                    if (!isNaN(numberPart) && numberPart > maxNumber) {
+                        maxNumber = numberPart;
+                    }
+                }
+            });
+            
+            // 生成新的 trailId（最大值+1，格式為 T000022）
+            const nextNumber = maxNumber + 1;
+            const newTrailId = `T${String(nextNumber).padStart(6, '0')}`;
+            
+            // 檢查是否已存在（防止併發問題）
+            const exists = await collection.findOne({ trailId: newTrailId });
+            if (exists) {
+                // 如果已存在，遞增再試（最多重試10次）
+                for (let i = 1; i <= 10; i++) {
+                    const retryNumber = nextNumber + i;
+                    const retryTrailId = `T${String(retryNumber).padStart(6, '0')}`;
+                    const retryExists = await collection.findOne({ trailId: retryTrailId });
+                    if (!retryExists) {
+                        return retryTrailId;
+                    }
+                }
+                throw new Error('無法生成唯一的 trailId（重試已達上限）');
+            }
+            
+            return newTrailId;
+        }
+
+        // ✅ 生成 Taril_number 和 trailId
+        const newTarilNumber = await getNextTarilNumber();
+        const newTrailId = await getNextTrailId();
         
         // ✅ 為所有記錄添加相同的 trailId（批量創建時共享同一個 trailId）
         // ✅ 支持兩種數據格式：{ students: [...] } 或 { records: [...] } 或直接數組
@@ -4344,7 +4869,8 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
             
             return {
                 ...record,
-                trailId: newTrailId,  // ✅ 使用小寫 trailId
+                Taril_number: newTarilNumber,  // ✅ 添加 Taril_number（使用原本的 trailId 生成邏輯）
+                trailId: newTrailId,  // ✅ 使用新格式：T+6位數字（例如 T000022）
                 trialTime: trialTime,  // ✅ 確保格式為 1500-1700
                 createdAt: new Date(),
                 updatedAt: new Date()
@@ -4363,21 +4889,24 @@ app.post('/trial-bill/create', validateApiKeys, async (req, res) => {
                 if (!isDup) throw e;
 
                 console.warn('⚠️ trial-bill/create：偵測到 trailId 重複，重新取號重試', { retry });
-                newTrailId = await nextTrailId();
+                const retryTarilNumber = await getNextTarilNumber();
+                const retryTrailId = await getNextTrailId();
                 for (let i = 0; i < recordsWithTrailId.length; i++) {
-                    recordsWithTrailId[i].trailId = newTrailId;
+                    recordsWithTrailId[i].Taril_number = retryTarilNumber;
+                    recordsWithTrailId[i].trailId = retryTrailId;
                 }
             }
         }
         if (!result) {
-            throw new Error('創建試堂記錄失敗：無法生成唯一 trailId（重試已達上限）');
+            throw new Error('創建試堂記錄失敗：無法生成唯一 trailId 或 Taril_number（重試已達上限）');
         }
         
         res.json({
             success: true,
             message: '創建成功',
             count: result.insertedCount,
-            trailId: newTrailId, // ✅ 返回生成的 TrailID
+            Taril_number: newTarilNumber, // ✅ 返回生成的 Taril_number
+            trailId: newTrailId, // ✅ 返回生成的 trailId（T+6位數字格式）
             recordIds: Object.values(result.insertedIds)
         });
     } catch (error) {
@@ -4575,13 +5104,13 @@ app.delete('/trial-bill/:id', validateApiKeys, async (req, res) => {
 
 // ==================== 文件上傳相關端點 ====================
 
-// 上傳收據圖片（multer 配置已在文件頂部定義）
-app.post('/upload-receipt', validateApiKeys, upload.single('receipt'), async (req, res) => {
+// 上傳收據圖片（B1：優先上傳到 S3/R2；未配置則回退本地 uploads）
+app.post('/upload-receipt', validateApiKeys, receiptUploadMiddleware, async (req, res) => {
     try {
         console.log('📤 收到圖片上傳請求:', {
             hasFile: !!req.file,
             uploadsDir: uploadsDir,
-            multerDest: upload.dest || upload.storage
+            storage: isS3ReceiptEnabled() ? 's3' : 'local'
         });
         
         if (!req.file) {
@@ -4591,12 +5120,61 @@ app.post('/upload-receipt', validateApiKeys, upload.single('receipt'), async (re
                 message: '沒有上傳文件'
             });
         }
-        
-        // ✅ 驗證文件是否真的被保存
+
+        // ✅ B1：上傳到 S3/R2（持久化）
+        if (isS3ReceiptEnabled()) {
+            const bucket = process.env.S3_BUCKET;
+            const prefix = (process.env.S3_PREFIX || 'receipts').toString().replace(/^\/+|\/+$/g, '');
+            const ext = guessImageExt(req.file.mimetype, req.file.originalname);
+            const rand = crypto.randomBytes(12).toString('hex');
+            const key = `${prefix}/${new Date().toISOString().slice(0, 10)}/${Date.now()}_${rand}.${ext}`;
+
+            const publicUrl = buildPublicReceiptUrl(key);
+            if (!publicUrl) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'S3_PUBLIC_BASE_URL 未設置，無法生成公開圖片 URL'
+                });
+            }
+
+            const s3 = getS3ReceiptClient();
+            const body = req.file.buffer; // memoryStorage
+            if (!body || !Buffer.isBuffer(body)) {
+                return res.status(500).json({
+                    success: false,
+                    message: '內部錯誤：未取得圖片內容（buffer）'
+                });
+            }
+
+            await s3.send(new PutObjectCommand({
+                Bucket: bucket,
+                Key: key,
+                Body: body,
+                ContentType: req.file.mimetype || 'image/jpeg',
+                CacheControl: 'public, max-age=31536000, immutable'
+            }));
+
+            console.log('✅ 收據圖片已上傳到 S3/R2:', {
+                bucket,
+                key,
+                size: req.file.size,
+                mimetype: req.file.mimetype,
+                imageUrl: publicUrl
+            });
+
+            return res.json({
+                success: true,
+                imageUrl: publicUrl,
+                key,
+                storage: 's3',
+                message: '上傳成功'
+            });
+        }
+
+        // ✅ fallback：保存到本地 uploads（非持久化，僅用於開發/臨時）
         const savedFilePath = path.join(uploadsDir, req.file.filename);
         const fileExists = fs.existsSync(savedFilePath);
-        
-        console.log('📁 文件保存信息:', {
+        console.log('📁 本地文件保存信息:', {
             filename: req.file.filename,
             savedPath: savedFilePath,
             fileExists: fileExists,
@@ -4604,7 +5182,6 @@ app.post('/upload-receipt', validateApiKeys, upload.single('receipt'), async (re
             mimetype: req.file.mimetype,
             originalname: req.file.originalname
         });
-        
         if (!fileExists) {
             console.error('❌ 文件未找到:', savedFilePath);
             return res.status(500).json({
@@ -4613,31 +5190,18 @@ app.post('/upload-receipt', validateApiKeys, upload.single('receipt'), async (re
                 savedPath: savedFilePath
             });
         }
-        
-        // ✅ 返回完整的 URL（Railway/反向代理下要用 x-forwarded-proto，否則會變成 http 導致前端混合內容被瀏覽器擋）
         const forwardedProto = (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim();
         const protocol = forwardedProto || req.protocol || 'https';
         const host = req.get('host') || 'localhost:3000';
         const imageUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
-        
-        // ✅ 同時返回相對路徑，供前端選擇使用
         const relativePath = `/uploads/${req.file.filename}`;
-        
-        console.log('✅ 圖片上傳成功:', {
-            filename: req.file.filename,
-            savedPath: savedFilePath,
-            fileExists: fileExists,
-            size: req.file.size,
-            mimetype: req.file.mimetype,
-            imageUrl: imageUrl,
-            relativePath: relativePath
-        });
-        
-        res.json({
+        console.log('✅ 圖片上傳成功（本地）:', { imageUrl, relativePath });
+        return res.json({
             success: true,
-            imageUrl: imageUrl, // 完整 URL
-            relativePath: relativePath, // 相對路徑（備用）
-            message: '上傳成功'
+            imageUrl,
+            relativePath,
+            storage: 'local',
+            message: '上傳成功（本地存儲，可能在部署/重啟後失效）'
         });
     } catch (error) {
         console.error('❌ 上傳收據圖片失敗:', error);
@@ -4719,7 +5283,8 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
                 // ✅ 獲取基礎 time_slot（從 Pricing 集合）
                 const baseTimeSlot = await getTimeSlotForClassFormat(db, courseType || billData.courseType, classFormat || billData.classFormat);
                 
-                // 計算第一次的 time_slot（originalTimeSlot）
+                // ✅ 方案三：計算第一次的堂數（originalTimeSlot）
+                // total_time_slot = actualDuration / baseTimeSlot（四捨五入到 0.5）
                 const firstDuration = extractDurationFromClassTime(classTime);
                 const originalTimeSlot = firstDuration && baseTimeSlot ? calculateTotalTimeSlot(baseTimeSlot, firstDuration) : 1;
                 
@@ -4816,9 +5381,9 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
                                     instructorType: instructorType || billData.instructorType,
                                     location: location || billData.location,
                                     receiptImageUrl: receiptImageUrl || billData.receiptImageUrl,
-                                    time_slot: baseTimeSlot || null, // ✅ 基礎時長（分鐘）
-                                    originalTimeSlot: originalTimeSlot, // ✅ 第一次的 time_slot（堂數）
-                                    total_time_slot: originalTimeSlot, // ✅ 當前的 time_slot（初始等於 originalTimeSlot）
+                                    time_slot: baseTimeSlot || null, // ✅ 方案三：基礎時長（分鐘）- 輔助字段，用於計算時數
+                                    originalTimeSlot: originalTimeSlot, // ✅ 第一次的堂數（用於判斷時間是否被修改）
+                                    total_time_slot: originalTimeSlot, // ✅ 方案三：實際堂數 - 主要字段，用於所有計算
                                     isPending: false,
                                     isAttended: null,
                                     isLeave: null,
@@ -4832,9 +5397,13 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
                         }
                         
                         // ✅ 處理待約堂數（無論是新舊學生都需要創建 timeslot 記錄）
+                        // ✅ 支持小數堂數（以0.5為單位）
                         if (pendingLessons && typeof pendingLessons === 'object') {
                             const pendingCount = Object.values(pendingLessons).reduce((sum, val) => sum + (typeof val === 'number' ? val : 0), 0);
-                            for (let i = 0; i < pendingCount; i++) {
+                            
+                            if (pendingCount > 0) {
+                                // ✅ 創建1條記錄，total_time_slot 設為總待約堂數（可以是小數）
+                                // 這樣可以正確處理小數堂數（如 1.5 堂）
                                 timeslotRecords.push({
                                     studentId: studentId,
                                     studentPhone: studentPhone,
@@ -4845,9 +5414,9 @@ app.post('/create-student-bill', validateApiKeys, async (req, res) => {
                                     instructorType: instructorType || billData.instructorType,
                                     location: location || billData.location,
                                     receiptImageUrl: receiptImageUrl || billData.receiptImageUrl,
-                                    time_slot: baseTimeSlot || null, // ✅ 基礎時長（分鐘）
-                                    originalTimeSlot: originalTimeSlot, // ✅ 第一次的 time_slot（堂數）
-                                    total_time_slot: originalTimeSlot, // ✅ 當前的 time_slot（初始等於 originalTimeSlot）
+                                    time_slot: baseTimeSlot || null, // ✅ 方案三：基礎時長（分鐘）- 輔助字段，用於計算時數
+                                    originalTimeSlot: originalTimeSlot, // ✅ 第一次的堂數（用於判斷時間是否被修改）
+                                    total_time_slot: pendingCount, // ✅ 方案三：實際堂數 - 主要字段，支持小數（如 1.5）
                                     isPending: true,
                                     isAttended: null,
                                     isLeave: null,
@@ -5049,6 +5618,96 @@ app.delete('/user-preferences/work-hours-filter', validateApiKeys, async (req, r
         });
     } catch (error) {
         console.error('❌ 清除工時管理篩選狀態失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '清除失敗',
+            error: error.message
+        });
+    }
+});
+
+// 保存工時管理列順序
+app.post('/user-preferences/work-hours-column-order', validateApiKeys, async (req, res) => {
+    try {
+        const { accountPhone, employeePhone, columnOrder } = req.body;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('User_preferences');
+        
+        await collection.updateOne(
+            { accountPhone, employeePhone },
+            {
+                $set: {
+                    columnOrder: columnOrder,
+                    updatedAt: new Date()
+                }
+            },
+            { upsert: true }
+        );
+        
+        res.json({
+            success: true,
+            message: '保存成功'
+        });
+    } catch (error) {
+        console.error('❌ 保存列順序失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '保存失敗',
+            error: error.message
+        });
+    }
+});
+
+// 獲取工時管理列順序
+app.get('/user-preferences/work-hours-column-order', validateApiKeys, async (req, res) => {
+    try {
+        const { accountPhone, employeePhone } = req.query;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('User_preferences');
+        
+        const preference = await collection.findOne({ accountPhone, employeePhone });
+        
+        res.json({
+            success: true,
+            columnOrder: preference ? (preference.columnOrder || []) : []
+        });
+    } catch (error) {
+        console.error('❌ 獲取列順序失敗:', error);
+        res.json({
+            success: true,
+            columnOrder: []
+        });
+    }
+});
+
+// 清除工時管理列順序
+app.delete('/user-preferences/work-hours-column-order', validateApiKeys, async (req, res) => {
+    try {
+        const { accountPhone, employeePhone } = req.query;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('User_preferences');
+        
+        await collection.updateOne(
+            { accountPhone, employeePhone },
+            {
+                $unset: {
+                    columnOrder: ""
+                },
+                $set: {
+                    updatedAt: new Date()
+                }
+            }
+        );
+        
+        res.json({
+            success: true,
+            message: '清除成功'
+        });
+    } catch (error) {
+        console.error('❌ 清除列順序失敗:', error);
         res.status(500).json({
             success: false,
             message: '清除失敗',
@@ -5921,6 +6580,546 @@ app.get('/student/:studentId/leave-dates', validateApiKeys, async (req, res) => 
     }
 });
 
+// ✅ 獲取學生的已購買堂數日期（所有記錄，包括待約）
+app.get('/student/:studentId/purchased-classes-dates', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { semester, year } = req.query; // 可選的學期和年份過濾
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 查詢該學生的所有記錄（包括待約）
+        let records = await collection.find({
+            studentId: studentId
+        }).toArray();
+        
+        // 如果指定了學期或年份，需要過濾
+        let receiptDateMap = {};
+        if (semester || year) {
+            const receiptUrls = [...new Set(records
+                .filter(r => !r.classDate && r.receiptImageUrl)
+                .map(r => r.receiptImageUrl)
+                .filter(Boolean))];
+            
+            if (receiptUrls.length > 0) {
+                const relatedRecords = await collection.find({
+                    receiptImageUrl: { $in: receiptUrls },
+                    classDate: { $nin: [null, ''] }
+                }).toArray();
+                
+                for (const relatedRecord of relatedRecords) {
+                    if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                        receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                    }
+                }
+            }
+            
+            const semesterFilter = semester ? semester.split(',').map(m => parseInt(m)) : null;
+            const yearFilter = year ? parseInt(year) : null;
+            
+            records = records.filter(record => {
+                let classDate = record.classDate;
+                
+                if (!classDate && record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                    classDate = receiptDateMap[record.receiptImageUrl];
+                }
+                
+                // 如果沒有日期且無法通過 receiptImageUrl 查找，則排除（如果指定了過濾條件）
+                if (!classDate) return false;
+                
+                const date = formatDateToYYYYMMDD(classDate) || classDate;
+                const dateObj = new Date(date);
+                if (isNaN(dateObj.getTime())) return false;
+                
+                const month = dateObj.getMonth() + 1;
+                const slotYear = dateObj.getFullYear();
+                
+                if (yearFilter && slotYear !== yearFilter) return false;
+                if (semesterFilter && !semesterFilter.includes(month)) return false;
+                
+                return true;
+            });
+        }
+        
+        // 批量查詢所有需要的 receiptImageUrl 對應的日期
+        const receiptUrls = [...new Set(records
+            .filter(r => !r.classDate && r.receiptImageUrl)
+            .map(r => r.receiptImageUrl)
+            .filter(Boolean))];
+        
+        if (receiptUrls.length > 0 && Object.keys(receiptDateMap).length === 0) {
+            const relatedRecords = await collection.find({
+                receiptImageUrl: { $in: receiptUrls },
+                classDate: { $nin: [null, ''] }
+            }).toArray();
+            
+            for (const relatedRecord of relatedRecords) {
+                if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                    receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                }
+            }
+        }
+        
+        // 按學期分類日期
+        const semesterGroups = {};
+        
+        for (const record of records) {
+            // 獲取月份
+            let month = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                month = extractMonthFromDate(record.classDate);
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                month = extractMonthFromDate(receiptDateMap[record.receiptImageUrl]);
+            }
+            
+            if (!month) continue; // 跳過無法確定月份的記錄
+            
+            // 確定學期
+            const semester = getSemesterFromMonth(month);
+            
+            // 提取日期
+            let classDate = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                classDate = formatDateToYYYYMMDD(record.classDate) || record.classDate;
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                classDate = formatDateToYYYYMMDD(receiptDateMap[record.receiptImageUrl]) || receiptDateMap[record.receiptImageUrl];
+            }
+            
+            if (!classDate) continue;
+            
+            // 初始化學期組
+            if (!semesterGroups[semester]) {
+                semesterGroups[semester] = [];
+            }
+            
+            // 添加日期（去重）
+            if (!semesterGroups[semester].includes(classDate)) {
+                semesterGroups[semester].push(classDate);
+            }
+        }
+        
+        // 對每個學期的日期進行排序
+        for (const semester in semesterGroups) {
+            semesterGroups[semester].sort();
+        }
+        
+        res.json({
+            success: true,
+            classDates: semesterGroups,
+            allDates: Object.values(semesterGroups).flat().sort()
+        });
+    } catch (error) {
+        console.error('❌ 獲取學生已購買堂數日期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取學生已購買堂數日期失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 獲取學生的已出席日期
+app.get('/student/:studentId/attended-dates', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { semester, year } = req.query;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 查詢該學生的所有已出席記錄
+        let records = await collection.find({
+            studentId: studentId,
+            isAttended: true
+        }).toArray();
+        
+        // 如果指定了學期或年份，需要過濾
+        let receiptDateMap = {};
+        if (semester || year) {
+            const receiptUrls = [...new Set(records
+                .filter(r => !r.classDate && r.receiptImageUrl)
+                .map(r => r.receiptImageUrl)
+                .filter(Boolean))];
+            
+            if (receiptUrls.length > 0) {
+                const relatedRecords = await collection.find({
+                    receiptImageUrl: { $in: receiptUrls },
+                    classDate: { $nin: [null, ''] }
+                }).toArray();
+                
+                for (const relatedRecord of relatedRecords) {
+                    if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                        receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                    }
+                }
+            }
+            
+            const semesterFilter = semester ? semester.split(',').map(m => parseInt(m)) : null;
+            const yearFilter = year ? parseInt(year) : null;
+            
+            records = records.filter(record => {
+                let classDate = record.classDate;
+                
+                if (!classDate && record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                    classDate = receiptDateMap[record.receiptImageUrl];
+                }
+                
+                if (!classDate) return false;
+                
+                const date = formatDateToYYYYMMDD(classDate) || classDate;
+                const dateObj = new Date(date);
+                if (isNaN(dateObj.getTime())) return false;
+                
+                const month = dateObj.getMonth() + 1;
+                const slotYear = dateObj.getFullYear();
+                
+                if (yearFilter && slotYear !== yearFilter) return false;
+                if (semesterFilter && !semesterFilter.includes(month)) return false;
+                
+                return true;
+            });
+        }
+        
+        // 批量查詢所有需要的 receiptImageUrl 對應的日期
+        const receiptUrls = [...new Set(records
+            .filter(r => !r.classDate && r.receiptImageUrl)
+            .map(r => r.receiptImageUrl)
+            .filter(Boolean))];
+        
+        if (receiptUrls.length > 0 && Object.keys(receiptDateMap).length === 0) {
+            const relatedRecords = await collection.find({
+                receiptImageUrl: { $in: receiptUrls },
+                classDate: { $nin: [null, ''] }
+            }).toArray();
+            
+            for (const relatedRecord of relatedRecords) {
+                if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                    receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                }
+            }
+        }
+        
+        // 按學期分類日期
+        const semesterGroups = {};
+        
+        for (const record of records) {
+            let month = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                month = extractMonthFromDate(record.classDate);
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                month = extractMonthFromDate(receiptDateMap[record.receiptImageUrl]);
+            }
+            
+            if (!month) continue;
+            
+            const semester = getSemesterFromMonth(month);
+            
+            let classDate = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                classDate = formatDateToYYYYMMDD(record.classDate) || record.classDate;
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                classDate = formatDateToYYYYMMDD(receiptDateMap[record.receiptImageUrl]) || receiptDateMap[record.receiptImageUrl];
+            }
+            
+            if (!classDate) continue;
+            
+            if (!semesterGroups[semester]) {
+                semesterGroups[semester] = [];
+            }
+            
+            if (!semesterGroups[semester].includes(classDate)) {
+                semesterGroups[semester].push(classDate);
+            }
+        }
+        
+        for (const semester in semesterGroups) {
+            semesterGroups[semester].sort();
+        }
+        
+        res.json({
+            success: true,
+            classDates: semesterGroups,
+            allDates: Object.values(semesterGroups).flat().sort()
+        });
+    } catch (error) {
+        console.error('❌ 獲取學生已出席日期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取學生已出席日期失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 獲取學生的缺席日期
+app.get('/student/:studentId/absence-dates', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { semester, year } = req.query;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 查詢該學生的所有缺席記錄（isAttended === false 且 isLeave !== true）
+        let records = await collection.find({
+            studentId: studentId,
+            isAttended: false,
+            isLeave: { $ne: true }
+        }).toArray();
+        
+        // 如果指定了學期或年份，需要過濾
+        let receiptDateMap = {};
+        if (semester || year) {
+            const receiptUrls = [...new Set(records
+                .filter(r => !r.classDate && r.receiptImageUrl)
+                .map(r => r.receiptImageUrl)
+                .filter(Boolean))];
+            
+            if (receiptUrls.length > 0) {
+                const relatedRecords = await collection.find({
+                    receiptImageUrl: { $in: receiptUrls },
+                    classDate: { $nin: [null, ''] }
+                }).toArray();
+                
+                for (const relatedRecord of relatedRecords) {
+                    if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                        receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                    }
+                }
+            }
+            
+            const semesterFilter = semester ? semester.split(',').map(m => parseInt(m)) : null;
+            const yearFilter = year ? parseInt(year) : null;
+            
+            records = records.filter(record => {
+                let classDate = record.classDate;
+                
+                if (!classDate && record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                    classDate = receiptDateMap[record.receiptImageUrl];
+                }
+                
+                if (!classDate) return false;
+                
+                const date = formatDateToYYYYMMDD(classDate) || classDate;
+                const dateObj = new Date(date);
+                if (isNaN(dateObj.getTime())) return false;
+                
+                const month = dateObj.getMonth() + 1;
+                const slotYear = dateObj.getFullYear();
+                
+                if (yearFilter && slotYear !== yearFilter) return false;
+                if (semesterFilter && !semesterFilter.includes(month)) return false;
+                
+                return true;
+            });
+        }
+        
+        // 批量查詢所有需要的 receiptImageUrl 對應的日期
+        const receiptUrls = [...new Set(records
+            .filter(r => !r.classDate && r.receiptImageUrl)
+            .map(r => r.receiptImageUrl)
+            .filter(Boolean))];
+        
+        if (receiptUrls.length > 0 && Object.keys(receiptDateMap).length === 0) {
+            const relatedRecords = await collection.find({
+                receiptImageUrl: { $in: receiptUrls },
+                classDate: { $nin: [null, ''] }
+            }).toArray();
+            
+            for (const relatedRecord of relatedRecords) {
+                if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                    receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                }
+            }
+        }
+        
+        // 按學期分類日期
+        const semesterGroups = {};
+        
+        for (const record of records) {
+            let month = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                month = extractMonthFromDate(record.classDate);
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                month = extractMonthFromDate(receiptDateMap[record.receiptImageUrl]);
+            }
+            
+            if (!month) continue;
+            
+            const semester = getSemesterFromMonth(month);
+            
+            let classDate = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                classDate = formatDateToYYYYMMDD(record.classDate) || record.classDate;
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                classDate = formatDateToYYYYMMDD(receiptDateMap[record.receiptImageUrl]) || receiptDateMap[record.receiptImageUrl];
+            }
+            
+            if (!classDate) continue;
+            
+            if (!semesterGroups[semester]) {
+                semesterGroups[semester] = [];
+            }
+            
+            if (!semesterGroups[semester].includes(classDate)) {
+                semesterGroups[semester].push(classDate);
+            }
+        }
+        
+        for (const semester in semesterGroups) {
+            semesterGroups[semester].sort();
+        }
+        
+        res.json({
+            success: true,
+            classDates: semesterGroups,
+            allDates: Object.values(semesterGroups).flat().sort()
+        });
+    } catch (error) {
+        console.error('❌ 獲取學生缺席日期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取學生缺席日期失敗',
+            error: error.message
+        });
+    }
+});
+
+// ✅ 獲取學生的待約日期
+app.get('/student/:studentId/pending-dates', validateApiKeys, async (req, res) => {
+    try {
+        const { studentId } = req.params;
+        const { semester, year } = req.query;
+        const client = await getMongoClient();
+        const db = client.db(DEFAULT_DB_NAME);
+        const collection = db.collection('students_timeslot');
+        
+        // 查詢該學生的所有待約記錄（isPending === true）
+        let records = await collection.find({
+            studentId: studentId,
+            isPending: true
+        }).toArray();
+        
+        // 如果指定了學期或年份，需要過濾
+        let receiptDateMap = {};
+        if (semester || year) {
+            const receiptUrls = [...new Set(records
+                .filter(r => r.receiptImageUrl)
+                .map(r => r.receiptImageUrl)
+                .filter(Boolean))];
+            
+            if (receiptUrls.length > 0) {
+                const relatedRecords = await collection.find({
+                    receiptImageUrl: { $in: receiptUrls },
+                    classDate: { $nin: [null, ''] }
+                }).toArray();
+                
+                for (const relatedRecord of relatedRecords) {
+                    if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                        receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                    }
+                }
+            }
+            
+            const semesterFilter = semester ? semester.split(',').map(m => parseInt(m)) : null;
+            const yearFilter = year ? parseInt(year) : null;
+            
+            records = records.filter(record => {
+                let classDate = record.classDate;
+                
+                if (!classDate && record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                    classDate = receiptDateMap[record.receiptImageUrl];
+                }
+                
+                // 如果沒有日期且無法通過 receiptImageUrl 查找，則排除（如果指定了過濾條件）
+                if (!classDate) return false;
+                
+                const date = formatDateToYYYYMMDD(classDate) || classDate;
+                const dateObj = new Date(date);
+                if (isNaN(dateObj.getTime())) return false;
+                
+                const month = dateObj.getMonth() + 1;
+                const slotYear = dateObj.getFullYear();
+                
+                if (yearFilter && slotYear !== yearFilter) return false;
+                if (semesterFilter && !semesterFilter.includes(month)) return false;
+                
+                return true;
+            });
+        }
+        
+        // 批量查詢所有需要的 receiptImageUrl 對應的日期
+        const receiptUrls = [...new Set(records
+            .filter(r => r.receiptImageUrl)
+            .map(r => r.receiptImageUrl)
+            .filter(Boolean))];
+        
+        if (receiptUrls.length > 0 && Object.keys(receiptDateMap).length === 0) {
+            const relatedRecords = await collection.find({
+                receiptImageUrl: { $in: receiptUrls },
+                classDate: { $nin: [null, ''] }
+            }).toArray();
+            
+            for (const relatedRecord of relatedRecords) {
+                if (!receiptDateMap[relatedRecord.receiptImageUrl]) {
+                    receiptDateMap[relatedRecord.receiptImageUrl] = relatedRecord.classDate;
+                }
+            }
+        }
+        
+        // 按學期分類日期
+        const semesterGroups = {};
+        
+        for (const record of records) {
+            let month = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                month = extractMonthFromDate(record.classDate);
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                month = extractMonthFromDate(receiptDateMap[record.receiptImageUrl]);
+            }
+            
+            if (!month) continue;
+            
+            const semester = getSemesterFromMonth(month);
+            
+            let classDate = null;
+            if (record.classDate && record.classDate !== null && record.classDate !== '') {
+                classDate = formatDateToYYYYMMDD(record.classDate) || record.classDate;
+            } else if (record.receiptImageUrl && receiptDateMap[record.receiptImageUrl]) {
+                classDate = formatDateToYYYYMMDD(receiptDateMap[record.receiptImageUrl]) || receiptDateMap[record.receiptImageUrl];
+            }
+            
+            if (!classDate) continue;
+            
+            if (!semesterGroups[semester]) {
+                semesterGroups[semester] = [];
+            }
+            
+            if (!semesterGroups[semester].includes(classDate)) {
+                semesterGroups[semester].push(classDate);
+            }
+        }
+        
+        for (const semester in semesterGroups) {
+            semesterGroups[semester].sort();
+        }
+        
+        res.json({
+            success: true,
+            classDates: semesterGroups,
+            allDates: Object.values(semesterGroups).flat().sort()
+        });
+    } catch (error) {
+        console.error('❌ 獲取學生待約日期失敗:', error);
+        res.status(500).json({
+            success: false,
+            message: '獲取學生待約日期失敗',
+            error: error.message
+        });
+    }
+});
+
 // 獲取學生堂數數據（支持分頁、按學期和年份篩選）
 app.get('/student-classes', validateApiKeys, async (req, res) => {
     try {
@@ -6132,7 +7331,11 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
             if (!student) return null;
             
             // ✅ 從已分組的數據中獲取，避免重複查詢
-            let timeslots = timeslotsByStudent[studentId] || [];
+            // 保存所有記錄（用於計算剩餘堂數 - 所有學期的總和）
+            const allTimeslots = timeslotsByStudent[studentId] || [];
+            
+            // 過濾後的記錄（用於計算本期數據）
+            let timeslots = allTimeslots;
             
             // 如果指定了學期或年份，需要進一步過濾
             if (semesterFilter || yearFilter) {
@@ -6172,29 +7375,52 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 });
             }
             
-            // ✅ 計算統計數據（基於過濾後的記錄）
-            // 已定日子課堂：有 classDate 且不是請假的記錄
-            const scheduledClasses = timeslots.filter(s => s.classDate && s.classDate !== '' && s.isLeave !== true).length;
+            // ✅ 計算統計數據（基於過濾後的記錄 - 本學期）
+            // ✅ 方案三：使用 total_time_slot（實際堂數）總和，而不是記錄數量，以支持小數堂數
             
-            // ✅ 補堂已出席：已約補堂且已出席的記錄（需要先計算，因為它是已出席的子集）
-            const attendedMakeup = timeslots.filter(s => (s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true).length;
+            // 已定日子課堂：有 classDate 且不是請假的記錄的 total_time_slot 總和
+            const scheduledClasses = timeslots
+                .filter(s => s.classDate && s.classDate !== '' && s.isLeave !== true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
             
-            // ✅ 已出席：isAttended === true 的記錄（包括普通已出席和補堂已出席）
-            const attendedBooked = timeslots.filter(s => s.isAttended === true).length;
+            // ✅ 補堂已出席：已約補堂且已出席的記錄的 total_time_slot 總和（需要先計算，因為它是已出席的子集）
+            const attendedMakeup = timeslots
+                .filter(s => (s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
             
-            // ✅ 本期請假堂數：本期資料格對應學生的isLeave為true的數量
-            const currentPeriodLeaveRequests = timeslots.filter(s => s.isLeave === true).length;
+            // ✅ 已出席：isAttended === true 的記錄的 total_time_slot 總和（包括普通已出席和補堂已出席）
+            const attendedBooked = timeslots
+                .filter(s => s.isAttended === true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
             
-            // ✅ 計算缺席：isAttended === false 且非請假的記錄（請假不應被計入缺席）
-            const absences = timeslots.filter(s => s.isAttended === false && s.isLeave !== true).length;
+            // ✅ 本期請假堂數：本期資料格對應學生的isLeave為true的 total_time_slot 總和
+            const currentPeriodLeaveRequests = timeslots
+                .filter(s => s.isLeave === true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
             
-            // ✅ 計算本期已購堂數（根據學期/年份過濾後的記錄數量）
-            const currentPurchasedClasses = timeslots.length;
+            // ✅ 計算缺席：isAttended === false 且非請假的記錄的 total_time_slot 總和（請假不應被計入缺席）
+            const absences = timeslots
+                .filter(s => s.isAttended === false && s.isLeave !== true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
             
-            // ✅ 本期剩餘堂數 = 本期已購堂數 - 本期已出席 - 本期已缺席
+            // ✅ 計算本期已購堂數（根據學期/年份過濾後的記錄的 total_time_slot 總和）
+            const currentPurchasedClasses = timeslots.reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
+            
+            // ✅ 本期剩餘堂數 = 本期已購堂數 - 本期已出席 - 本期已缺席（可以為負數，僅顯示本學期）
             // 注意：attendedBooked 已經包含了所有 isAttended === true 的記錄（包括補堂已出席），
             // 所以不需要再減去 attendedMakeup，否則會重複扣除
-            const currentPeriodRemaining = Math.max(0, currentPurchasedClasses - attendedBooked - absences);
+            const currentPeriodRemaining = currentPurchasedClasses - attendedBooked - absences;
+            
+            // ✅ 剩餘堂數 = 所有學期的已購買堂數 - 所有學期的已出席 - 所有學期的缺席（可以為負數）
+            // 計算所有學期的總和，不考慮學期/年份過濾，使用 total_time_slot 總和
+            const allAttendedBooked = allTimeslots
+                .filter(s => s.isAttended === true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
+            const allAbsences = allTimeslots
+                .filter(s => s.isAttended === false && s.isLeave !== true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
+            const allPurchasedClasses = allTimeslots.reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
+            const remainingClasses = allPurchasedClasses - allAttendedBooked - allAbsences;
             
             // ✅ 優化：從已分組的數據中獲取待約記錄，避免重複查詢
             let allPendingRecords = pendingRecordsByStudent[studentId] || [];
@@ -6261,10 +7487,13 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 });
             }
             
-            const pendingClasses = allPendingRecords.length;
+            // ✅ 待約數：使用 total_time_slot 總和，支持小數堂數
+            const pendingClasses = allPendingRecords.reduce((sum, r) => sum + (r.total_time_slot || 1), 0);
             
-            // ✅ 已約補堂：isChangeDate 或 isChangeLocation 為 true 的記錄（不包括 isChangeTime）
-            const bookedMakeup = timeslots.filter(s => s.isChangeDate === true || s.isChangeLocation === true).length;
+            // ✅ 已約補堂：isChangeDate 或 isChangeLocation 為 true 的記錄的 total_time_slot 總和（不包括 isChangeTime）
+            const bookedMakeup = timeslots
+                .filter(s => s.isChangeDate === true || s.isChangeLocation === true)
+                .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
             
             // ✅ 計算上期剩餘堂數：上期已購堂數 - 上期已出席 - 上期補堂已出席 - 上期已缺席
             // 需要確定"上一期"是哪個學期
@@ -6432,17 +7661,25 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                     return true;
                 });
                 
-                lastPeriodPending = lastPeriodPendingFiltered.length;
-                lastPeriodLeaveRequests = lastPeriodTimeslots.filter(s => s.isLeave === true).length;
+                // ✅ 上期待約數：使用 total_time_slot 總和，支持小數堂數
+                lastPeriodPending = lastPeriodPendingFiltered.reduce((sum, r) => sum + (r.total_time_slot || 1), 0);
+                // ✅ 上期請假堂數：使用 total_time_slot 總和
+                lastPeriodLeaveRequests = lastPeriodTimeslots
+                    .filter(s => s.isLeave === true)
+                    .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
                 
-                // ✅ 計算上期的統計數據
-                const lastPeriodAttendedBooked = lastPeriodTimeslots.filter(s => s.isAttended === true).length;
-                const lastPeriodAttendedMakeup = lastPeriodTimeslots.filter(s => 
-                    (s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true
-                ).length;
-                // ✅ 計算上期缺席：isAttended === false 且非請假的記錄（請假不應被計入缺席）
-                const lastPeriodAbsences = lastPeriodTimeslots.filter(s => s.isAttended === false && s.isLeave !== true).length;
-                const lastPeriodPurchasedClasses = lastPeriodTimeslots.length;
+                // ✅ 計算上期的統計數據：使用 total_time_slot 總和
+                const lastPeriodAttendedBooked = lastPeriodTimeslots
+                    .filter(s => s.isAttended === true)
+                    .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
+                const lastPeriodAttendedMakeup = lastPeriodTimeslots
+                    .filter(s => (s.isChangeDate === true || s.isChangeLocation === true) && s.isAttended === true)
+                    .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
+                // ✅ 計算上期缺席：isAttended === false 且非請假的記錄的 total_time_slot 總和（請假不應被計入缺席）
+                const lastPeriodAbsences = lastPeriodTimeslots
+                    .filter(s => s.isAttended === false && s.isLeave !== true)
+                    .reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
+                const lastPeriodPurchasedClasses = lastPeriodTimeslots.reduce((sum, s) => sum + (s.total_time_slot || 1), 0);
                 
                 // ✅ 上期剩餘堂數 = 上期已購堂數 - 上期已出席 - 上期已缺席
                 // 注意：lastPeriodAttendedBooked 已經包含了所有 isAttended === true 的記錄（包括補堂已出席），
@@ -6467,6 +7704,8 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 return true;
             });
             
+            // ✅ 方案三：使用 total_time_slot（實際堂數）計算本期剩餘時數
+            // 如果需要顯示時數，可以通過 total_time_slot * time_slot 計算，但這裡直接使用 total_time_slot 的總和
             const currentPeriodRemainingTimeSlots = remainingRecords.reduce((sum, slot) => {
                 const timeSlot = slot.total_time_slot || 1;
                 return sum + timeSlot;
@@ -6500,12 +7739,11 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 bookableMakeupSlots.push(...lastPeriodRemainingRecords);
             }
             
+            // ✅ 方案三：使用 total_time_slot（實際堂數）計算可補時數
             const bookableMakeupTimeSlots = bookableMakeupSlots.reduce((sum, slot) => {
                 const timeSlot = slot.total_time_slot || 1;
                 return sum + timeSlot;
             }, 0);
-            
-            // ✅ 剩餘堂數已在上面計算：remainingClasses = canStillAttend + canStillBook
             
             // ✅ 获取该学生的账单数据（从 Student_bill 查询）
             const studentBill = billsByStudentId[studentId];
@@ -6515,7 +7753,8 @@ app.get('/student-classes', validateApiKeys, async (req, res) => {
                 name: student.name || '',
                 purchasedClasses: currentPurchasedClasses, // ✅ 本期已購堂數：根據學期/年份過濾後的記錄數量
                 lastPeriodRemaining: lastPeriodRemaining, // ✅ 上期剩餘堂數：上期已購堂數 - 上期已出席 - 上期補堂已出席 - 上期已缺席
-                currentPeriodRemaining: currentPeriodRemaining, // ✅ 本期剩餘堂數：本期已購堂數 - 本期已出席 - 本期補堂已出席 - 本期已缺席
+                currentPeriodRemaining: currentPeriodRemaining, // ✅ 本期剩餘堂數：本期已購堂數 - 本期已出席 - 本期已缺席（可以為負數，僅顯示本學期）
+                remainingClasses: remainingClasses, // ✅ 剩餘堂數：所有學期的已購買堂數 - 所有學期的已出席 - 所有學期的缺席（可以為負數，包含所有學期）
                 scheduledClasses: scheduledClasses, // 已定日子課堂
                 attendedBooked: attendedBooked, // 已出席
                 absences: absences, // 缺席
